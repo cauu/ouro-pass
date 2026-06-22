@@ -148,7 +148,7 @@ server/
 ## 3. Execution Plan
 
 ### p1 — 基础设施 / scaffold
-- [ ] p1-1 Go module + chi 服务骨架（四平面空路由、健康检查、graceful shutdown、config 加载）
+- [x] p1-1 Go module + chi 服务骨架（四平面空路由、健康检查、graceful shutdown、config 加载）
 - [ ] p1-2 持久层底座：sqlc + pgx + SQLite 双栈、migration 框架、repository 接口
 - [ ] p1-3 crypto 基础（`utils/crypto`）：ed25519、blake2b224、HMAC `sub` 派生、字段加密(AES-GCM)、CIP-30 COSE 验签
 - [ ] p1-4 JOSE（`utils/jose`）：access/activation token JWS builder + JWKS publisher（jwx）
@@ -210,10 +210,13 @@ server/
 
 - 2026-06-22T22:48:27+08:00 S0001 草案创建（draft）；技术选型落定为 Go + chi；尚未开始执行。
 - 2026-06-23T00:41:32+08:00 S0001 提升为 active（draft/ → docs/specs/，加时间戳前缀），开始执行。环境：Go 1.25.5、module 下载可用、git 树干净（基线 commit 19da9ae）。
+- 2026-06-23 p1-1 started：搭 `server/` go module（github.com/poolops/issuer）+ chi 四平面骨架 + config 加载 + graceful shutdown。
+- 2026-06-23 p1-1 completed：`config`/`httpapi`/`cmd/issuer` 三包就绪；健康检查、四平面 stub 路由、admin 401 网关、SIGTERM 优雅退出均验证。证据见 §6（TC-1）。
 
 ## 6. Validation Evidence (append-only)
 
-- （执行开始后追加，每条映射到 TC-*）
+- 2026-06-23 TC-1 | stack: go | command: `go build ./... && go vet ./... && go test ./...` | result: pass | note: httpapi 测试通过；config/httpapi/cmd 编译 OK
+- 2026-06-23 TC-1 | stack: go | command: 真二进制 `POOLOPS_ADDR=:18080 issuer` + curl | result: pass | note: /healthz=200，/api/admin/audit=401（gated），SIGTERM 优雅退出 exit 0
 
 ## 7. Change Requests (append-only)
 
