@@ -150,7 +150,7 @@ server/
 ### p1 — 基础设施 / scaffold
 - [x] p1-1 Go module + chi 服务骨架（四平面空路由、健康检查、graceful shutdown、config 加载）
 - [x] p1-2 持久层底座：手写 `database/sql` repository 底座（D2）+ pgx/SQLite 双栈、embed migration 框架、Querier/WithTx/Rebind
-- [ ] p1-3 crypto 基础（`utils/crypto`）：ed25519、blake2b224、HMAC `sub` 派生、字段加密(AES-GCM)、CIP-30 COSE 验签
+- [x] p1-3 crypto 基础（`utils/crypto`）：ed25519、blake2b224、HMAC `sub` 派生、字段加密(AES-GCM)、CIP-30 COSE 验签
 - [ ] p1-4 JOSE（`utils/jose`）：access/activation token JWS builder + JWKS publisher（jwx）
 - [ ] p1-5 通用中间件：request-id / slog / recover / ipRateLimit / idempotency / OAuth 风格错误信封
 
@@ -213,12 +213,14 @@ server/
 - 2026-06-23 p1-1 started：搭 `server/` go module（github.com/poolops/issuer）+ chi 四平面骨架 + config 加载 + graceful shutdown。
 - 2026-06-23 p1-1 completed：`config`/`httpapi`/`cmd/issuer` 三包就绪；健康检查、四平面 stub 路由、admin 401 网关、SIGTERM 优雅退出均验证。证据见 §6（TC-1）。
 - 2026-06-23 p1-2 completed：`internal/store` 底座——`Open`(sqlite/pgx 双驱动)、`Querier`/`WithTx`/`Rebind`(? → $n)、`embed` 迁移 runner（按 `<driver>/NNNN.sql` 顺序应用 + schema_migrations 记录 + 幂等）。SQLite 全测通过；PG 路径置于 `POOLOPS_TEST_PG_DSN` 后（D3）。证据见 §6（TC-2）。
+- 2026-06-23 p1-3 completed：`utils/crypto`——`Blake2b224`(pool_id/credential)、`DeriveSub`(base32(HMAC-SHA256))、`FieldCipher`(AES-256-GCM)、`COSESign1.Verify`(CIP-8 Sig_structure + ed25519，自实现 per D4)。COSE 验签覆盖 tagged/untagged、payload/key/sig 篡改、错误 alg 拒绝。真实钱包 golden vector 留作 integration（D5）。证据见 §6（TC-3）。
 
 ## 6. Validation Evidence (append-only)
 
 - 2026-06-23 TC-1 | stack: go | command: `go build ./... && go vet ./... && go test ./...` | result: pass | note: httpapi 测试通过；config/httpapi/cmd 编译 OK
 - 2026-06-23 TC-1 | stack: go | command: 真二进制 `POOLOPS_ADDR=:18080 issuer` + curl | result: pass | note: /healthz=200，/api/admin/audit=401（gated），SIGTERM 优雅退出 exit 0
 - 2026-06-23 TC-2 | stack: go | command: `go test ./internal/store/...`（SQLite） | result: pass | note: 迁移应用+幂等、widget DDL 往返、WithTx 回滚、Rebind ?→$n 均通过；PG 路径需 POOLOPS_TEST_PG_DSN（本机未跑，代码就绪）
+- 2026-06-23 TC-3 | stack: go | command: `go test ./internal/utils/crypto/...` | result: pass | note: blake2b224("") 已知向量匹配；COSE_Sign1 验签（含 tag18 剥离）通过，nonce/key/sig 篡改与错误 alg 均被拒；AES-GCM 往返+篡改检测；DeriveSub 确定性+salt 敏感。注：自构造 CIP-8 向量；真实钱包捕获向量属 integration（D5）
 
 ## 7. Change Requests (append-only)
 
