@@ -1,11 +1,11 @@
 # PoolOps Issuer Service — 后端实现
 
 Spec-ID: S0001
-Status: draft
+Status: active
 Created Time: 2026-06-22T22:48:27+08:00
-Start Time:
+Start Time: 2026-06-23T00:41:32+08:00
 Completion Time:
-Previous Spec-ID:
+Previous Spec-ID: (none)
 Closure Reason:
 
 ## 1. Requirement Details
@@ -209,6 +209,7 @@ server/
 ## 5. Execution Log (append-only)
 
 - 2026-06-22T22:48:27+08:00 S0001 草案创建（draft）；技术选型落定为 Go + chi；尚未开始执行。
+- 2026-06-23T00:41:32+08:00 S0001 提升为 active（draft/ → docs/specs/，加时间戳前缀），开始执行。环境：Go 1.25.5、module 下载可用、git 树干净（基线 commit 19da9ae）。
 
 ## 6. Validation Evidence (append-only)
 
@@ -218,3 +219,11 @@ server/
 
 - 2026-06-22T22:48:27+08:00 决策：签发统一走 OAuth（详细设计 §9.1 v2 为准），概要设计 §4.1 的独立 `/api/license/issue`、`/api/license/refresh` 不实现。见 Constraint C2。
 - 2026-06-22 决策（重大范围收敛）：本期**移除冷钥锚定的离线 license 证书链**，改为质押身份 **OAuth 登录**（access token 由 issuer 单签名密钥签发，JWKS/introspect 校验）。删除 OwnerAuthCert / CertRevocation 实体、`/api/certs/*`、`/crl`、JWKS 证书链；IssuerKey 瘦为签名密钥；LicenseRecord→IssuedToken；Admin 登录改用 owner key 对照链上 pool owner 列表。理由：第一方 app 登录场景无需第三方/离线独立验证，证书链过重；同时大幅削减 P0 密码学复杂度。证书链待生态/离线验证需求出现再加（详细设计 §7 演进 / overview §7）。见新增 Constraint C9。文档同步：overview（OAuth 登录版）、detailed-design v3。
+
+### 执行期技术决策（active 期间逐条追加）
+
+- 2026-06-23 D1 **module 路径** = `github.com/poolops/issuer`（self-hosted，未发布到公共 registry；路径仅作 import 前缀）。
+- 2026-06-23 D2 **store 层偏离 sqlc**：环境未装 `sqlc`/`goose`/`migrate`，为保持 build 自包含、零外部 codegen 依赖，store 层改为**手写 `database/sql` repository + `embed` 迁移 SQL + 极简 migration runner**。架构不变（repository 接口边界、PG/SQLite 双栈保留）。§2.1 技术选型表中 sqlc/goose 一项以此决策为准。
+- 2026-06-23 D3 **DB 驱动与测试边界**：SQLite 用 `modernc.org/sqlite`（纯 Go、无 CGO），单元测试跑 SQLite（临时文件/内存）；PG 用 `jackc/pgx/v5`（stdlib `database/sql` 模式），PG 专项测试需 `POOLOPS_TEST_PG_DSN` 环境变量，未提供则 skip（标 integration）。TC-2 在本机以 SQLite 为主证，PG 路径以代码 + 可选 DSN 跑通为准。
+- 2026-06-23 D4 **CIP-30 COSE 验签自实现**：用 `fxamacker/cbor/v2` 解 COSE_Sign1 + 按 CIP-8 组 `Sig_structure` + `crypto/ed25519` 验签（不引入 go-cose，因 CIP-8 的 Sig_structure 组装本就需手控，自实现更直接可审计）。§2.1 中 go-cose 一项以此决策为准。
+- 2026-06-23 D5 **真链 / 真 Telegram 不在本机集成测试**：`chain` 的 `node_lsq`/`db_sync`/`koios` 与 telegram transport 以接口 + mock 单测逻辑，真实集成打 `//go:build integration` tag，本 spec 验收以单测 + 可编译为准（与 §4 测试栈映射一致）。
