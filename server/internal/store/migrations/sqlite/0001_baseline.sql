@@ -1,0 +1,1 @@
+-- 0001_baseline: migration harness baseline (no schema; real tables start in p2).

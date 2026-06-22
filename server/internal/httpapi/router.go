@@ -23,7 +23,6 @@ type Deps struct {
 func NewRouter(_ Deps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 
 	// Liveness — unauthenticated, always cheap.
