@@ -1,0 +1,36 @@
+# ---- Go build artifacts ----
+# Compiled binaries (no extension on Unix) and platform-specific outputs
+/bin/
+/build/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Output of `go build` placed in the package dir
+# Adjust the binary name(s) below to match your build output
+/server
+/poolops-issuer
+
+# ---- Test / coverage ----
+*.test
+*.out
+coverage.txt
+coverage.html
+profile.out
+
+# ---- Go workspace / module cache ----
+# go.work is environment-specific; keep go.mod and go.sum tracked
+go.work
+go.work.sum
+vendor/
+
+# ---- Air / live-reload (if used) ----
+tmp/
+
+# ---- Env / secrets ----
+.env
+.env.*
+!.env.example
