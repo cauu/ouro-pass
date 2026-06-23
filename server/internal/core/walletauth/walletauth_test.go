@@ -98,6 +98,24 @@ func TestVerify_RejectsWrongKeyAndTamper(t *testing.T) {
 	}
 }
 
+func TestPurgeExpiredNonces(t *testing.T) {
+	ctx := context.Background()
+	st := testStore(t)
+	svc := New(st, time.Minute)
+	pub, _, _ := ed25519.GenerateKey(rand.Reader)
+	vkey := hex.EncodeToString(pub)
+
+	// Issue a nonce, then advance the service clock past its TTL.
+	if _, _, err := svc.Challenge(ctx, domain.NonceIssue, vkey); err != nil {
+		t.Fatal(err)
+	}
+	svc.now = func() time.Time { return time.Now().Add(2 * time.Minute) } // past the 1m TTL
+	n, err := svc.PurgeExpiredNonces(ctx)
+	if err != nil || n != 1 {
+		t.Fatalf("purge removed %d (err %v), want 1", n, err)
+	}
+}
+
 func TestVerify_WrongPurposeRejected(t *testing.T) {
 	ctx := context.Background()
 	svc := New(testStore(t), time.Minute)

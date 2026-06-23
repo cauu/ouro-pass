@@ -195,6 +195,7 @@ server/
 ### p10 — 正确性修复（走查发现）
 - [x] p10-1 修复 admin revoke-member：改为按 **`stake_credential_hash`(sch)** 寻址（非 sub），Blacklist 写 sch（与 `evaluate` 查询一致，修 D1）+ 级联撤销其 IssuedToken/RefreshGrant/SubscriptionSession（满足 §9.8，修 D2）；admin 名册改显 sch；文档 §9.8/overview 端点与名册口径对齐 sch（修 D3）；顺带补 D4（AuthNonce.purpose 文档对齐 §9.3）、D5（Blacklist 进 §1 实体总览）。
 - [x] p10-2 安全加固：F1 服务端错误脱敏（500 不再回显原始 `err.Error()`，改 `slog` 记录 + 通用消息 + req_id）；F2 请求枚举校验（rule status / client_type / party / channel_type 落库前对照白名单，非法→400）。
+- [x] p10-3 AuthNonce GC：补 `AuthNonceRepo.DeleteExpired`（删 `expires_at < now`）+ `walletauth.Service.PurgeExpiredNonces`；main 起独立 ticker（独立于 epoch，按短间隔清理，因 nonce TTL 仅分钟级）定期清理，防过期 nonce 无限堆积。nonce 后端仍为 SQL（接口化留作后续）。
 
 ## 4. Test and Acceptance Criteria
 
@@ -220,6 +221,8 @@ server/
 - 2026-06-23 p10-1 | stack: go | command: `go vet ./... && go test ./internal/store/... ./internal/httpapi/...` | result: pass | note: 新增 IssuedToken/RefreshGrant.RevokeByStakeCredential、Subscription.CancelByStakeCredential（仅影响目标 sch 的 active 行、不波及他人、幂等 0 行）；handler revoke-by-sch 写 Blacklist[sch] + 级联撤销 token/grant/session 并验证状态；现有 TestAuthorize_BlacklistedRejected 已覆盖"blacklist[sch]→evaluate 拒绝"闭环。文档 §1/§3.2/§4.5/§9.8 + overview 对齐 sch（docs/v1.0 本地未入库）
 - 2026-06-23 p10-2 completed：F1——新增 `httpapi.serverError(w,r,err)`(slog 记录原始 err+method/path/req_id，对客户端只回 `{"error":"server_error","error_description":"internal error"}`)，把 20 处 500 站点(admin 资源 16 + verifier/introspect 4)全部替换;不再回显任何 DB 错误。F2——`domain` 加 `RuleStatus.Valid`/`ClientType.Valid`/`ClientParty.Valid`/`ValidChannelType`，handler 在 rule upsert / client register / channel configure / push create 落库前校验，非法值→400。
 - 2026-06-23 p10-2 | stack: go | command: `go vet ./... && go test ./...`（14 包） | result: pass | note: `TestServerError_GenericNoLeak`——构造含 "sql/SELECT/AdminUser/database" 的原始 err，响应只剩 "internal error"、原文零泄露;`TestAdminF2_RejectsInvalidEnums`——坏 rule status/push channel_type/channel type/client_type/party 各→400，合法值仍 200。全套 14 包绿。
+- 2026-06-23 p10-3 completed：`AuthNonceRepo.DeleteExpired(before)`(删 expires_at<before，删过期/已消费均可，replay 保护不受影响) + `walletauth.Service.PurgeExpiredNonces`(注入 clock)；main 起 `runNonceGC` ticker(10min，独立 epoch、随 sigCtx 优雅退出)。AuthNonce 表不再无限堆积。
+- 2026-06-23 p10-3 | stack: go | command: `go vet ./... && go test ./internal/store/... ./internal/core/walletauth/...` | result: pass | note: DeleteExpired 删 2 过期/留 1 有效，过期 nonce 后续 Consume→ErrNotFound、有效仍可消费、二次删 0(幂等)；PurgeExpiredNonces 经 clock 前移 2min 删 1。全套 14 包绿。
 - Pass/fail：每个 item 仅在其映射的 TC 全部 `pass` 且证据 append 后方可标 `[x]`。
 
 测试栈映射（验收证据用）：`stack: go`，命令以 `go test ./...`、`go build ./...` 为主，集成测试（真链/真 Telegram）单独打 build tag 标注。

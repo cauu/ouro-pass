@@ -92,6 +92,12 @@ func (s *Service) Verify(ctx context.Context, purpose domain.NoncePurpose, stake
 	return keyHash, nil
 }
 
+// PurgeExpiredNonces deletes nonces past their validity window (GC). Returns
+// the number removed. Safe to call periodically from a maintenance ticker.
+func (s *Service) PurgeExpiredNonces(ctx context.Context) (int64, error) {
+	return s.nonces.DeleteExpired(ctx, s.now())
+}
+
 // decodeVkey parses a hex-encoded 32-byte Ed25519 stake verification key.
 func decodeVkey(hexStr string) (ed25519.PublicKey, error) {
 	raw, err := hex.DecodeString(hexStr)

@@ -24,6 +24,18 @@ func (r *AuthNonceRepo) Create(ctx context.Context, n domain.AuthNonce) error {
 	return err
 }
 
+// DeleteExpired removes nonces whose validity window has passed (consumed or
+// not — once expired they are useless). Returns the number of rows deleted.
+// Replay protection is unaffected: an expired row would be rejected anyway, and
+// only-still-valid rows are retained.
+func (r *AuthNonceRepo) DeleteExpired(ctx context.Context, before time.Time) (int64, error) {
+	res, err := r.s.DB.ExecContext(ctx, r.s.Rebind(`DELETE FROM AuthNonce WHERE expires_at < ?`), ts(before))
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // Consume atomically marks a nonce used, enforcing single-use, expiry, and
 // purpose. Returns ErrNotFound/ErrConsumed/ErrExpired/ErrPurpose as applicable.
 func (r *AuthNonceRepo) Consume(ctx context.Context, nonce string, purpose domain.NoncePurpose, now time.Time) (*domain.AuthNonce, error) {

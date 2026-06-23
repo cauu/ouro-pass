@@ -32,9 +32,10 @@ import (
 const epochPollInterval = 5 * time.Minute
 
 const (
-	nonceTTL   = 5 * time.Minute
-	accessTTL  = 24 * time.Hour
-	refreshTTL = 30 * 24 * time.Hour
+	nonceTTL        = 5 * time.Minute
+	nonceGCInterval = 10 * time.Minute // independent of epoch; nonces are minute-scale
+	accessTTL       = 24 * time.Hour
+	refreshTTL      = 30 * 24 * time.Hour
 )
 
 func main() {
@@ -119,6 +120,10 @@ func run() error {
 	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Periodic GC of expired wallet-signing nonces (short TTL → short interval,
+	// not tied to epoch).
+	go runNonceGC(sigCtx, walletSvc)
+
 	// Background workers run while issuance is enabled (they need eligibility).
 	if deps.OAuth != nil {
 		if cfg.TelegramToken != "" {
@@ -150,4 +155,22 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
+}
+
+// runNonceGC periodically purges expired wallet-signing nonces until ctx ends.
+func runNonceGC(ctx context.Context, wallet *walletauth.Service) {
+	ticker := time.NewTicker(nonceGCInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if n, err := wallet.PurgeExpiredNonces(ctx); err != nil {
+				slog.Warn("nonce GC failed", "err", err)
+			} else if n > 0 {
+				slog.Info("nonce GC", "removed", n)
+			}
+		}
+	}
 }

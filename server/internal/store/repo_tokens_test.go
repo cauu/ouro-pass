@@ -102,6 +102,39 @@ func TestAuthNonce_ConsumeOnceWithGuards(t *testing.T) {
 	}
 }
 
+func TestAuthNonce_DeleteExpired(t *testing.T) {
+	ctx := context.Background()
+	st := migratedStore(t)
+	now := time.Now()
+
+	mk := func(nonce string, exp time.Time) {
+		if err := st.AuthNonces().Create(ctx, domain.AuthNonce{
+			Nonce: nonce, Purpose: domain.NonceIssue, ExpiresAt: exp, CreatedAt: now.Add(-time.Hour),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("expired-1", now.Add(-time.Minute)) // past
+	mk("expired-2", now.Add(-time.Second)) // past
+	mk("valid-1", now.Add(time.Minute))    // future
+
+	n, err := st.AuthNonces().DeleteExpired(ctx, now)
+	if err != nil || n != 2 {
+		t.Fatalf("DeleteExpired removed %d (err %v), want 2", n, err)
+	}
+	// Expired gone, valid one still consumable.
+	if _, err := st.AuthNonces().Consume(ctx, "expired-1", domain.NonceIssue, now); err != domain.ErrNotFound {
+		t.Errorf("expired-1 consume = %v, want ErrNotFound", err)
+	}
+	if _, err := st.AuthNonces().Consume(ctx, "valid-1", domain.NonceIssue, now); err != nil {
+		t.Errorf("valid-1 should still be consumable: %v", err)
+	}
+	// Idempotent: nothing left to delete.
+	if n, _ := st.AuthNonces().DeleteExpired(ctx, now); n != 0 {
+		t.Errorf("second DeleteExpired removed %d, want 0", n)
+	}
+}
+
 func TestAuthCodeAndActivation_ConsumeOnce(t *testing.T) {
 	ctx := context.Background()
 	st := migratedStore(t)
