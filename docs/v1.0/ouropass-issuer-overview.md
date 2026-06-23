@@ -1,6 +1,6 @@
 # Ouro Pass Issuer Service 概要设计
 
-> 精简版 · 2026-06-22 · **OAuth 登录版**（本期移除冷钥 license 证书链）。完整细节见 `poolops-issuer-detailed-design.md`。
+> 精简版 · 2026-06-22 · **OAuth 登录版**（本期移除冷钥 license 证书链）。完整细节见 `ouropass-issuer-detailed-design.md`。
 
 ## 1. 是什么
 

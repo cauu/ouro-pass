@@ -12,7 +12,7 @@ Closure Reason:
 
 ### Background
 
-实现 `docs/v1.0/` 概要设计（`poolops-issuer-overview.md`）与详细设计（`poolops-issuer-detailed-design.md`，**v3 OAuth 登录版**）中声明的 **PoolOps Issuer Service 后端**：一个由 SPO 自托管的 staking-based 会员登录授权 + 多渠道订阅服务。本期采用**质押身份 OAuth 登录**：issuer 持一把可轮换签名密钥签发短效 access token（JWT），经 JWKS 公钥或 introspect 校验；**不做冷钥锚定的离线 license 证书链**（cold→owner→issuer），待第三方/离线生态验证需求出现再加。服务自身只持 issuer 签名密钥与 bot token。
+实现 `docs/v1.0/` 概要设计（`ouropass-issuer-overview.md`）与详细设计（`ouropass-issuer-detailed-design.md`，**v3 OAuth 登录版**）中声明的 **PoolOps Issuer Service 后端**：一个由 SPO 自托管的 staking-based 会员登录授权 + 多渠道订阅服务。本期采用**质押身份 OAuth 登录**：issuer 持一把可轮换签名密钥签发短效 access token（JWT），经 JWKS 公钥或 introspect 校验；**不做冷钥锚定的离线 license 证书链**（cold→owner→issuer），待第三方/离线生态验证需求出现再加。服务自身只持 issuer 签名密钥与 bot token。
 
 后端是"唯一真源"，对外暴露四个鉴权独立的逻辑平面（钱包原语 / 签发(OAuth) / Verifier / Admin）+ Telegram bot worker + 调度 worker。代码落在仓库 `server/` 目录（Go）。
 
@@ -139,8 +139,8 @@ server/
 
 ## References
 
-- docs/v1.0/poolops-issuer-overview.md — 概要设计（流程、平面、安全）
-- docs/v1.0/poolops-issuer-detailed-design.md — 详细设计（实体字段 §1–§8、接口 §9，**接口以此为准**）
+- docs/v1.0/ouropass-issuer-overview.md — 概要设计（流程、平面、安全）
+- docs/v1.0/ouropass-issuer-detailed-design.md — 详细设计（实体字段 §1–§8、接口 §9，**接口以此为准**）
 - CIP-8 / CIP-30 — 钱包 `signData`(COSE_Sign1) 规范
 - RFC 7636(PKCE) / RFC 9449(DPoP) / RFC 7800(cnf) / RFC 8252(native app auth) / RFC 7662(token introspection) / RFC 7009(token revocation)
 - docs/codebase-map.md — 待生成（首个实现 item 后补）
@@ -230,6 +230,7 @@ server/
 - 2026-06-23 p11-1 completed：module `github.com/poolops/issuer` → `ouro-pass/server`（D11）。`go mod edit -module` + `find … -exec perl -i 's{github.com/poolops/issuer}{ouro-pass/server}g'` 替换全部 import；`go mod tidy`。
 - 2026-06-23 p11-1 | stack: go | command: `go build ./... && go vet ./... && go test ./...`（14 包）+ 真二进制 smoke | result: pass | note: 旧 module 路径残留 0；go.mod=`module ouro-pass/server`；全套编译/vet/测试绿；二进制开库+健康检查 200+SIGTERM exit 0。注：`POOLOPS_*` env、`/.well-known/poolops/*`、`poolops:<pool_id>` iss 属**产品/协议命名**（PoolOps Issuer），非 module 名，未改动。
 - 2026-06-23 p11-2 completed：全量 case-specific 替换（`POOLOPS`→`OUROPASS`、`poolops`→`ouropass`、`PoolOps`→`Ouro Pass`、`pao-issuer-`→`op-issuer-`、`pao_gold_v1`→`op_gold_v1`）over `server/**/*.go` + `docs/v1.0/*.md`；server/.gitignore 二进制名同步；两份设计文档跨引用文件名回退到真实文件名（文件名保留为标识符）。
+- 2026-06-23 p11-2 后续（应用户要求重命名设计文档文件，超出原 D12"文件名保留"）：`git mv docs/v1.0/{poolops→ouropass}-issuer-{overview,detailed-design}.md`，同步两文档内部跨引用 + 本 spec §References/§1 Background 的文件名路径（仅改文件名路径，不改产品名 prose；属移动文件的路径维护）。**spec 文件名 slug `…-poolops-issuer-backend` 仍保留为 immutable-spec 身份**（commit message 全程引用，不改）。
 - 2026-06-23 p11-2 | stack: go | command: `go build ./... && go vet ./... && go test ./...`（14 包） | result: pass | note: 代码内 `poolops/pao` 残留 0（含 env/路径/iss/kid/注释/测试断言全部同步，测试因断言同步而仍绿）；docs 残留 0；JWKS 路径=`/.well-known/ouropass/jwks.json`、iss=`ouropass:<pool_id>`、env=`OUROPASS_*`。全套 14 包绿。
 - Pass/fail：每个 item 仅在其映射的 TC 全部 `pass` 且证据 append 后方可标 `[x]`。
 

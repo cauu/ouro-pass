@@ -1,6 +1,6 @@
 # Ouro Pass Issuer Service 详细设计
 
-> v3 · 2026-06-22 · **OAuth 登录版**（移除冷钥 license 证书链：删 OwnerAuthCert/CertRevocation，IssuerKey 瘦为签名密钥，LicenseRecord→IssuedToken）。数据实体（§1–8）+ 接口设计（§9）。流程见概要设计 `poolops-issuer-overview.md`。
+> v3 · 2026-06-22 · **OAuth 登录版**（移除冷钥 license 证书链：删 OwnerAuthCert/CertRevocation，IssuerKey 瘦为签名密钥，LicenseRecord→IssuedToken）。数据实体（§1–8）+ 接口设计（§9）。流程见概要设计 `ouropass-issuer-overview.md`。
 
 ## 0. 约定
 
