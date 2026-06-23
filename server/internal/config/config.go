@@ -38,6 +38,10 @@ type Config struct {
 	ChainAPIKey  string
 	NodeSocket   string
 	CardanoCLI   string
+
+	// Telegram
+	TelegramBot   string // bot username (for deep links)
+	TelegramToken string // bot API token (🔒, env only)
 }
 
 // Default values for non-secret knobs.
@@ -67,6 +71,8 @@ func Load() (*Config, error) {
 		ChainAPIKey:     env("POOLOPS_CHAIN_API_KEY", ""),
 		NodeSocket:      env("POOLOPS_NODE_SOCKET", ""),
 		CardanoCLI:      env("POOLOPS_CARDANO_CLI", ""),
+		TelegramBot:     env("POOLOPS_TELEGRAM_BOT", ""),
+		TelegramToken:   env("POOLOPS_TELEGRAM_TOKEN", ""),
 	}
 	c.Issuer = env("POOLOPS_ISSUER", "poolops:"+c.PoolID)
 

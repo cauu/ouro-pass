@@ -59,7 +59,8 @@ func run() error {
 	slog.Info("database ready", "driver", cfg.DBDriver)
 
 	deps := httpapi.Deps{
-		Wallet: walletauth.New(st, nonceTTL),
+		Wallet:      walletauth.New(st, nonceTTL),
+		TelegramBot: cfg.TelegramBot,
 	}
 	// The signing-key service (and any 🔒-field handling) needs the field key.
 	// Without it the service still boots; key/JWKS routes degrade to 501.

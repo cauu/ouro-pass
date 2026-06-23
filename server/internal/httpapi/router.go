@@ -20,9 +20,10 @@ import (
 // Deps carries the collaborators the handlers need; nil services degrade their
 // routes to 501 so the server still boots during incremental wiring.
 type Deps struct {
-	Wallet *walletauth.Service
-	Keys   *keys.Service
-	OAuth  *oauth.Server
+	Wallet      *walletauth.Service
+	Keys        *keys.Service
+	OAuth       *oauth.Server
+	TelegramBot string // bot username for activation deep links
 }
 
 type apiHandlers struct{ d Deps }
@@ -50,7 +51,7 @@ func NewRouter(d Deps) http.Handler {
 	r.With(idem).Post("/api/oauth/token", h.oauthToken)
 
 	// ---- Channel activation plane ----
-	r.With(idem).Post("/api/activation/create", notImplemented)
+	r.With(idem).Post("/api/activation/create", h.activationCreate)
 
 	// ---- Verifier plane (public, read-only, rate-limited) ----
 	r.Group(func(r chi.Router) {

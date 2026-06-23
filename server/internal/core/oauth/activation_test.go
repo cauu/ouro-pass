@@ -1,0 +1,60 @@
+package oauth
+
+import (
+	"context"
+	"encoding/hex"
+	"strings"
+	"testing"
+
+	"github.com/poolops/issuer/internal/domain"
+	"github.com/poolops/issuer/internal/utils/chain"
+	"github.com/poolops/issuer/internal/utils/crypto"
+)
+
+func TestCreateActivation_EligibleIssuesCodeAndLink(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	sch := hex.EncodeToString(crypto.Blake2b224(h.pub))
+	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakeLovelace: "5000000"})
+
+	nonce, _, _ := h.srv.cfg.Wallet.Challenge(ctx, domain.NonceActivation, h.vkey)
+	res, err := h.srv.CreateActivation(ctx, "telegram", nonce, h.vkey, h.sign(t, nonce), "PaoBot")
+	if err != nil {
+		t.Fatalf("create activation: %v", err)
+	}
+	if res.ActivationCode == "" || len(res.ActivationCode) > 64 {
+		t.Fatalf("activation code unsuitable for deep link: %q (len %d)", res.ActivationCode, len(res.ActivationCode))
+	}
+	if !strings.HasPrefix(res.DeepLink, "https://t.me/PaoBot?start=") {
+		t.Fatalf("deep link = %s", res.DeepLink)
+	}
+
+	// The stored ActivationCode (hashed) is consumable once for telegram.
+	got, err := h.st.ActivationCodes().Consume(ctx, crypto.HashToken(res.ActivationCode), "telegram", h.srv.now())
+	if err != nil || got.StakeCredentialHash != sch {
+		t.Fatalf("stored activation: %v %+v", err, got)
+	}
+}
+
+func TestCreateActivation_Ineligible(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	sch := hex.EncodeToString(crypto.Blake2b224(h.pub))
+	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: "other", ActiveStakeLovelace: "5000000"})
+	nonce, _, _ := h.srv.cfg.Wallet.Challenge(ctx, domain.NonceActivation, h.vkey)
+	if _, err := h.srv.CreateActivation(ctx, "telegram", nonce, h.vkey, h.sign(t, nonce), "PaoBot"); err != ErrNotEligible {
+		t.Fatalf("ineligible: %v, want ErrNotEligible", err)
+	}
+}
+
+func TestCreateActivation_BadSignature(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	sch := hex.EncodeToString(crypto.Blake2b224(h.pub))
+	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakeLovelace: "5000000"})
+	// Use an issue-purpose nonce → activation verify should fail (purpose mismatch).
+	nonce, _, _ := h.srv.cfg.Wallet.Challenge(ctx, domain.NonceIssue, h.vkey)
+	if _, err := h.srv.CreateActivation(ctx, "telegram", nonce, h.vkey, h.sign(t, nonce), "PaoBot"); err != ErrAccessDenied {
+		t.Fatalf("wrong purpose nonce: %v, want ErrAccessDenied", err)
+	}
+}
