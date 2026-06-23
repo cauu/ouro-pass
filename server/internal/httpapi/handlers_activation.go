@@ -5,8 +5,8 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/poolops/issuer/internal/core/oauth"
-	"github.com/poolops/issuer/internal/httpapi/respond"
+	"ouro-pass/server/internal/core/oauth"
+	"ouro-pass/server/internal/httpapi/respond"
 )
 
 // activationCreate issues a one-time channel activation code + deep link

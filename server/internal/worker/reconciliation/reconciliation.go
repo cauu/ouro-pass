@@ -10,10 +10,10 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/poolops/issuer/internal/core/rules"
-	"github.com/poolops/issuer/internal/domain"
-	"github.com/poolops/issuer/internal/store"
-	"github.com/poolops/issuer/internal/utils/chain"
+	"ouro-pass/server/internal/core/rules"
+	"ouro-pass/server/internal/domain"
+	"ouro-pass/server/internal/store"
+	"ouro-pass/server/internal/utils/chain"
 )
 
 // Eligibilizer re-evaluates a credential's current eligibility.

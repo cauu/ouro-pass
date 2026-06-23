@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/poolops/issuer/internal/domain"
-	"github.com/poolops/issuer/internal/utils/chain"
-	"github.com/poolops/issuer/internal/utils/crypto"
+	"ouro-pass/server/internal/domain"
+	"ouro-pass/server/internal/utils/chain"
+	"ouro-pass/server/internal/utils/crypto"
 )
 
 func TestCreateActivation_EligibleIssuesCodeAndLink(t *testing.T) {

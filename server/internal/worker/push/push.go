@@ -10,9 +10,9 @@ import (
 	"slices"
 	"time"
 
-	"github.com/poolops/issuer/internal/domain"
-	"github.com/poolops/issuer/internal/store"
-	"github.com/poolops/issuer/internal/utils/crypto"
+	"ouro-pass/server/internal/domain"
+	"ouro-pass/server/internal/store"
+	"ouro-pass/server/internal/utils/crypto"
 	"golang.org/x/time/rate"
 )
 

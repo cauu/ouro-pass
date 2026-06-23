@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/poolops/issuer/internal/domain"
+	"ouro-pass/server/internal/domain"
 )
 
 // IssuerKeyRepo persists rotatable signing keys (§2.2).

@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/poolops/issuer/internal/core/walletauth"
-	"github.com/poolops/issuer/internal/store"
+	"ouro-pass/server/internal/core/walletauth"
+	"ouro-pass/server/internal/store"
 )
 
 func walletDeps(t *testing.T) Deps {

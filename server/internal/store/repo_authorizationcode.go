@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/poolops/issuer/internal/domain"
+	"ouro-pass/server/internal/domain"
 )
 
 // AuthCodeRepo persists one-time OAuth authorization codes (§4.3).

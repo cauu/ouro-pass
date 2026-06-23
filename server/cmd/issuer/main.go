@@ -15,17 +15,17 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/poolops/issuer/internal/config"
-	"github.com/poolops/issuer/internal/core/admin"
-	"github.com/poolops/issuer/internal/core/keys"
-	"github.com/poolops/issuer/internal/core/oauth"
-	"github.com/poolops/issuer/internal/core/walletauth"
-	"github.com/poolops/issuer/internal/httpapi"
-	"github.com/poolops/issuer/internal/store"
-	"github.com/poolops/issuer/internal/utils/chain"
-	"github.com/poolops/issuer/internal/utils/crypto"
-	"github.com/poolops/issuer/internal/worker/reconciliation"
-	"github.com/poolops/issuer/internal/worker/telegram"
+	"ouro-pass/server/internal/config"
+	"ouro-pass/server/internal/core/admin"
+	"ouro-pass/server/internal/core/keys"
+	"ouro-pass/server/internal/core/oauth"
+	"ouro-pass/server/internal/core/walletauth"
+	"ouro-pass/server/internal/httpapi"
+	"ouro-pass/server/internal/store"
+	"ouro-pass/server/internal/utils/chain"
+	"ouro-pass/server/internal/utils/crypto"
+	"ouro-pass/server/internal/worker/reconciliation"
+	"ouro-pass/server/internal/worker/telegram"
 )
 
 // epochPollInterval is how often the reconciler checks for an epoch change.

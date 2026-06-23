@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/poolops/issuer/internal/domain"
-	"github.com/poolops/issuer/internal/httpapi/respond"
-	"github.com/poolops/issuer/internal/utils/crypto"
+	"ouro-pass/server/internal/domain"
+	"ouro-pass/server/internal/httpapi/respond"
+	"ouro-pass/server/internal/utils/crypto"
 )
 
 // mountAdminResources wires the admin resource endpoints with the §9.8 role

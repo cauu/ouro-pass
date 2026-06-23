@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/poolops/issuer/internal/core/rules"
-	"github.com/poolops/issuer/internal/domain"
-	"github.com/poolops/issuer/internal/utils/crypto"
+	"ouro-pass/server/internal/core/rules"
+	"ouro-pass/server/internal/domain"
+	"ouro-pass/server/internal/utils/crypto"
 )
 
 // activationTTL bounds how long a channel activation code is valid.

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/poolops/issuer/internal/httpapi/respond"
+	"ouro-pass/server/internal/httpapi/respond"
 )
 
 // introspect reports a token's status (RFC 7662, detailed §9.6).

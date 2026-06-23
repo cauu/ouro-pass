@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/poolops/issuer/internal/domain"
-	"github.com/poolops/issuer/internal/utils/chain"
-	"github.com/poolops/issuer/internal/utils/crypto"
-	"github.com/poolops/issuer/internal/utils/jose"
+	"ouro-pass/server/internal/domain"
+	"ouro-pass/server/internal/utils/chain"
+	"ouro-pass/server/internal/utils/crypto"
+	"ouro-pass/server/internal/utils/jose"
 )
 
 // authCodeFor runs authorize and returns the plaintext code for the given sch.

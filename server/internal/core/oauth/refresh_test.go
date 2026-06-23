@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/poolops/issuer/internal/domain"
-	"github.com/poolops/issuer/internal/utils/chain"
-	"github.com/poolops/issuer/internal/utils/crypto"
+	"ouro-pass/server/internal/domain"
+	"ouro-pass/server/internal/utils/chain"
+	"ouro-pass/server/internal/utils/crypto"
 )
 
 // confidentialHarness returns a harness whose client c1 has secret "s" and an

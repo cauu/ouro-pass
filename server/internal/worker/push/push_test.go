@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/poolops/issuer/internal/domain"
-	"github.com/poolops/issuer/internal/store"
+	"ouro-pass/server/internal/domain"
+	"ouro-pass/server/internal/store"
 )
 
 // recordingSender records sends and can fail the first N attempts per chat.

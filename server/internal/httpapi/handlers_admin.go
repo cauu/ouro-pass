@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/poolops/issuer/internal/core/admin"
-	"github.com/poolops/issuer/internal/domain"
-	"github.com/poolops/issuer/internal/httpapi/respond"
+	"ouro-pass/server/internal/core/admin"
+	"ouro-pass/server/internal/domain"
+	"ouro-pass/server/internal/httpapi/respond"
 )
 
 const sessionCookie = "poolops_admin_session"

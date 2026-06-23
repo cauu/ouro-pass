@@ -1,4 +1,4 @@
-module github.com/poolops/issuer
+module ouro-pass/server
 
 go 1.25.5
 

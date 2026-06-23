@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/poolops/issuer/internal/domain"
+	"ouro-pass/server/internal/domain"
 )
 
 // TestRevokeByStakeCredential_Cascade verifies bulk revocation by sch affects

@@ -3,7 +3,7 @@ package store
 import (
 	"context"
 
-	"github.com/poolops/issuer/internal/domain"
+	"ouro-pass/server/internal/domain"
 )
 
 // MembershipRuleRepo persists eligibility rules (§3.1).

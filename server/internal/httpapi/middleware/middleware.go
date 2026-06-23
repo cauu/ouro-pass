@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/poolops/issuer/internal/httpapi/respond"
+	"ouro-pass/server/internal/httpapi/respond"
 	"golang.org/x/time/rate"
 )
 

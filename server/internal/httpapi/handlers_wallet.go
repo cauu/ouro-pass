@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/poolops/issuer/internal/domain"
-	"github.com/poolops/issuer/internal/httpapi/respond"
+	"ouro-pass/server/internal/domain"
+	"ouro-pass/server/internal/httpapi/respond"
 )
 
 // authChallenge issues a wallet-signing nonce (detailed §9.3).

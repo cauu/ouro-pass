@@ -11,14 +11,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
-	"github.com/poolops/issuer/internal/core/admin"
-	"github.com/poolops/issuer/internal/core/keys"
-	"github.com/poolops/issuer/internal/core/oauth"
-	"github.com/poolops/issuer/internal/core/walletauth"
-	"github.com/poolops/issuer/internal/domain"
-	"github.com/poolops/issuer/internal/store"
-	appmw "github.com/poolops/issuer/internal/httpapi/middleware"
-	"github.com/poolops/issuer/internal/httpapi/respond"
+	"ouro-pass/server/internal/core/admin"
+	"ouro-pass/server/internal/core/keys"
+	"ouro-pass/server/internal/core/oauth"
+	"ouro-pass/server/internal/core/walletauth"
+	"ouro-pass/server/internal/domain"
+	"ouro-pass/server/internal/store"
+	appmw "ouro-pass/server/internal/httpapi/middleware"
+	"ouro-pass/server/internal/httpapi/respond"
 )
 
 // Deps carries the collaborators the handlers need; nil services degrade their

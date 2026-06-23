@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/poolops/issuer/internal/core/keys"
-	"github.com/poolops/issuer/internal/store"
-	"github.com/poolops/issuer/internal/utils/crypto"
+	"ouro-pass/server/internal/core/keys"
+	"ouro-pass/server/internal/store"
+	"ouro-pass/server/internal/utils/crypto"
 )
 
 func keysDeps(t *testing.T) (Deps, *keys.Service) {

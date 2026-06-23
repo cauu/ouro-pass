@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"errors"
 
-	"github.com/poolops/issuer/internal/domain"
+	"ouro-pass/server/internal/domain"
 )
 
 // ChannelConfigRepo persists channel instances (§6.1).

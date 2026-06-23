@@ -192,6 +192,9 @@ server/
 - [x] p9-1 `domain/` 按实体拆分：一实体一文件（共享哨兵错误归 `errors.go`，跨实体枚举归其主属实体文件），文件树即实体清单。纯移动、零逻辑改动。
 - [x] p9-2 `store/` 按实体拆分：每个 `XxxRepo`（含其专属 cols 常量/scan 函数）一文件；共享 `rowScanner` 移入 `scan.go`。纯移动、零逻辑改动。
 
+### p11 — 命名对齐
+- [x] p11-1 module path 改名：`github.com/poolops/issuer` → `ouro-pass/server`（与真实后端名一致）；`go mod edit` + 全量 import 前缀替换，纯机械、零逻辑改动。
+
 ### p10 — 正确性修复（走查发现）
 - [x] p10-1 修复 admin revoke-member：改为按 **`stake_credential_hash`(sch)** 寻址（非 sub），Blacklist 写 sch（与 `evaluate` 查询一致，修 D1）+ 级联撤销其 IssuedToken/RefreshGrant/SubscriptionSession（满足 §9.8，修 D2）；admin 名册改显 sch；文档 §9.8/overview 端点与名册口径对齐 sch（修 D3）；顺带补 D4（AuthNonce.purpose 文档对齐 §9.3）、D5（Blacklist 进 §1 实体总览）。
 - [x] p10-2 安全加固：F1 服务端错误脱敏（500 不再回显原始 `err.Error()`，改 `slog` 记录 + 通用消息 + req_id）；F2 请求枚举校验（rule status / client_type / party / channel_type 落库前对照白名单，非法→400）。
@@ -223,6 +226,8 @@ server/
 - 2026-06-23 p10-2 | stack: go | command: `go vet ./... && go test ./...`（14 包） | result: pass | note: `TestServerError_GenericNoLeak`——构造含 "sql/SELECT/AdminUser/database" 的原始 err，响应只剩 "internal error"、原文零泄露;`TestAdminF2_RejectsInvalidEnums`——坏 rule status/push channel_type/channel type/client_type/party 各→400，合法值仍 200。全套 14 包绿。
 - 2026-06-23 p10-3 completed：`AuthNonceRepo.DeleteExpired(before)`(删 expires_at<before，删过期/已消费均可，replay 保护不受影响) + `walletauth.Service.PurgeExpiredNonces`(注入 clock)；main 起 `runNonceGC` ticker(10min，独立 epoch、随 sigCtx 优雅退出)。AuthNonce 表不再无限堆积。
 - 2026-06-23 p10-3 | stack: go | command: `go vet ./... && go test ./internal/store/... ./internal/core/walletauth/...` | result: pass | note: DeleteExpired 删 2 过期/留 1 有效，过期 nonce 后续 Consume→ErrNotFound、有效仍可消费、二次删 0(幂等)；PurgeExpiredNonces 经 clock 前移 2min 删 1。全套 14 包绿。
+- 2026-06-23 p11-1 completed：module `github.com/poolops/issuer` → `ouro-pass/server`（D11）。`go mod edit -module` + `find … -exec perl -i 's{github.com/poolops/issuer}{ouro-pass/server}g'` 替换全部 import；`go mod tidy`。
+- 2026-06-23 p11-1 | stack: go | command: `go build ./... && go vet ./... && go test ./...`（14 包）+ 真二进制 smoke | result: pass | note: 旧 module 路径残留 0；go.mod=`module ouro-pass/server`；全套编译/vet/测试绿；二进制开库+健康检查 200+SIGTERM exit 0。注：`POOLOPS_*` env、`/.well-known/poolops/*`、`poolops:<pool_id>` iss 属**产品/协议命名**（PoolOps Issuer），非 module 名，未改动。
 - Pass/fail：每个 item 仅在其映射的 TC 全部 `pass` 且证据 append 后方可标 `[x]`。
 
 测试栈映射（验收证据用）：`stack: go`，命令以 `go test ./...`、`go build ./...` 为主，集成测试（真链/真 Telegram）单独打 build tag 标注。
@@ -294,7 +299,8 @@ server/
 
 ### 执行期技术决策（active 期间逐条追加）
 
-- 2026-06-23 D1 **module 路径** = `github.com/poolops/issuer`（self-hosted，未发布到公共 registry；路径仅作 import 前缀）。
+- 2026-06-23 D1 **module 路径** = `github.com/poolops/issuer`（self-hosted，未发布到公共 registry；路径仅作 import 前缀）。【已被 D11 取代】
+- 2026-06-23 D11 **module 路径改名**（取代 D1）：→ `ouro-pass/server`，与真实后端名一致。不带 host 前缀——self-hosted、永不 `go get`、私有模块完全合法（与 D1"不发布到公共 registry"一致）。见 p11-1。
 - 2026-06-23 D2 **store 层偏离 sqlc**：环境未装 `sqlc`/`goose`/`migrate`，为保持 build 自包含、零外部 codegen 依赖，store 层改为**手写 `database/sql` repository + `embed` 迁移 SQL + 极简 migration runner**。架构不变（repository 接口边界、PG/SQLite 双栈保留）。§2.1 技术选型表中 sqlc/goose 一项以此决策为准。
 - 2026-06-23 D3 **DB 驱动与测试边界**：SQLite 用 `modernc.org/sqlite`（纯 Go、无 CGO），单元测试跑 SQLite（临时文件/内存）；PG 用 `jackc/pgx/v5`（stdlib `database/sql` 模式），PG 专项测试需 `POOLOPS_TEST_PG_DSN` 环境变量，未提供则 skip（标 integration）。TC-2 在本机以 SQLite 为主证，PG 路径以代码 + 可选 DSN 跑通为准。
 - 2026-06-23 D4 **CIP-30 COSE 验签自实现**：用 `fxamacker/cbor/v2` 解 COSE_Sign1 + 按 CIP-8 组 `Sig_structure` + `crypto/ed25519` 验签（不引入 go-cose，因 CIP-8 的 Sig_structure 组装本就需手控，自实现更直接可审计）。§2.1 中 go-cose 一项以此决策为准。

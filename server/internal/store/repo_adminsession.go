@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/poolops/issuer/internal/domain"
+	"ouro-pass/server/internal/domain"
 )
 
 // AdminSessionRepo persists admin sessions (token stored hashed) (§8.2).

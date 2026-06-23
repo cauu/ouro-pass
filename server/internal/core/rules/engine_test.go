@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/poolops/issuer/internal/domain"
+	"ouro-pass/server/internal/domain"
 )
 
 func rule(id, tier string, prio int, cfg string, ents ...string) domain.MembershipRule {

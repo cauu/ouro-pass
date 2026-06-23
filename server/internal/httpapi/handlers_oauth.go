@@ -8,8 +8,8 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/poolops/issuer/internal/core/oauth"
-	"github.com/poolops/issuer/internal/httpapi/respond"
+	"ouro-pass/server/internal/core/oauth"
+	"ouro-pass/server/internal/httpapi/respond"
 )
 
 // connect serves the Authorization Page contract (detailed §9.4). The rich page

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"time"
 
-	"github.com/poolops/issuer/internal/domain"
+	"ouro-pass/server/internal/domain"
 )
 
 // IssuedTokenRepo persists the issued-token ledger (§4.1).

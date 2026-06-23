@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/poolops/issuer/internal/store"
-	"github.com/poolops/issuer/internal/utils/crypto"
+	"ouro-pass/server/internal/store"
+	"ouro-pass/server/internal/utils/crypto"
 )
 
 func testService(t *testing.T) *Service {

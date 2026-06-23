@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/poolops/issuer/internal/domain"
-	"github.com/poolops/issuer/internal/utils/crypto"
+	"ouro-pass/server/internal/domain"
+	"ouro-pass/server/internal/utils/crypto"
 )
 
 // issuedTokenPair runs a full confidential exchange and returns access+refresh.

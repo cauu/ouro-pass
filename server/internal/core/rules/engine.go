@@ -11,8 +11,8 @@ import (
 	"math/big"
 	"sort"
 
-	"github.com/poolops/issuer/internal/domain"
-	"github.com/poolops/issuer/internal/utils/chain"
+	"ouro-pass/server/internal/domain"
+	"ouro-pass/server/internal/utils/chain"
 )
 
 // Input is the eligibility evaluation input for one identity.

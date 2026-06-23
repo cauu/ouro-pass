@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/poolops/issuer/internal/domain"
+	"ouro-pass/server/internal/domain"
 )
 
 // AuditLogRepo persists the audit trail (§8.3).

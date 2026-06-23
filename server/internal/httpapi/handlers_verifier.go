@@ -3,7 +3,7 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/poolops/issuer/internal/utils/jose"
+	"ouro-pass/server/internal/utils/jose"
 )
 
 // jwks publishes the issuer's signing public keys as a JWKS — public keys and
