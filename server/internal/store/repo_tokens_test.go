@@ -65,6 +65,39 @@ func TestRefreshGrant_RotationChainRevoke(t *testing.T) {
 	}
 }
 
+// TestRotateIfActive_CAS verifies the compare-and-swap rotation (p12-2): only
+// the first transition of an active grant wins; a second attempt (or a
+// non-active grant) returns false (TC-14).
+func TestRotateIfActive_CAS(t *testing.T) {
+	ctx := context.Background()
+	st := migratedStore(t)
+	now := time.Now()
+
+	if err := st.RefreshGrants().Create(ctx, nil, domain.RefreshGrant{
+		RefreshGrantID: "rg1", StakeCredentialHash: "h1", Audience: "app",
+		ClientType: domain.ClientPublic, Status: domain.GrantActive, CreatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	won, err := st.RefreshGrants().RotateIfActive(ctx, nil, "rg1")
+	if err != nil || !won {
+		t.Fatalf("first rotate won=%v err=%v, want true", won, err)
+	}
+	// Second rotation of the now-rotated grant must lose.
+	won, err = st.RefreshGrants().RotateIfActive(ctx, nil, "rg1")
+	if err != nil || won {
+		t.Fatalf("second rotate won=%v err=%v, want false", won, err)
+	}
+	// Unknown grant → false, no error.
+	if won, err := st.RefreshGrants().RotateIfActive(ctx, nil, "nope"); err != nil || won {
+		t.Fatalf("unknown rotate won=%v err=%v, want false,nil", won, err)
+	}
+	g, _ := st.RefreshGrants().Get(ctx, "rg1")
+	if g.Status != domain.GrantRotated {
+		t.Fatalf("status = %s, want rotated", g.Status)
+	}
+}
+
 func TestAuthNonce_ConsumeOnceWithGuards(t *testing.T) {
 	ctx := context.Background()
 	st := migratedStore(t)

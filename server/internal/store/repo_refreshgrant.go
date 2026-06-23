@@ -66,6 +66,24 @@ func (r *RefreshGrantRepo) SetStatus(ctx context.Context, q Querier, id string, 
 	return err
 }
 
+// RotateIfActive atomically transitions an active grant to rotated, returning
+// true only for the caller that won the transition. Under concurrency only one
+// of several refreshes of the same grant can rotate it (compare-and-swap); the
+// losers see false and must be rejected (detailed §9.4, p12-2).
+func (r *RefreshGrantRepo) RotateIfActive(ctx context.Context, q Querier, id string) (bool, error) {
+	if q == nil {
+		q = r.s.DB
+	}
+	res, err := q.ExecContext(ctx, r.s.Rebind(
+		`UPDATE RefreshGrant SET status = ? WHERE refresh_grant_id = ? AND status = ?`),
+		string(domain.GrantRotated), id, string(domain.GrantActive))
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
+}
+
 // RevokeByStakeCredential revokes every non-revoked grant for a credential
 // (admin member revoke, §9.8). Returns the number of rows affected.
 func (r *RefreshGrantRepo) RevokeByStakeCredential(ctx context.Context, sch string) (int64, error) {

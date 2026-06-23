@@ -3,12 +3,14 @@ package oauth
 import (
 	"context"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"time"
 
 	"ouro-pass/server/internal/domain"
+	"ouro-pass/server/internal/store"
 	"ouro-pass/server/internal/utils/crypto"
 	"ouro-pass/server/internal/utils/jose"
 )
@@ -103,18 +105,39 @@ func (s *Server) tokenRefresh(ctx context.Context, req TokenRequest) (*TokenResp
 		return nil, ErrNotEligible
 	}
 
-	if err := s.grants.SetStatus(ctx, nil, grant.RefreshGrantID, domain.GrantRotated); err != nil {
-		return nil, err
-	}
 	devHex := ""
 	if len(grant.BoundDevicePubkey) > 0 {
 		devHex = hex.EncodeToString(grant.BoundDevicePubkey)
 	}
-	return s.mint(ctx, mintParams{
-		sch: grant.StakeCredentialHash, aud: grant.Audience, clientType: grant.ClientType,
-		clientID: grant.ClientID, tier: decision.Tier, entitlements: decision.Entitlements,
-		devicePubkey: devHex, rotatedFrom: &grant.RefreshGrantID,
+	// Rotate-then-mint must be one atomic step: a compare-and-swap to rotated
+	// (only one concurrent refresh of the same grant wins) and the new grant +
+	// access ledger row are written in the same transaction. A mid-sequence
+	// failure rolls back, so the old grant is never left rotated without a
+	// successor (p12-2).
+	var resp *TokenResponse
+	err = s.cfg.Store.WithTx(ctx, func(tx *sql.Tx) error {
+		won, err := s.grants.RotateIfActive(ctx, tx, grant.RefreshGrantID)
+		if err != nil {
+			return err
+		}
+		if !won {
+			return ErrInvalidGrant // lost a concurrent rotation race / no longer active
+		}
+		r, err := s.mint(ctx, tx, mintParams{
+			sch: grant.StakeCredentialHash, aud: grant.Audience, clientType: grant.ClientType,
+			clientID: grant.ClientID, tier: decision.Tier, entitlements: decision.Entitlements,
+			devicePubkey: devHex, rotatedFrom: &grant.RefreshGrantID,
+		})
+		if err != nil {
+			return err
+		}
+		resp = r
+		return nil
 	})
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 // tokenAuthCode redeems an authorization code for tokens.
@@ -143,7 +166,7 @@ func (s *Server) tokenAuthCode(ctx context.Context, req TokenRequest) (*TokenRes
 		return nil, ErrNotEligible
 	}
 
-	return s.mint(ctx, mintParams{
+	return s.mint(ctx, nil, mintParams{
 		sch: code.StakeCredentialHash, aud: code.Aud, clientType: client.ClientType,
 		clientID: &client.ClientID, tier: decision.Tier, entitlements: decision.Entitlements,
 		devicePubkey: req.DevicePubkey,
@@ -187,7 +210,8 @@ type mintParams struct {
 
 // mint signs an access token, records the IssuedToken ledger row, and creates a
 // fresh refresh grant. Shared by the authorization_code and refresh_token paths.
-func (s *Server) mint(ctx context.Context, p mintParams) (*TokenResponse, error) {
+// q is the transaction to write within (nil → autocommit on the shared pool).
+func (s *Server) mint(ctx context.Context, q store.Querier, p mintParams) (*TokenResponse, error) {
 	signer, err := s.cfg.Keys.ActiveSigner(ctx)
 	if err != nil {
 		return nil, err
@@ -221,7 +245,7 @@ func (s *Server) mint(ctx context.Context, p mintParams) (*TokenResponse, error)
 		return nil, err
 	}
 
-	if err := s.issuedTokens.Create(ctx, nil, domain.IssuedToken{
+	if err := s.issuedTokens.Create(ctx, q, domain.IssuedToken{
 		JTI: jti, StakeCredentialHash: p.sch, Kind: domain.TokenAccess, Audience: p.aud,
 		KID: signer.KID, ClientID: p.clientID, Status: domain.TokenActive, IssuedAt: now, ExpiresAt: exp,
 	}); err != nil {
@@ -230,7 +254,7 @@ func (s *Server) mint(ctx context.Context, p mintParams) (*TokenResponse, error)
 
 	refreshPlain := crypto.RandomToken(32)
 	refreshExp := now.Add(s.cfg.RefreshTTL)
-	if err := s.grants.Create(ctx, nil, domain.RefreshGrant{
+	if err := s.grants.Create(ctx, q, domain.RefreshGrant{
 		RefreshGrantID: crypto.HashToken(refreshPlain), StakeCredentialHash: p.sch, Audience: p.aud,
 		ClientType: p.clientType, BoundDevicePubkey: boundDevice, ClientID: p.clientID,
 		Status: domain.GrantActive, RotatedFrom: p.rotatedFrom, CreatedAt: now, ExpiresAt: &refreshExp,

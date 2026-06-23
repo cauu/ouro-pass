@@ -203,8 +203,8 @@ server/
 
 ### p12 — 多 agent 评审整改（cursor + claude subagent review remediation；见 `code_review/S0001-poolops-issuer-backend/summary.md`）
 - [x] p12-1 **P0** 一次性 Consume 加 compare-and-swap：nonce/授权码/激活码的 `UPDATE` 加 `AND consumed_at IS NULL`（激活码 `AND status='active'`），`RowsAffected()==0`→`ErrConsumed`。消除 PG READ COMMITTED 下的双花窗口（TC-13）。
-- [ ] p12-2 **P1** refresh 轮换原子化 + CAS：新增 `RefreshGrantRepo.RotateIfActive`（`UPDATE…SET status='rotated' WHERE id=? AND status='active'`，校验 `RowsAffected==1`），rotate→mint 串入同一 `WithTx`；并发同一 refresh 仅一路成功，盗用链不被绕过（TC-14）。
-- [ ] p12-3 **P1** reconciler 故障隔离：单 session 的 Eligibility/store 错误改 `log+continue` 并计入 `Result.Failed`，`Run` 无论个别失败都推进 `lastEpoch`；一个坏 credential 不再卡住全池降级/过期（TC-15）。
+- [x] p12-2 **P1** refresh 轮换原子化 + CAS：新增 `RefreshGrantRepo.RotateIfActive`（`UPDATE…SET status='rotated' WHERE id=? AND status='active'`，校验 `RowsAffected==1`），rotate→mint 串入同一 `WithTx`；并发同一 refresh 仅一路成功，盗用链不被绕过（TC-14）。
+- [x] p12-3 **P1** reconciler 故障隔离：单 session 的 Eligibility/store 错误改 `log+continue` 并计入 `Result.Failed`，`Run` 无论个别失败都推进 `lastEpoch`；一个坏 credential 不再卡住全池降级/过期（TC-15）。
 - [ ] p12-4 **P1** worker 生命周期：main 接线 push worker（轮询 `status=scheduled` 的 PushJob→`Scheduler.Run`）；所有 worker 用 `sync.WaitGroup` 在 `srv.Shutdown` 后 join（受 ShutdownTimeout 约束）；push.go：DeliveryLog 写错误不再吞、限流按收件人计、收件人循环查 `ctx.Err()`（含原 P2-push）（TC-16）。
 - [ ] p12-5 **P1** public client PoP：refresh 时校验设备绑定（`device_pubkey` 与 `grant.BoundDevicePubkey` 匹配，不符→`invalid_grant`）；mint 时 public client 的 `device_pubkey` 解码失败/缺失→`invalid_request`，不再静默签出无 `cnf.jkt` 的 bearer（TC-17）。
 - [ ] p12-6 **P1** 可信 IP 解析：新增 `OUROPASS_TRUSTED_PROXY`（默认 false）；默认只取 `RemoteAddr`，忽略原始 `X-Forwarded-For`；仅在显式信任代理时按最右非可信跳解析。admin 审计/登录与限流统一走该解析器（TC-18）。
@@ -246,6 +246,10 @@ server/
 - 2026-06-23 p11-2 | stack: go | command: `go build ./... && go vet ./... && go test ./...`（14 包） | result: pass | note: 代码内 `poolops/pao` 残留 0（含 env/路径/iss/kid/注释/测试断言全部同步，测试因断言同步而仍绿）；docs 残留 0；JWKS 路径=`/.well-known/ouropass/jwks.json`、iss=`ouropass:<pool_id>`、env=`OUROPASS_*`。全套 14 包绿。
 - 2026-06-23 p12-1 completed：nonce/授权码/激活码 Consume 的 UPDATE 加 `AND consumed_at IS NULL`，`RowsAffected()==0`→`domain.ErrConsumed`（写成为权威闸门）。
 - 2026-06-23 TC-13 | stack: go | command: `go test ./internal/store/...` | result: pass | note: `TestOneTimeConsume_CASGuard` 三表 guarded UPDATE 首次 affected=1、二次=0；既有 replay→ErrConsumed 全绿。真并发双兑换需 PG（OUROPASS_TEST_PG_DSN，D3 延后）。
+- 2026-06-23 p12-2 completed：新增 `RefreshGrantRepo.RotateIfActive`（CAS：`WHERE id=? AND status='active'`，RowsAffected==1 才赢）；`tokenRefresh` 把 rotate→mint 串入单一 `WithTx`，`mint` 加 `q Querier` 参数穿事务；authcode 路径 mint(nil) 不变。
+- 2026-06-23 TC-14 | stack: go | command: `go test ./internal/store/... ./internal/core/oauth/...` | result: pass | note: `TestRotateIfActive_CAS` active→true、已 rotated→false、未知→false；既有 refresh 轮换/盗用链测试仍绿；全量 `go test ./...` exit 0。
+- 2026-06-23 p12-3 completed：`Reconcile` 单 session 的 Eligibility/SetStatus/Upsert 错误改 `slog.Warn+continue+res.Failed++`，仅 ListActive 整体失败才返回 err；`Run` 仍仅在 Reconcile 非 err 时推进 lastEpoch（个别失败不再阻塞 epoch）；`Result` 加 `Failed`。
+- 2026-06-23 TC-15 | stack: go | command: `go test ./internal/worker/reconciliation/...` | result: pass | note: `TestReconcile_FaultIsolation` 3 session 中 sch-bad Eligibility 报错→Failed=1、其余 Expired=1/Unchanged=1，bad 保持 active、gone 仍被 expired；整趟不 err。
 - TC-13 (p12-1) 一次性 Consume CAS：模拟“已消费”行后再 Consume → `ErrConsumed`；并发/重复 Consume 仅一次成功、其余 `ErrConsumed`；UPDATE 带 `consumed_at IS NULL` 守卫。
 - TC-14 (p12-2) refresh CAS+原子：`RotateIfActive` 对 active 行返回 1、对已 rotated 行返回 0；同一 grant 二次 rotate 不再双发；rotate+mint 同一事务（mint 失败则 grant 不被置 rotated）。
 - TC-15 (p12-3) reconciler 隔离：3 session 中第 1 个 Eligibility 报错 → 其余 2 个仍被处理，`Result.Failed=1`，epoch 推进。
