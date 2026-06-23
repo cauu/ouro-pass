@@ -1,12 +1,12 @@
 # PoolOps Issuer Service — 后端实现
 
 Spec-ID: S0001
-Status: active
+Status: completed
 Created Time: 2026-06-22T22:48:27+08:00
 Start Time: 2026-06-23T00:41:32+08:00
-Completion Time:
+Completion Time: 2026-06-24T01:05:00+08:00
 Previous Spec-ID: (none)
-Closure Reason:
+Closure Reason: delivered
 
 ## 1. Requirement Details
 
