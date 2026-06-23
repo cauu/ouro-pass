@@ -1,0 +1,182 @@
+//go:build integration
+
+// Package store integration tests run against a real PostgreSQL — the only place
+// the compare-and-swap one-time-use guards (p12-1) and refresh rotation (p12-2)
+// can be proven under genuine concurrency, since SQLite serializes all writers
+// via MaxOpenConns(1). Run with: go test -tags integration ./internal/store/...
+// (needs a running Docker daemon, or set OUROPASS_TEST_PG_DSN to an existing PG).
+package store
+
+import (
+	"context"
+	"os"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+	"github.com/testcontainers/testcontainers-go/wait"
+
+	"ouro-pass/server/internal/domain"
+)
+
+// pgStore returns a migrated store backed by PostgreSQL: an existing instance
+// via OUROPASS_TEST_PG_DSN, or an ephemeral testcontainers Postgres otherwise.
+func pgStore(t *testing.T) *Store {
+	t.Helper()
+	ctx := context.Background()
+	dsn := os.Getenv("OUROPASS_TEST_PG_DSN")
+	if dsn == "" {
+		c, err := postgres.Run(ctx, "postgres:16-alpine",
+			postgres.WithDatabase("ouro"),
+			postgres.WithUsername("ouro"),
+			postgres.WithPassword("ouro"),
+			testcontainers.WithWaitStrategy(
+				wait.ForListeningPort("5432/tcp").WithStartupTimeout(90*time.Second)),
+		)
+		if err != nil {
+			t.Fatalf("start postgres container (is Docker running?): %v", err)
+		}
+		t.Cleanup(func() { _ = c.Terminate(ctx) })
+		if dsn, err = c.ConnectionString(ctx, "sslmode=disable"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	st, err := Open(ctx, Postgres, dsn)
+	if err != nil {
+		t.Fatalf("open pg: %v", err)
+	}
+	t.Cleanup(func() { _ = st.Close() })
+	if err := st.Migrate(ctx); err != nil {
+		t.Fatalf("migrate pg: %v", err)
+	}
+	return st
+}
+
+// raceN runs fn from N goroutines simultaneously and returns how many returned
+// nil (i.e. "won").
+func raceN(n int, fn func() error) int64 {
+	var wg sync.WaitGroup
+	var start sync.WaitGroup
+	start.Add(1)
+	var won int64
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			start.Wait() // line everyone up so they truly contend
+			if fn() == nil {
+				atomic.AddInt64(&won, 1)
+			}
+		}()
+	}
+	start.Done()
+	wg.Wait()
+	return won
+}
+
+const racers = 24
+
+func TestPG_ConcurrentConsume_NonceExactlyOnce(t *testing.T) {
+	st := pgStore(t)
+	ctx := context.Background()
+	now := time.Now()
+	if err := st.AuthNonces().Create(ctx, domain.AuthNonce{
+		Nonce: "race-n", Purpose: domain.NonceIssue, ExpiresAt: now.Add(time.Minute), CreatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	won := raceN(racers, func() error {
+		_, err := st.AuthNonces().Consume(ctx, "race-n", domain.NonceIssue, now)
+		return err
+	})
+	if won != 1 {
+		t.Fatalf("nonce consumed by %d concurrent callers, want exactly 1 (CAS broken on PG)", won)
+	}
+}
+
+func TestPG_ConcurrentConsume_AuthCodeExactlyOnce(t *testing.T) {
+	st := pgStore(t)
+	ctx := context.Background()
+	now := time.Now()
+	if err := st.AuthCodes().Create(ctx, domain.AuthorizationCode{
+		Code: "race-c", ClientID: "c1", StakeCredentialHash: "h1", Aud: "app",
+		RedirectURI: "https://cb", ExpiresAt: now.Add(time.Minute), CreatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	won := raceN(racers, func() error {
+		_, err := st.AuthCodes().Consume(ctx, "race-c", now)
+		return err
+	})
+	if won != 1 {
+		t.Fatalf("auth code redeemed by %d concurrent callers, want exactly 1", won)
+	}
+}
+
+func TestPG_ConcurrentConsume_ActivationExactlyOnce(t *testing.T) {
+	st := pgStore(t)
+	ctx := context.Background()
+	now := time.Now()
+	if err := st.ActivationCodes().Create(ctx, domain.ActivationCode{
+		Code: "race-a", StakeCredentialHash: "h1", ChannelType: "telegram",
+		Status: domain.ActivationActive, ExpiresAt: now.Add(time.Minute), CreatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	won := raceN(racers, func() error {
+		_, err := st.ActivationCodes().Consume(ctx, "race-a", "telegram", now)
+		return err
+	})
+	if won != 1 {
+		t.Fatalf("activation code redeemed by %d concurrent callers, want exactly 1", won)
+	}
+}
+
+func TestPG_ConcurrentRefreshRotate_ExactlyOnce(t *testing.T) {
+	st := pgStore(t)
+	ctx := context.Background()
+	if err := st.RefreshGrants().Create(ctx, nil, domain.RefreshGrant{
+		RefreshGrantID: "race-g", StakeCredentialHash: "h1", Audience: "app",
+		ClientType: domain.ClientPublic, Status: domain.GrantActive, CreatedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var won int64
+	_ = raceN(racers, func() error {
+		ok, err := st.RefreshGrants().RotateIfActive(ctx, nil, "race-g")
+		if err == nil && ok {
+			atomic.AddInt64(&won, 1)
+		}
+		return nil
+	})
+	if won != 1 {
+		t.Fatalf("refresh grant rotated by %d concurrent callers, want exactly 1", won)
+	}
+}
+
+// TestPG_DialectRoundTrip exercises a representative repo on PG so the ?->$n
+// rebind, TEXT/JSON encoding and timestamp formats are validated on the prod
+// dialect (closes the SQLite-only gap, TC-2).
+func TestPG_DialectRoundTrip(t *testing.T) {
+	st := pgStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	if err := st.OAuthClients().Upsert(ctx, domain.OAuthClient{
+		ClientID: "pg-c", Name: "PG", ClientType: domain.ClientConfidential, Party: domain.FirstParty,
+		RedirectURIs: []string{"https://a/cb", "https://b/cb"}, AllowedAudiences: []string{"app:ouro"},
+		AllowedScopes: []string{"read", "push"}, PKCERequired: true, Status: "active", CreatedAt: now,
+	}); err != nil {
+		t.Fatalf("upsert: %v", err)
+	}
+	got, err := st.OAuthClients().Get(ctx, "pg-c")
+	if err != nil || len(got.RedirectURIs) != 2 || len(got.AllowedScopes) != 2 || !got.PKCERequired {
+		t.Fatalf("roundtrip mismatch: %+v err=%v", got, err)
+	}
+	list, err := st.OAuthClients().List(ctx)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("list on pg: %v (n=%d)", err, len(list))
+	}
+}
