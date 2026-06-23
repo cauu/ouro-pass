@@ -1,0 +1,56 @@
+name: server-ci
+
+on:
+  push:
+    paths: ["server/**", ".github/workflows/ci.yml"]
+  pull_request:
+    paths: ["server/**", ".github/workflows/ci.yml"]
+
+defaults:
+  run:
+    working-directory: server
+
+jobs:
+  # Unit + end-to-end on the default build tags: SQLite + mock chain + in-memory
+  # transport, no external services.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache-dependency-path: server/go.sum
+      - run: go build ./...
+      - run: go vet ./...
+      - run: make test
+
+  # Integration: the Postgres-only concurrency/dialect tests behind the
+  # `integration` build tag. A Postgres service container backs the run; the test
+  # picks it up via OUROPASS_TEST_PG_DSN (so testcontainers/Docker isn't needed
+  # on the runner).
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ouro
+          POSTGRES_PASSWORD: ouro
+          POSTGRES_DB: ouro
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ouro"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache-dependency-path: server/go.sum
+      - run: make test-integration
+        env:
+          OUROPASS_TEST_PG_DSN: postgres://ouro:ouro@localhost:5432/ouro?sslmode=disable

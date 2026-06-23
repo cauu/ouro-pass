@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"os"
 	"path/filepath"
 	"testing"
 	"testing/fstest"
@@ -19,21 +18,15 @@ func testMigrations() fstest.MapFS {
 	}
 }
 
-// openTestStore returns a Store for the engine under test. SQLite uses a temp
-// file; Postgres is used only when OUROPASS_TEST_PG_DSN is set (decision D3).
+// openTestStore returns an isolated SQLite store (a fresh temp file per test).
+// Real-Postgres validation — dialect round-trips and the CAS concurrency
+// invariants — lives in the dedicated internal/inttest package, which isolates
+// each run; pointing these unit tests at a shared PG would collide on fixed keys
+// (decision D24, supersedes the D3 shared-DSN branch).
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
-	ctx := context.Background()
-	if dsn := os.Getenv("OUROPASS_TEST_PG_DSN"); dsn != "" {
-		st, err := Open(ctx, Postgres, dsn)
-		if err != nil {
-			t.Fatalf("open postgres: %v", err)
-		}
-		t.Cleanup(func() { st.Close() })
-		return st
-	}
 	dsn := "file:" + filepath.Join(t.TempDir(), "t.db") + "?_pragma=foreign_keys(1)"
-	st, err := Open(ctx, SQLite, dsn)
+	st, err := Open(context.Background(), SQLite, dsn)
 	if err != nil {
 		t.Fatalf("open sqlite: %v", err)
 	}

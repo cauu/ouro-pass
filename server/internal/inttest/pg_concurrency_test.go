@@ -1,11 +1,14 @@
 //go:build integration
 
-// Package store integration tests run against a real PostgreSQL — the only place
-// the compare-and-swap one-time-use guards (p12-1) and refresh rotation (p12-2)
-// can be proven under genuine concurrency, since SQLite serializes all writers
-// via MaxOpenConns(1). Run with: go test -tags integration ./internal/store/...
-// (needs a running Docker daemon, or set OUROPASS_TEST_PG_DSN to an existing PG).
-package store
+// Package inttest holds Postgres-backed integration tests, isolated from the
+// SQLite-oriented store unit tests. This is the only place the compare-and-swap
+// one-time-use guards (p12-1) and refresh rotation (p12-2) can be proven under
+// genuine concurrency — SQLite serializes all writers via MaxOpenConns(1).
+//
+// Run with:  make test-integration          (testcontainers spins an ephemeral PG)
+//
+//	or:  OUROPASS_TEST_PG_DSN=... make test-integration   (existing PG)
+package inttest
 
 import (
 	"context"
@@ -22,6 +25,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"ouro-pass/server/internal/domain"
+	"ouro-pass/server/internal/store"
 )
 
 // uk returns a per-run unique key so the suite is re-runnable against a
@@ -34,7 +38,7 @@ func uk(prefix string) string {
 
 // pgStore returns a migrated store backed by PostgreSQL: an existing instance
 // via OUROPASS_TEST_PG_DSN, or an ephemeral testcontainers Postgres otherwise.
-func pgStore(t *testing.T) *Store {
+func pgStore(t *testing.T) *store.Store {
 	t.Helper()
 	ctx := context.Background()
 	dsn := os.Getenv("OUROPASS_TEST_PG_DSN")
@@ -54,7 +58,7 @@ func pgStore(t *testing.T) *Store {
 			t.Fatal(err)
 		}
 	}
-	st, err := Open(ctx, Postgres, dsn)
+	st, err := store.Open(ctx, store.Postgres, dsn)
 	if err != nil {
 		t.Fatalf("open pg: %v", err)
 	}
@@ -65,11 +69,10 @@ func pgStore(t *testing.T) *Store {
 	return st
 }
 
-// raceN runs fn from N goroutines simultaneously and returns how many returned
+// raceN runs fn from n goroutines simultaneously and returns how many returned
 // nil (i.e. "won").
 func raceN(n int, fn func() error) int64 {
-	var wg sync.WaitGroup
-	var start sync.WaitGroup
+	var wg, start sync.WaitGroup
 	start.Add(1)
 	var won int64
 	for i := 0; i < n; i++ {
@@ -173,7 +176,8 @@ func TestPG_ConcurrentRefreshRotate_ExactlyOnce(t *testing.T) {
 
 // TestPG_DialectRoundTrip exercises a representative repo on PG so the ?->$n
 // rebind, TEXT/JSON encoding and timestamp formats are validated on the prod
-// dialect (closes the SQLite-only gap, TC-2).
+// dialect, and the real embedded migrations apply on Postgres (closes the
+// SQLite-only gap, TC-2).
 func TestPG_DialectRoundTrip(t *testing.T) {
 	st := pgStore(t)
 	ctx := context.Background()
@@ -190,8 +194,8 @@ func TestPG_DialectRoundTrip(t *testing.T) {
 	if err != nil || len(got.RedirectURIs) != 2 || len(got.AllowedScopes) != 2 || !got.PKCERequired {
 		t.Fatalf("roundtrip mismatch: %+v err=%v", got, err)
 	}
-	// List must succeed on PG (Rebind path) and include our client (don't assume
-	// an empty DB — OUROPASS_TEST_PG_DSN may point at a shared instance).
+	// List must succeed on PG (Rebind path) and include our client (the DSN may
+	// point at a shared instance, so don't assume an empty table).
 	list, err := st.OAuthClients().List(ctx)
 	if err != nil {
 		t.Fatalf("list on pg: %v", err)
