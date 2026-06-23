@@ -127,6 +127,17 @@ func BuildJWKS(keys []PublicKey) ([]byte, error) {
 	return json.Marshal(set)
 }
 
+// JTIUnverified extracts the jti from a token WITHOUT verifying its signature
+// or expiry. Used only for revocation, where an attacker presenting a token can
+// only revoke that same token's ledger row (no privilege gained).
+func JTIUnverified(tokenStr string) (string, error) {
+	t, err := jwt.ParseInsecure([]byte(tokenStr))
+	if err != nil {
+		return "", err
+	}
+	return t.JwtID(), nil
+}
+
 // Verify parses and signature-verifies a token against a JWKS document, then
 // returns the validated jwt.Token (used by introspect and TC-4). Standard
 // time-based claims are validated.

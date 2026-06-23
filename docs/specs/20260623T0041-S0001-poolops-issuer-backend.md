@@ -174,7 +174,7 @@ server/
 - [x] p5-1 `GET /connect`（Authorization Page 契约）+ `POST /api/connect/authorize`（验签→评估资格→AuthorizationCode）
 - [x] p5-2 `POST /api/oauth/token` `grant_type=authorization_code` → access token JWS + RefreshGrant + IssuedToken 台账
 - [x] p5-3 `grant_type=refresh_token`：token 轮换、盗用重放撤销、按 client_type 认证(client_secret / PKCE+DPoP)、资格重评/降级
-- [ ] p5-4 `POST /api/oauth/introspect`(RFC 7662) + `POST /api/oauth/revoke`(RFC 7009)（Verifier 平面）
+- [x] p5-4 `POST /api/oauth/introspect`(RFC 7662) + `POST /api/oauth/revoke`(RFC 7009)（Verifier 平面）
 
 ### p6 — 渠道激活与 Telegram bot worker
 - [ ] p6-1 `POST /api/activation/create`（activation token + deep link）
@@ -229,6 +229,7 @@ server/
 - 2026-06-23 p5-1 completed：`core/oauth` Server——`ValidateClient`(client 状态/redirect allowlist/aud 校验+PKCE 要求) + `Authorize`(walletauth 验签→`evaluate` 黑名单+快照+规则→不合格 ErrNotEligible，合格发一次性 AuthorizationCode 存哈希)；`evaluate` 复用同一资格路径供 token/refresh。handler `GET /connect`(参数校验+占位 HTML) + `POST /api/connect/authorize`(302 带 code&state，不合格 302 error=not_eligible)。main 装配 chain.Source(默认 mock)+oauth.Server(需 Keys+salt)。证据见 §6（TC-6 部分）。
 - 2026-06-23 p5-2 completed：`Token` 分派 + `tokenAuthCode`——消费 authcode(一次性/校 client+redirect)→`authenticateClient`(confidential client_secret SHA-256 比对 / public PKCE S256，D7)→token 时重评资格→`mint`(签 access token JWS 含 sub=DeriveSub/tier/entitlements/cnf、写 IssuedToken 台账、发 RefreshGrant 存哈希)。handler `POST /api/oauth/token`(JSON/form 双解析、OAuth 错误码映射)。证据见 §6（TC-6）。
 - 2026-06-23 p5-3 completed：`tokenRefresh`——active grant 验客户端(confidential client_secret)→重评资格(不合格 ErrNotEligible，低 tier 自然降级)→旧 grant 置 rotated + `mint`(rotated_from 链接)；**rotated grant 重放→RevokeChain 撤销整链**（盗用响应）；过期 grant→expired/invalid_grant。证据见 §6（TC-7）。
+- 2026-06-23 p5-4 completed（phase p5 收尾）：`Introspect`(token→JWKS 验签+ledger 交叉校验 / 裸 jti→ledger，失活/撤销/未知→inactive) + `Revoke`(JWS→jti 撤 IssuedToken / opaque→撤 RefreshGrant，RFC 7009 幂等)；`jose.JTIUnverified`(ParseInsecure 取 jti 供撤销)。handler `POST /api/oauth/{introspect,revoke}`(JSON/form 单次解析)。证据见 §6（TC-8 introspect 侧）。
 
 ## 6. Validation Evidence (append-only)
 
@@ -251,6 +252,7 @@ server/
 - 2026-06-23 TC-6(p5-1) | stack: go | command: `go test ./internal/core/oauth/... ./internal/httpapi/...` | result: pass | note: Authorize 合格发 code(存哈希、可一次性消费)；委托他池/黑名单→ErrNotEligible；未知 client→ErrInvalidClient、坏 redirect→ErrInvalidRequest；handler /connect 校验 response_type/client；/api/connect/authorize 合格 302 带 code&state、不合格 302 error=not_eligible
 - 2026-06-23 TC-6(p5-2) | stack: go | command: `go test ./internal/core/oauth/...` | result: pass | note: confidential authcode 换 token，access token 经 JWKS 验签通过且 sub=DeriveSub/tier=gold，refresh grant 落库；错 client_secret→invalid_client；public PKCE 正确 verifier 成功(带 cnf.jkt)、错 verifier→invalid_grant；code 复用→invalid_grant；password grant→unsupported_grant_type
 - 2026-06-23 TC-7 | stack: go | command: `go test ./internal/core/oauth/...` | result: pass | note: refresh 轮换发新 access+新 refresh、旧 grant→rotated/新 grant rotated_from；**重放旧 rotated grant→invalid_grant 且 RevokeChain 把后代 refresh2 也撤销、refresh2 随后不可用**；委托迁出→重评 not_eligible；错 client_secret→invalid_client、未知 grant→invalid_grant
+- 2026-06-23 TC-8(introspect/revoke,p5-4) | stack: go | command: `go test ./internal/core/oauth/...` | result: pass | note: Introspect active token→active+tier+sub+membership_status；revoke access 后→inactive；未知 jti/垃圾 token→inactive 无错；Revoke refresh→grant revoked 且不可再 mint；未知 token revoke 仍成功(RFC 7009)
 
 ## 7. Change Requests (append-only)
 

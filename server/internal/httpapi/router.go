@@ -56,8 +56,8 @@ func NewRouter(d Deps) http.Handler {
 	r.Group(func(r chi.Router) {
 		r.Use(publicLimit)
 		r.Get("/.well-known/poolops/jwks.json", h.jwks)
-		r.Post("/api/oauth/introspect", notImplemented)
-		r.Post("/api/oauth/revoke", notImplemented)
+		r.Post("/api/oauth/introspect", h.introspect)
+		r.Post("/api/oauth/revoke", h.revoke)
 	})
 
 	// ---- Admin plane ----
