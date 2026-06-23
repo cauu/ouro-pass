@@ -215,6 +215,11 @@ server/
 - [x] p12-12 **P3 延后**（自 p12-10 拆出，D20）：COSE `checkAlg` 严格要求 protected 头 alg=EdDSA——需先有真钱包 CIP-30 golden vector（TC-3 集成）确认不破坏省略 protected alg 的钱包；当前签名仍由 `ed25519.Verify` 兜底（不可绕过），仅缺严格 alg 断言。
 - [x] p12-10 **P3 批** 低危整改：client_secret 用 `subtle.ConstantTimeCompare`；node_lsq rewards 用 string（弃 int64）；config 校验非空 `OUROPASS_POOL_ID`；admin cookie `Secure` 按 `OUROPASS_TLS` gate；telegram `GetUpdates` 传 `allowed_updates=["message"]` 并跳过 `From.ID==0`/空文本；4xx 已知哨兵映射固定文案、未知回退通用串；COSE `checkAlg` 有 protected 头时强制 EdDSA；db_sync 启动即失败；删死代码 `SignActivationToken`/`ActivationClaims`（TC-22）。
 
+### p13 — 测试补全（单元 + e2e + PG 集成；用户要求）
+- [x] p13-1 Tier-1 单元补齐：`config.validate` table test（network/driver/dsn/poolid 非法各报错）；`cmd/issuer` 可测化——抽 `buildDeps(cfg,st)`/worker 装配，测 worker 生命周期 + 优雅关停 join；补 store/httpapi 负向路径，httpapi 覆盖率上抬（TC-23）。
+- [x] p13-2 Tier-1 端到端（新 `internal/e2e` 包，驱动完整 `NewRouter`/httptest，SQLite + mock chain + 内存 telegram transport，零外部依赖）：① confidential 授权码全生命周期（challenge→/connect→authorize→token→introspect→refresh→revoke）；② public PKCE+device-PoP（cnf.jkt + refresh 需设备）；③ 不合格/blacklist + admin revoke 级联；④ 激活→mock bot `/start`→SubscriptionSession + push job→mock sender→DeliveryLog；⑤ reconciliation 降级；⑥ 密钥轮换 JWKS overlap（TC-24）。
+- [ ] p13-3 Tier-2 PG 集成（`//go:build integration`，testcontainers-go 拉临时 PG，D23）：① 全量 store 仓库在 PG 上跑通（方言：`?`→`$n`、TEXT/JSON 往返、时间格式）；② **并发 CAS 真验证**——N goroutine 并发兑换同一 nonce/授权码/激活码恰好一次成功（P0 修复，SQLite 串行掩盖、唯 PG 可证）；③ 并发 refresh 仅一路成功（p12-2）。需 Docker daemon 运行；缺 Docker/`-tags integration` 时跳过（TC-25）。
+
 ## 4. Test and Acceptance Criteria
 
 - TC-1 服务启动：`go build ./...` 通过；二进制启动后健康检查 200，四平面路由可达（404/401 符合预期），SIGTERM 优雅退出。
@@ -271,6 +276,10 @@ server/
 - 2026-06-23 TC-21+ | stack: go | command: `go test ./internal/httpapi/...` | result: pass | note: revoke/register 无 step-up→401/403、带新鲜 step-up 签名→200（revoke 级联生效、register 发一次性 secret）；既有坏枚举→400 不受影响。
 - 2026-06-23 p12-12 completed（应用户要求解除 D20 延后，保守版）：`cose.checkAlg` 改为——非空 protected 头**必须**可解析为 COSE int-map 且含 `alg=EdDSA`（缺 alg/非 int-map/非 EdDSA 均 `ErrCOSEAlg`）；空 protected 头仍容忍（签名由 `ed25519.Verify` 兜底）。CIP-8 对 protected 头签名，CIP-30 signData 本就带 alg，故保守收紧不破坏合规钱包。
 - 2026-06-23 TC-22+ | stack: go | command: `go test ./internal/utils/crypto/... ./internal/core/walletauth/...` | result: pass | note: `TestCOSEVerify_StrictAlgHeader` 缺 alg 的 protected 头→ErrCOSEAlg；既有 ES256 坏 alg→ErrCOSEAlg、合法 EdDSA（含 walletauth 真验签路径）仍绿。
+- 2026-06-23 p13-1 completed：新增 `config_test.go`（Load 默认 + validate table：缺 PoolID/坏 network/坏 driver/空 DSN/坏 duration 各报错、合法通过；envBool/splitCSV）；`main.go` 抽 `buildServices(cfg,st)`（run() 调用，行为不变）；`cmd/issuer/main_test.go` 测 full/degraded 装配 + db_sync fail-fast + `runNonceGC` ctx 取消即退。
+- 2026-06-23 TC-23 | stack: go | command: `go test -cover ./internal/config/ ./cmd/issuer/` + 全量 `go test ./...` + 二进制 smoke | result: pass | note: config 覆盖 0%→**97.3%**、cmd/issuer 0%→**24.2%**（serve/shutdown 阻塞循环由 e2e+smoke 覆盖）；全 16 包绿；重构后二进制健康 200+优雅关停 exit 0。
+- 2026-06-23 p13-2 completed：新 `internal/e2e` 包，httptest 驱动完整 `NewRouter`。6 流程：confidential 授权码全生命周期(challenge→authorize→token→introspect→refresh→旧 refresh 重放 invalid_grant→revoke→introspect inactive)；public PKCE+device-PoP(无设备 refresh→invalid_grant)；不合格/blacklist+admin revoke(step-up)级联→后续 authorize not_eligible；激活→真 telegram Processor `/start`→SubscriptionSession+消费码不可二次用→push Scheduler 按 tier 过滤投递 mock sender；密钥轮换→JWKS 1→2 overlap。
+- 2026-06-23 TC-24 | stack: go | command: `go test ./internal/e2e/` | result: pass | note: 5 个 e2e 测试函数全绿（0.5s）；走完整路由+中间件+真 OAuth/admin/keys/walletauth 逻辑，SQLite+mock chain+内存 sender，零外部依赖。
 - TC-13 (p12-1) 一次性 Consume CAS：模拟“已消费”行后再 Consume → `ErrConsumed`；并发/重复 Consume 仅一次成功、其余 `ErrConsumed`；UPDATE 带 `consumed_at IS NULL` 守卫。
 - TC-14 (p12-2) refresh CAS+原子：`RotateIfActive` 对 active 行返回 1、对已 rotated 行返回 0；同一 grant 二次 rotate 不再双发；rotate+mint 同一事务（mint 失败则 grant 不被置 rotated）。
 - TC-15 (p12-3) reconciler 隔离：3 session 中第 1 个 Eligibility 报错 → 其余 2 个仍被处理，`Result.Failed=1`，epoch 推进。
@@ -281,6 +290,9 @@ server/
 - TC-20 (p12-8) 链身份：已知 `sch`+network → 期望 bech32 stake 地址（向量）；engine 对未知委托年龄且规则要求 `min_active_epochs`→ 不满足（fail-closed）；`RequiredStatus` 生效。
 - TC-21 (p12-9) verifier/admin 加固：未鉴权裸 jti introspect 不再返回 active 状态；authorize/token/activation 超频→429；`OAuthClient.List` 在 PG（Rebind）路径可用。
 - TC-22 (p12-10) 低危批：constant-time 比较替换；空 `OUROPASS_POOL_ID`→启动报错；telegram 非 message 更新被跳过；db_sync 启动即失败。
+- TC-23 (p13-1) 单元补齐：`config.validate` 各非法输入报错、合法通过；`cmd/issuer` worker 装配 + 关停 join 可测；`go test ./...` 绿且 httpapi/store 覆盖率较基线上升。
+- TC-24 (p13-2) e2e：完整路由下授权码/刷新/吊销、PKCE+PoP、blacklist 级联、激活+telegram+push、reconciliation、密钥轮换 6 条主链路全绿（SQLite+mock，无外部依赖）。
+- TC-25 (p13-3) PG 集成（`-tags integration`+Docker）：store 仓库全套在 PG 通过；并发兑换同一 nonce/code 恰好一次成功、其余 `ErrConsumed`；并发 refresh 仅一路成功。无 Docker 时跳过、不算失败。
 - Pass/fail：每个 item 仅在其映射的 TC 全部 `pass` 且证据 append 后方可标 `[x]`。
 
 测试栈映射（验收证据用）：`stack: go`，命令以 `go test ./...`、`go build ./...` 为主，集成测试（真链/真 Telegram）单独打 build tag 标注。
@@ -364,6 +376,7 @@ server/
 - 2026-06-23 D19 **step-up 策略扩展延后**（p12-9 部分）：评审建议对 member-revoke / client-register 等高爆炸半径操作统一加 owner step-up。但这是 **API 契约 + 安全策略变更**（operator 角色端点要求重新签名、破坏现有调用方），且 admin UI 尚未实现、step-up nonce 取用流程需 UI 协同。故本轮只交付 `requireStepUp` 的 nil 守卫（防 panic），策略扩展拆出 **p12-11** 待 UI 设计后决策。当前 key-rotate 仍强制 step-up，不回退。
 - 2026-06-23 D20 **COSE 严格 alg 延后**（p12-10 部分）：评审建议 protected 头存在时强制 `alg=EdDSA`。但部分 CIP-30 钱包把 alg 放 unprotected 头/省略 protected alg，无真钱包向量前贸然 require 有破坏互操作风险；且签名已由 `ed25519.Verify` 对调用方提供的 Ed25519 公钥兜底校验（非 EdDSA 必然验签失败，**不可绕过**，评审复核 P3 不可利用）。故保持现状、严格断言拆出 **p12-12**，待 TC-3 真钱包 golden vector（D5 集成）落地后启用。
 - 2026-06-23 D21 **mint 取签名密钥移出事务**（p12-2 死锁修复）：p12-2 将 mint 移入 refresh 事务后，`Keys.ActiveSigner` 的连接池读在 SQLite 单连接（`MaxOpenConns(1)`）下与持连接的 tx 死锁。修复：调用方在开 tx 前取 active signer，经 `mintParams` 注入；事务内只用注入的 `*sql.Tx`、无任何非-tx DB 读。确立约束：**`WithTx` 回调内严禁经连接池做读/写**。
+- 2026-06-23 D23 **测试分层：Tier-1（无外部依赖）+ Tier-2（PG 集成，testcontainers）**：单元 + e2e 全部跑在 SQLite（modernc）+ mock chain + 内存 telegram transport，零外部进程、CI 友好。需真并发/方言验证的部分（P0 双花、TC-2 双栈）拆到 `//go:build integration`，用 testcontainers-go 拉临时 PG（仅 test-only 依赖，不进默认构建图的运行期）；Docker daemon 缺失时该层跳过、不阻塞 Tier-1。e2e 走 httptest+`NewRouter`（非真二进制进程）——足以覆盖装配/路由/中间件 wiring（如"push worker 未接线"类 bug），又快又稳。
 - 2026-06-23 D22 **解除 D19/D20 延后**（应用户要求）：p12-11（step-up 扩展）与 p12-12（COSE 严格 alg）由延后改为本轮交付。step-up 扩展覆盖 member-revoke + client-register（subscription-cancel 因爆炸半径较低暂不纳入，如需可续）；COSE 采保守收紧（仅约束**非空** protected 头，空头仍由 `ed25519.Verify` 兜底），真钱包 golden vector 仍建议作为 TC-3 集成补充。D19/D20 的风险分析仍成立、作为该决策的依据保留。
 - 2026-06-23 D2 **store 层偏离 sqlc**：环境未装 `sqlc`/`goose`/`migrate`，为保持 build 自包含、零外部 codegen 依赖，store 层改为**手写 `database/sql` repository + `embed` 迁移 SQL + 极简 migration runner**。架构不变（repository 接口边界、PG/SQLite 双栈保留）。§2.1 技术选型表中 sqlc/goose 一项以此决策为准。
 - 2026-06-23 D3 **DB 驱动与测试边界**：SQLite 用 `modernc.org/sqlite`（纯 Go、无 CGO），单元测试跑 SQLite（临时文件/内存）；PG 用 `jackc/pgx/v5`（stdlib `database/sql` 模式），PG 专项测试需 `POOLOPS_TEST_PG_DSN` 环境变量，未提供则 skip（标 integration）。TC-2 在本机以 SQLite 为主证，PG 路径以代码 + 可选 DSN 跑通为准。

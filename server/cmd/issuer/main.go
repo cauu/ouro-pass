@@ -70,54 +70,11 @@ func run() error {
 	}
 	slog.Info("database ready", "driver", cfg.DBDriver)
 
-	walletSvc := walletauth.New(st, nonceTTL)
-	var serverSalt []byte
-	if cfg.ServerSaltHex != "" {
-		if serverSalt, err = hex.DecodeString(cfg.ServerSaltHex); err != nil {
-			return fmt.Errorf("OUROPASS_SERVER_SALT: %w", err)
-		}
-	}
-	deps := httpapi.Deps{
-		Wallet:        walletSvc,
-		Store:         st,
-		PoolID:        cfg.PoolID,
-		TelegramBot:   cfg.TelegramBot,
-		TrustedProxy:  cfg.TrustedProxy,
-		SecureCookies: cfg.TLS,
-		Admin: admin.New(admin.Config{
-			Wallet: walletSvc, Store: st, OwnerKeyHash: cfg.OwnerKeyHashes, PoolID: cfg.PoolID,
-		}),
-	}
-	// The signing-key service (and any 🔒-field handling) needs the field key.
-	// Without it the service still boots; key/JWKS routes degrade to 501.
-	if cfg.FieldKeyHex != "" {
-		cipher, err := crypto.NewFieldCipherHex(cfg.FieldKeyHex)
-		if err != nil {
-			return err
-		}
-		deps.Keys = keys.New(st, cipher)
-	} else {
-		slog.Warn("OUROPASS_FIELD_KEY not set; signing-key/JWKS routes disabled")
-	}
-
-	// The OAuth authorization server needs the signing keys, the `sub` salt, and
-	// a staking source. Missing any → issuance routes degrade to 501.
-	chainSrc, err := chain.NewSource(chain.Config{
-		Kind: cfg.ChainKind, KoiosBaseURL: cfg.KoiosBaseURL, APIKey: cfg.ChainAPIKey,
-		NodeSocket: cfg.NodeSocket, CardanoCLI: cfg.CardanoCLI, Network: cfg.Network,
-	})
+	deps, chainSrc, err := buildServices(cfg, st)
 	if err != nil {
 		return err
 	}
-	if deps.Keys != nil && len(serverSalt) > 0 {
-		deps.OAuth = oauth.New(oauth.Config{
-			Store: st, Wallet: deps.Wallet, Keys: deps.Keys, Chain: chainSrc,
-			PoolID: cfg.PoolID, Issuer: cfg.Issuer, ServerSalt: serverSalt,
-			AccessTTL: accessTTL, RefreshTTL: refreshTTL,
-		})
-	} else {
-		slog.Warn("OAuth issuance disabled (need OUROPASS_FIELD_KEY + OUROPASS_SERVER_SALT)")
-	}
+	walletSvc := deps.Wallet
 
 	srv := &http.Server{
 		Addr:    cfg.Addr,
@@ -191,6 +148,59 @@ func run() error {
 		slog.Warn("workers did not stop within shutdown timeout")
 	}
 	return nil
+}
+
+// buildServices assembles the handler dependencies and the staking source from
+// config against an open store. Services degrade gracefully: without a field key
+// the signing-key/JWKS routes are disabled; without field key + server salt the
+// OAuth issuance routes are disabled. Extracted from run() so wiring is testable.
+func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, chain.Source, error) {
+	walletSvc := walletauth.New(st, nonceTTL)
+	var serverSalt []byte
+	if cfg.ServerSaltHex != "" {
+		var err error
+		if serverSalt, err = hex.DecodeString(cfg.ServerSaltHex); err != nil {
+			return httpapi.Deps{}, nil, fmt.Errorf("OUROPASS_SERVER_SALT: %w", err)
+		}
+	}
+	deps := httpapi.Deps{
+		Wallet:        walletSvc,
+		Store:         st,
+		PoolID:        cfg.PoolID,
+		TelegramBot:   cfg.TelegramBot,
+		TrustedProxy:  cfg.TrustedProxy,
+		SecureCookies: cfg.TLS,
+		Admin: admin.New(admin.Config{
+			Wallet: walletSvc, Store: st, OwnerKeyHash: cfg.OwnerKeyHashes, PoolID: cfg.PoolID,
+		}),
+	}
+	if cfg.FieldKeyHex != "" {
+		cipher, err := crypto.NewFieldCipherHex(cfg.FieldKeyHex)
+		if err != nil {
+			return httpapi.Deps{}, nil, err
+		}
+		deps.Keys = keys.New(st, cipher)
+	} else {
+		slog.Warn("OUROPASS_FIELD_KEY not set; signing-key/JWKS routes disabled")
+	}
+
+	chainSrc, err := chain.NewSource(chain.Config{
+		Kind: cfg.ChainKind, KoiosBaseURL: cfg.KoiosBaseURL, APIKey: cfg.ChainAPIKey,
+		NodeSocket: cfg.NodeSocket, CardanoCLI: cfg.CardanoCLI, Network: cfg.Network,
+	})
+	if err != nil {
+		return httpapi.Deps{}, nil, err
+	}
+	if deps.Keys != nil && len(serverSalt) > 0 {
+		deps.OAuth = oauth.New(oauth.Config{
+			Store: st, Wallet: deps.Wallet, Keys: deps.Keys, Chain: chainSrc,
+			PoolID: cfg.PoolID, Issuer: cfg.Issuer, ServerSalt: serverSalt,
+			AccessTTL: accessTTL, RefreshTTL: refreshTTL,
+		})
+	} else {
+		slog.Warn("OAuth issuance disabled (need OUROPASS_FIELD_KEY + OUROPASS_SERVER_SALT)")
+	}
+	return deps, chainSrc, nil
 }
 
 // runNonceGC periodically purges expired wallet-signing nonces until ctx ends.
