@@ -135,6 +135,66 @@ func TestAuthNonce_DeleteExpired(t *testing.T) {
 	}
 }
 
+// TestOneTimeConsume_CASGuard verifies the compare-and-swap write-guard added in
+// p12-1: the consuming UPDATE only matches a still-unconsumed row, so a second
+// guarded write affects 0 rows. This is the protection the prior SELECT check
+// could not give under PG READ COMMITTED concurrency (TC-13).
+func TestOneTimeConsume_CASGuard(t *testing.T) {
+	ctx := context.Background()
+	st := migratedStore(t)
+	now := time.Now()
+	tsNow := ts(now)
+
+	// AuthNonce + AuthorizationCode use `consumed_at IS NULL`.
+	if err := st.AuthNonces().Create(ctx, domain.AuthNonce{
+		Nonce: "cas-n", Purpose: domain.NonceIssue, ExpiresAt: now.Add(time.Minute), CreatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AuthCodes().Create(ctx, domain.AuthorizationCode{
+		Code: "cas-c", ClientID: "c1", StakeCredentialHash: "h1", Aud: "app",
+		RedirectURI: "https://cb", ExpiresAt: now.Add(time.Minute), CreatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.ActivationCodes().Create(ctx, domain.ActivationCode{
+		Code: "cas-a", StakeCredentialHash: "h1", ChannelType: "telegram",
+		Status: domain.ActivationActive, ExpiresAt: now.Add(time.Minute), CreatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	cas := []struct {
+		name string
+		sql  string
+		args []any
+	}{
+		{"AuthNonce", `UPDATE AuthNonce SET consumed_at = ? WHERE nonce = ? AND consumed_at IS NULL`, []any{tsNow, "cas-n"}},
+		{"AuthorizationCode", `UPDATE AuthorizationCode SET consumed_at = ? WHERE code = ? AND consumed_at IS NULL`, []any{tsNow, "cas-c"}},
+		{"ActivationCode", `UPDATE ActivationCode SET status = 'consumed', consumed_at = ? WHERE code = ? AND consumed_at IS NULL`, []any{tsNow, "cas-a"}},
+	}
+	for _, c := range cas {
+		first, err := st.DB.ExecContext(ctx, st.Rebind(c.sql), c.args...)
+		if err != nil {
+			t.Fatalf("%s first update: %v", c.name, err)
+		}
+		if n, _ := first.RowsAffected(); n != 1 {
+			t.Fatalf("%s first guarded update affected %d, want 1", c.name, n)
+		}
+		second, err := st.DB.ExecContext(ctx, st.Rebind(c.sql), c.args...)
+		if err != nil {
+			t.Fatalf("%s second update: %v", c.name, err)
+		}
+		if n, _ := second.RowsAffected(); n != 0 {
+			t.Fatalf("%s second guarded update affected %d, want 0 (CAS guard missing)", c.name, n)
+		}
+	}
+	// And the repo Consume reports ErrConsumed once the row is consumed.
+	if _, err := st.AuthNonces().Consume(ctx, "cas-n", domain.NonceIssue, now); err != domain.ErrConsumed {
+		t.Fatalf("consume after CAS = %v, want ErrConsumed", err)
+	}
+}
+
 func TestAuthCodeAndActivation_ConsumeOnce(t *testing.T) {
 	ctx := context.Background()
 	st := migratedStore(t)

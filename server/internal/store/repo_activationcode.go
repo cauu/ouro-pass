@@ -55,9 +55,17 @@ func (r *ActivationCodeRepo) Consume(ctx context.Context, code, channelType stri
 		if now.After(exp) {
 			return domain.ErrExpired
 		}
-		if _, err := tx.ExecContext(ctx, r.s.Rebind(`UPDATE ActivationCode SET status = ?, consumed_at = ? WHERE code = ?`),
-			string(domain.ActivationConsumed), ts(now), code); err != nil {
+		// Compare-and-swap on the active status so concurrent /start redemptions
+		// can't both create a subscription session on PG.
+		res, err := tx.ExecContext(ctx, r.s.Rebind(`UPDATE ActivationCode SET status = ?, consumed_at = ? WHERE code = ? AND consumed_at IS NULL`),
+			string(domain.ActivationConsumed), ts(now), code)
+		if err != nil {
 			return err
+		}
+		if n, err := res.RowsAffected(); err != nil {
+			return err
+		} else if n == 0 {
+			return domain.ErrConsumed
 		}
 		a.Status, a.ExpiresAt = domain.ActivationConsumed, exp
 		if a.CreatedAt, err = parseTS(created); err != nil {

@@ -201,6 +201,18 @@ server/
 - [x] p10-2 安全加固：F1 服务端错误脱敏（500 不再回显原始 `err.Error()`，改 `slog` 记录 + 通用消息 + req_id）；F2 请求枚举校验（rule status / client_type / party / channel_type 落库前对照白名单，非法→400）。
 - [x] p10-3 AuthNonce GC：补 `AuthNonceRepo.DeleteExpired`（删 `expires_at < now`）+ `walletauth.Service.PurgeExpiredNonces`；main 起独立 ticker（独立于 epoch，按短间隔清理，因 nonce TTL 仅分钟级）定期清理，防过期 nonce 无限堆积。nonce 后端仍为 SQL（接口化留作后续）。
 
+### p12 — 多 agent 评审整改（cursor + claude subagent review remediation；见 `code_review/S0001-poolops-issuer-backend/summary.md`）
+- [x] p12-1 **P0** 一次性 Consume 加 compare-and-swap：nonce/授权码/激活码的 `UPDATE` 加 `AND consumed_at IS NULL`（激活码 `AND status='active'`），`RowsAffected()==0`→`ErrConsumed`。消除 PG READ COMMITTED 下的双花窗口（TC-13）。
+- [ ] p12-2 **P1** refresh 轮换原子化 + CAS：新增 `RefreshGrantRepo.RotateIfActive`（`UPDATE…SET status='rotated' WHERE id=? AND status='active'`，校验 `RowsAffected==1`），rotate→mint 串入同一 `WithTx`；并发同一 refresh 仅一路成功，盗用链不被绕过（TC-14）。
+- [ ] p12-3 **P1** reconciler 故障隔离：单 session 的 Eligibility/store 错误改 `log+continue` 并计入 `Result.Failed`，`Run` 无论个别失败都推进 `lastEpoch`；一个坏 credential 不再卡住全池降级/过期（TC-15）。
+- [ ] p12-4 **P1** worker 生命周期：main 接线 push worker（轮询 `status=scheduled` 的 PushJob→`Scheduler.Run`）；所有 worker 用 `sync.WaitGroup` 在 `srv.Shutdown` 后 join（受 ShutdownTimeout 约束）；push.go：DeliveryLog 写错误不再吞、限流按收件人计、收件人循环查 `ctx.Err()`（含原 P2-push）（TC-16）。
+- [ ] p12-5 **P1** public client PoP：refresh 时校验设备绑定（`device_pubkey` 与 `grant.BoundDevicePubkey` 匹配，不符→`invalid_grant`）；mint 时 public client 的 `device_pubkey` 解码失败/缺失→`invalid_request`，不再静默签出无 `cnf.jkt` 的 bearer（TC-17）。
+- [ ] p12-6 **P1** 可信 IP 解析：新增 `OUROPASS_TRUSTED_PROXY`（默认 false）；默认只取 `RemoteAddr`，忽略原始 `X-Forwarded-For`；仅在显式信任代理时按最右非可信跳解析。admin 审计/登录与限流统一走该解析器（TC-18）。
+- [ ] p12-7 **P1** 幂等缓存加固：后台 TTL 清扫 goroutine；只缓存 2xx；key 加 `Method+Path` 前缀。消除无界增长 + 失败响应中毒 + 跨端点串响应（TC-19）。
+- [ ] p12-8 **P1/P0** 链身份修复：新增 bech32 stake-address 派生（CIP-19 reward addr，header `0xe0|networkId` + 28B credential），koios/node_lsq 查询前由 `sch`+network 转 stake 地址；`Snapshot` 加 `EpochsDelegated`/`AccountStatus`，`engine.satisfies` 对未知委托年龄/状态改 **fail-closed**（修原 min_active_epochs fail-open，并启用 `RequiredStatus`）；node_lsq `--testnet-magic` 缺值修正（TC-20）。
+- [ ] p12-9 **P2** verifier/admin 加固批：introspect 移除未鉴权裸 jti 路径（只认已验签 token 派生的 jti）；签发面 authorize/token/activation 挂 `publicLimit`；`RevokeChain` 补 `rows.Err()`；`OAuthClient.List` 包 `Rebind` + 上报解码错误；`requireStepUp` 加 nil 守卫；member-revoke / client-register 对齐 step-up（TC-21）。
+- [ ] p12-10 **P3 批** 低危整改：client_secret 用 `subtle.ConstantTimeCompare`；node_lsq rewards 用 string（弃 int64）；config 校验非空 `OUROPASS_POOL_ID`；admin cookie `Secure` 按 `OUROPASS_TLS` gate；telegram `GetUpdates` 传 `allowed_updates=["message"]` 并跳过 `From.ID==0`/空文本；4xx 已知哨兵映射固定文案、未知回退通用串；COSE `checkAlg` 有 protected 头时强制 EdDSA；db_sync 启动即失败；删死代码 `SignActivationToken`/`ActivationClaims`（TC-22）。
+
 ## 4. Test and Acceptance Criteria
 
 - TC-1 服务启动：`go build ./...` 通过；二进制启动后健康检查 200，四平面路由可达（404/401 符合预期），SIGTERM 优雅退出。
@@ -232,6 +244,18 @@ server/
 - 2026-06-23 p11-2 completed：全量 case-specific 替换（`POOLOPS`→`OUROPASS`、`poolops`→`ouropass`、`PoolOps`→`Ouro Pass`、`pao-issuer-`→`op-issuer-`、`pao_gold_v1`→`op_gold_v1`）over `server/**/*.go` + `docs/v1.0/*.md`；server/.gitignore 二进制名同步；两份设计文档跨引用文件名回退到真实文件名（文件名保留为标识符）。
 - 2026-06-23 p11-2 后续（应用户要求重命名设计文档文件，超出原 D12"文件名保留"）：`git mv docs/v1.0/{poolops→ouropass}-issuer-{overview,detailed-design}.md`，同步两文档内部跨引用 + 本 spec §References/§1 Background 的文件名路径（仅改文件名路径，不改产品名 prose；属移动文件的路径维护）。**spec 文件名 slug `…-poolops-issuer-backend` 仍保留为 immutable-spec 身份**（commit message 全程引用，不改）。
 - 2026-06-23 p11-2 | stack: go | command: `go build ./... && go vet ./... && go test ./...`（14 包） | result: pass | note: 代码内 `poolops/pao` 残留 0（含 env/路径/iss/kid/注释/测试断言全部同步，测试因断言同步而仍绿）；docs 残留 0；JWKS 路径=`/.well-known/ouropass/jwks.json`、iss=`ouropass:<pool_id>`、env=`OUROPASS_*`。全套 14 包绿。
+- 2026-06-23 p12-1 completed：nonce/授权码/激活码 Consume 的 UPDATE 加 `AND consumed_at IS NULL`，`RowsAffected()==0`→`domain.ErrConsumed`（写成为权威闸门）。
+- 2026-06-23 TC-13 | stack: go | command: `go test ./internal/store/...` | result: pass | note: `TestOneTimeConsume_CASGuard` 三表 guarded UPDATE 首次 affected=1、二次=0；既有 replay→ErrConsumed 全绿。真并发双兑换需 PG（OUROPASS_TEST_PG_DSN，D3 延后）。
+- TC-13 (p12-1) 一次性 Consume CAS：模拟“已消费”行后再 Consume → `ErrConsumed`；并发/重复 Consume 仅一次成功、其余 `ErrConsumed`；UPDATE 带 `consumed_at IS NULL` 守卫。
+- TC-14 (p12-2) refresh CAS+原子：`RotateIfActive` 对 active 行返回 1、对已 rotated 行返回 0；同一 grant 二次 rotate 不再双发；rotate+mint 同一事务（mint 失败则 grant 不被置 rotated）。
+- TC-15 (p12-3) reconciler 隔离：3 session 中第 1 个 Eligibility 报错 → 其余 2 个仍被处理，`Result.Failed=1`，epoch 推进。
+- TC-16 (p12-4) worker 生命周期：push worker 拾取 scheduled job 并投递；DeliveryLog 写错误被上报（非吞）；关停时 WaitGroup join 所有 worker。
+- TC-17 (p12-5) public PoP：public client refresh 时 device 不匹配→`invalid_grant`；mint 时坏 `device_pubkey`→`invalid_request`；合法 device→含 `cnf.jkt`。
+- TC-18 (p12-6) 可信 IP：默认（无 trusted proxy）忽略 `X-Forwarded-For`、取 `RemoteAddr` host；开启 trusted proxy 时取最右非可信跳。
+- TC-19 (p12-7) 幂等加固：500 响应不被缓存（可重试）；同 key 不同 method/path 不串响应；清扫 goroutine 释放过期项。
+- TC-20 (p12-8) 链身份：已知 `sch`+network → 期望 bech32 stake 地址（向量）；engine 对未知委托年龄且规则要求 `min_active_epochs`→ 不满足（fail-closed）；`RequiredStatus` 生效。
+- TC-21 (p12-9) verifier/admin 加固：未鉴权裸 jti introspect 不再返回 active 状态；authorize/token/activation 超频→429；`OAuthClient.List` 在 PG（Rebind）路径可用。
+- TC-22 (p12-10) 低危批：constant-time 比较替换；空 `OUROPASS_POOL_ID`→启动报错；telegram 非 message 更新被跳过；db_sync 启动即失败。
 - Pass/fail：每个 item 仅在其映射的 TC 全部 `pass` 且证据 append 后方可标 `[x]`。
 
 测试栈映射（验收证据用）：`stack: go`，命令以 `go test ./...`、`go build ./...` 为主，集成测试（真链/真 Telegram）单独打 build tag 标注。
@@ -306,6 +330,12 @@ server/
 - 2026-06-23 D1 **module 路径** = `github.com/poolops/issuer`（self-hosted，未发布到公共 registry；路径仅作 import 前缀）。【已被 D11 取代】
 - 2026-06-23 D11 **module 路径改名**（取代 D1）：→ `ouro-pass/server`，与真实后端名一致。不带 host 前缀——self-hosted、永不 `go get`、私有模块完全合法（与 D1"不发布到公共 registry"一致）。见 p11-1。
 - 2026-06-23 D12 **产品/协议命名统一为 Ouro Pass**（破坏性，用户确认）：env `OUROPASS_*`、JWKS/CRL 路径 `/.well-known/ouropass/*`、token `iss=ouropass:<pool_id>`、kid 前缀 `op-issuer-`、产品名 "Ouro Pass Issuer Service"。**破坏外部契约**：外部 verifier 拉的 JWKS/CRL 路径、已签发 token 的 `iss`、部署 env 变量名全变，需同步所有 consumer。**标识符保留**：本 spec 文件名 slug（`…-poolops-issuer-backend`）与设计文档文件名（`poolops-issuer-*.md`）作为**历史标识符不改**（同 spec 文件命名惯例），仅统一其内容/标题/协议标识；spec 正文 append-only 历史不改写。见 p11-2。
+- 2026-06-23 D13 **评审整改采用 fail-closed 默认**（p12-8）：资格判定遇“源无法提供的判据”（未知委托年龄、未知账户状态）时，从原 fail-open（跳过判据）改为 **fail-closed（判据不满足）**——安全默认优先于可用性。链适配器一旦提供真实 `EpochsDelegated`/`AccountStatus`，规则即正常生效。
+- 2026-06-23 D14 **链身份转换在适配器内完成**（p12-8）：`Source.Snapshot(ctx, sch)` 接口不变；koios/node_lsq 内部用 `sch`+network 派生 CIP-19 bech32 stake 地址再查询。新增 `chain` 内自实现 bech32（仅编码，~50 行，避免新增依赖；附已知向量单测）。
+- 2026-06-23 D15 **可信代理显式开启**（p12-6）：默认**不信任** `X-Forwarded-For`（self-hosted 默认无前置代理）；`OUROPASS_TRUSTED_PROXY=true` 时才解析 XFF 最右非可信跳。避免审计 IP 伪造/限流绕过的默认不安全。
+- 2026-06-23 D16 **introspect 收敛为 token-only**（p12-9）：移除未鉴权裸 `jti` 查询路径（RFC 7662 的 token-scanning 面）；introspect 仅接受完整 token、由验签后派生 jti。保留 verifier 平面“仅限流”的文档化开放语义（§2.3），但去掉裸 jti oracle。
+- 2026-06-23 D17 **cookie Secure 可配**（p12-10）：admin 会话 cookie `Secure` 默认 true、可由 `OUROPASS_TLS=false` 关闭以便本地 HTTP 自托管联调；生产保持 Secure。
+- 2026-06-23 D18 **激活走 D8 短码、删未用 JWT 路径**（p12-10）：确认激活实现采用 opaque 短码 + DB 一次性消费（原 D8），`jose.SignActivationToken`/`ActivationClaims` 为死代码删除；TC-9 文案以短码为准。
 - 2026-06-23 D2 **store 层偏离 sqlc**：环境未装 `sqlc`/`goose`/`migrate`，为保持 build 自包含、零外部 codegen 依赖，store 层改为**手写 `database/sql` repository + `embed` 迁移 SQL + 极简 migration runner**。架构不变（repository 接口边界、PG/SQLite 双栈保留）。§2.1 技术选型表中 sqlc/goose 一项以此决策为准。
 - 2026-06-23 D3 **DB 驱动与测试边界**：SQLite 用 `modernc.org/sqlite`（纯 Go、无 CGO），单元测试跑 SQLite（临时文件/内存）；PG 用 `jackc/pgx/v5`（stdlib `database/sql` 模式），PG 专项测试需 `POOLOPS_TEST_PG_DSN` 环境变量，未提供则 skip（标 integration）。TC-2 在本机以 SQLite 为主证，PG 路径以代码 + 可选 DSN 跑通为准。
 - 2026-06-23 D4 **CIP-30 COSE 验签自实现**：用 `fxamacker/cbor/v2` 解 COSE_Sign1 + 按 CIP-8 组 `Sig_structure` + `crypto/ed25519` 验签（不引入 go-cose，因 CIP-8 的 Sig_structure 组装本就需手控，自实现更直接可审计）。§2.1 中 go-cose 一项以此决策为准。

@@ -66,8 +66,17 @@ func (r *AuthNonceRepo) Consume(ctx context.Context, nonce string, purpose domai
 		if domain.NoncePurpose(p) != purpose {
 			return domain.ErrPurpose
 		}
-		if _, err := tx.ExecContext(ctx, r.s.Rebind(`UPDATE AuthNonce SET consumed_at = ? WHERE nonce = ?`), ts(now), nonce); err != nil {
+		// Compare-and-swap: the write is the authoritative gate, not the read
+		// above. Under PG READ COMMITTED two concurrent consumers can both pass
+		// the Go-side check; the `consumed_at IS NULL` guard lets only one win.
+		res, err := tx.ExecContext(ctx, r.s.Rebind(`UPDATE AuthNonce SET consumed_at = ? WHERE nonce = ? AND consumed_at IS NULL`), ts(now), nonce)
+		if err != nil {
 			return err
+		}
+		if n, err := res.RowsAffected(); err != nil {
+			return err
+		} else if n == 0 {
+			return domain.ErrConsumed
 		}
 		n.Purpose, n.BoundKeyHash, n.ExpiresAt = purpose, strPtr(boundKey), exp
 		if n.CreatedAt, err = parseTS(created); err != nil {

@@ -52,8 +52,15 @@ func (r *AuthCodeRepo) Consume(ctx context.Context, code string, now time.Time) 
 		if now.After(exp) {
 			return domain.ErrExpired
 		}
-		if _, err := tx.ExecContext(ctx, r.s.Rebind(`UPDATE AuthorizationCode SET consumed_at = ? WHERE code = ?`), ts(now), code); err != nil {
+		// Compare-and-swap so concurrent redemptions can't both succeed on PG.
+		res, err := tx.ExecContext(ctx, r.s.Rebind(`UPDATE AuthorizationCode SET consumed_at = ? WHERE code = ? AND consumed_at IS NULL`), ts(now), code)
+		if err != nil {
 			return err
+		}
+		if n, err := res.RowsAffected(); err != nil {
+			return err
+		} else if n == 0 {
+			return domain.ErrConsumed
 		}
 		c.CodeChallenge = strPtr(challenge)
 		c.ExpiresAt = exp
