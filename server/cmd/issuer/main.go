@@ -1,6 +1,6 @@
 // Command issuer is the PoolOps Issuer Service entrypoint: it loads config,
-// assembles the HTTP router, and serves until SIGINT/SIGTERM, then shuts down
-// gracefully within the configured grace period.
+// opens and migrates the database, assembles the HTTP router with its services,
+// and serves until SIGINT/SIGTERM, then shuts down gracefully.
 package main
 
 import (
@@ -11,10 +11,16 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/poolops/issuer/internal/config"
+	"github.com/poolops/issuer/internal/core/walletauth"
 	"github.com/poolops/issuer/internal/httpapi"
+	"github.com/poolops/issuer/internal/store"
 )
+
+// nonceTTL bounds wallet-signing nonce validity.
+const nonceTTL = 5 * time.Minute
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -32,13 +38,27 @@ func run() error {
 		return err
 	}
 
-	srv := &http.Server{
-		Addr:    cfg.Addr,
-		Handler: httpapi.NewRouter(httpapi.Deps{}),
+	ctx := context.Background()
+	st, err := store.Open(ctx, store.Driver(cfg.DBDriver), cfg.DBDSN)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	if err := st.Migrate(ctx); err != nil {
+		return err
+	}
+	slog.Info("database ready", "driver", cfg.DBDriver)
+
+	deps := httpapi.Deps{
+		Wallet: walletauth.New(st, nonceTTL),
 	}
 
-	// Trap signals; the first triggers graceful shutdown.
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	srv := &http.Server{
+		Addr:    cfg.Addr,
+		Handler: httpapi.NewRouter(deps),
+	}
+
+	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
 	errCh := make(chan error, 1)
@@ -52,7 +72,7 @@ func run() error {
 	select {
 	case err := <-errCh:
 		return err
-	case <-ctx.Done():
+	case <-sigCtx.Done():
 		slog.Info("shutdown signal received")
 	}
 

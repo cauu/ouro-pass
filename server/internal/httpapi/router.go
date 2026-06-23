@@ -10,41 +10,42 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/poolops/issuer/internal/core/walletauth"
 	appmw "github.com/poolops/issuer/internal/httpapi/middleware"
 	"github.com/poolops/issuer/internal/httpapi/respond"
 )
 
-// Deps carries the collaborators the handlers need. Fields are added as later
-// plan items wire in real implementations.
+// Deps carries the collaborators the handlers need; nil services degrade their
+// routes to 501 so the server still boots during incremental wiring.
 type Deps struct {
-	// reserved for stores, services, clock, etc.
+	Wallet *walletauth.Service
 }
 
-// NewRouter builds the full route tree with cross-cutting middleware. Handlers
-// not yet implemented respond 501; admin routes without a session respond 401.
-func NewRouter(_ Deps) http.Handler {
+type apiHandlers struct{ d Deps }
+
+// NewRouter builds the full route tree with cross-cutting middleware.
+func NewRouter(d Deps) http.Handler {
+	h := &apiHandlers{d}
+
 	r := chi.NewRouter()
-	// Global chain: request id → structured log → panic recovery.
 	r.Use(chimw.RequestID)
 	r.Use(appmw.RequestLogger)
 	r.Use(chimw.Recoverer)
 
-	// Per-IP rate limiters for the unauthenticated public/verifier planes.
 	publicLimit := appmw.NewIPRateLimiter(20, 40).Middleware
 	idem := appmw.NewIdempotency(10 * time.Minute).Middleware
 
-	// Liveness — unauthenticated, always cheap.
 	r.Get("/healthz", health)
 
-	// ---- Wallet primitive plane (no auth; rate-limited nonce issuance) ----
-	r.With(publicLimit).Post("/api/auth/challenge", notImplemented)
+	// ---- Wallet primitive plane ----
+	r.With(publicLimit).Post("/api/auth/challenge", h.authChallenge)
 
 	// ---- Issuance (OAuth) plane ----
 	r.Get("/connect", notImplemented)
 	r.Post("/api/connect/authorize", notImplemented)
-	r.With(idem).Post("/api/oauth/token", notImplemented) // idempotent create
+	r.With(idem).Post("/api/oauth/token", notImplemented)
 
-	// ---- Channel activation plane (wallet signature, idempotent create) ----
+	// ---- Channel activation plane ----
 	r.With(idem).Post("/api/activation/create", notImplemented)
 
 	// ---- Verifier plane (public, read-only, rate-limited) ----
@@ -55,12 +56,12 @@ func NewRouter(_ Deps) http.Handler {
 		r.Post("/api/oauth/revoke", notImplemented)
 	})
 
-	// ---- Admin plane (owner-key session + RBAC + step-up) ----
+	// ---- Admin plane ----
 	r.Route("/api/admin", func(r chi.Router) {
 		r.Post("/auth/challenge", notImplemented)
 		r.Post("/auth/verify", notImplemented)
 		r.Group(func(r chi.Router) {
-			r.Use(requireAdminSession) // stub gate until p8
+			r.Use(requireAdminSession)
 			r.Get("/audit", notImplemented)
 		})
 	})
@@ -77,8 +78,7 @@ func notImplemented(w http.ResponseWriter, _ *http.Request) {
 }
 
 // requireAdminSession is a placeholder gate replaced by the real session + RBAC
-// middleware in p8-1. Until then it denies access so the admin plane is
-// observably protected (TC-1).
+// middleware in p8-1.
 func requireAdminSession(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusUnauthorized, "unauthorized", "admin session required")

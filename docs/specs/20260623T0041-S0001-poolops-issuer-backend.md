@@ -166,7 +166,7 @@ server/
 - [x] p3-2 Rule engine（`core/rules`，纯函数实现，输入参数注入 + 稳定排序）：snapshot + rule_config → eligibility / tier / entitlements
 
 ### p4 — 钱包原语与签名密钥管理
-- [ ] p4-1 `POST /api/auth/challenge`（AuthNonce）+ COSE 验签接入 `stake_credential_hash` 映射
+- [x] p4-1 `POST /api/auth/challenge`（AuthNonce）+ COSE 验签接入 `stake_credential_hash` 映射
 - [ ] p4-2 issuer 签名密钥 生成/轮换（`core/keys`，JWKS overlap，owner step-up）
 - [ ] p4-3 Verifier 发布：`GET /.well-known/poolops/jwks.json`（仅签名公钥，无 CRL）
 
@@ -223,6 +223,7 @@ server/
 - 2026-06-23 p2-5 completed（phase p2 收尾）：`domain/admin`（PushJob/DeliveryLog/AdminUser/AdminSession/AuditLog + 枚举）；迁移 0006_push_admin；repo——PushJob CRUD+SetStatus、DeliveryLog Append/CountByStatus、AdminUser Upsert/GetByOwnerKeyHash/TouchLogin、AdminSession Create/GetValid(过期判定)/Delete、Audit Append/Recent。全部 16 实体落库。证据见 §6（TC-2）。
 - 2026-06-23 p3-1 completed：`utils/chain`——`Source` 接口 + `Snapshot` 类型（lovelace 字符串保大数）；实现 MockSource、KoiosSource(HTTP /account_info+/tip)、NodeLSQSource(cardano-cli，runner 可注入)、DBSyncSource(占位 ErrNotImplemented)；`NewSource` 工厂按 kind 选型。真实 node/db-sync/HTTP 走 integration（D5）。证据见 §6（p3-1）。
 - 2026-06-23 p3-2 completed：`core/rules`——`Evaluate(Input, ruleset, epoch) → Decision` **纯函数**（C10）：内部稳定排序(priority desc, rule_id asc)、big.Int 精确比较 min stake、min_active_epochs 净 grace、首个命中胜出；`InputFromSnapshot` 纯映射。无 IO/时钟/随机。证据见 §6（TC-5）。
+- 2026-06-23 p4-1 completed：`core/walletauth` Service（Challenge 发 nonce + Verify 验 COSE 签名并映射 stake_credential_hash=blake2b224(vkey)，clock 可注入）；接入 router `POST /api/auth/challenge`（public 限速）；main 改为开库+迁移+装配 Service。Verify 复用 p1-3 COSE 验签 + p2-3 AuthNonce 一次性消费。证据见 §6（p4-1）。
 
 ## 6. Validation Evidence (append-only)
 
@@ -239,6 +240,7 @@ server/
 - 2026-06-23 TC-2(p2-5) | stack: go | command: `go build ./... && go vet ./... && go test ./...` | result: pass | note: 0006 迁移应用；PushJob CRUD+SetStatus；DeliveryLog CountByStatus(2 sent/1 failed)；AdminUser/Session(valid→expired→deleted)/Audit Recent 全通过；整库 6 迁移、16 实体编译+测试绿
 - 2026-06-23 p3-1 | stack: go | command: `go test ./internal/utils/chain/...` | result: pass | note: Mock(known/unknown/epoch)；Koios 经 httptest 解析 /tip+/account_info（大数 lovelace 精确，未注册账户清空 pool）；node_lsq parseStakeAddressInfo/parseTip + 注入 runner 全流程；NewSource 工厂 4 类 + 未知报错 + db_sync ErrNotImplemented
 - 2026-06-23 TC-5 | stack: go | command: `go test ./internal/core/...` | result: pass | note: 资格评估覆盖 whale→gold/小额→silver/全不达标/委托他池/未委托/未知 stake；**纯函数验证**——50 次同输入 DeepEqual 一致、规则乱序仍 gold(prio 10) 胜出；min_active_epochs 净 grace（2 失败/3 通过/未知跳过）；disabled 规则忽略
+- 2026-06-23 p4-1 | stack: go | command: `go test ./internal/core/walletauth/... ./internal/httpapi/...` + 真二进制 curl | result: pass | note: Challenge→COSE 签名→Verify 返回正确 credential hash；重放 ErrConsumed、错绑定 key/篡改签名/错 purpose 均拒；handler 200+nonce、bogus purpose/坏 vkey/坏 JSON→400；真二进制开库迁移后 /api/auth/challenge 返回 nonce
 
 ## 7. Change Requests (append-only)
 
