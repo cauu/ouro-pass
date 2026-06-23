@@ -26,7 +26,7 @@ func TestRouter_PlaneReachability(t *testing.T) {
 		{http.MethodPost, "/api/oauth/token", http.StatusNotImplemented},
 		{http.MethodGet, "/.well-known/poolops/jwks.json", http.StatusNotImplemented},
 		{http.MethodPost, "/api/activation/create", http.StatusNotImplemented},
-		{http.MethodGet, "/api/admin/audit", http.StatusUnauthorized}, // gated
+		{http.MethodGet, "/api/admin/me", http.StatusNotImplemented}, // gated (no admin svc → 501)
 	}
 	for _, c := range cases {
 		req, _ := http.NewRequest(c.method, srv.URL+c.path, nil)

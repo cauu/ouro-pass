@@ -10,9 +10,11 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/poolops/issuer/internal/core/admin"
 	"github.com/poolops/issuer/internal/core/keys"
 	"github.com/poolops/issuer/internal/core/oauth"
 	"github.com/poolops/issuer/internal/core/walletauth"
+	"github.com/poolops/issuer/internal/domain"
 	appmw "github.com/poolops/issuer/internal/httpapi/middleware"
 	"github.com/poolops/issuer/internal/httpapi/respond"
 )
@@ -23,6 +25,7 @@ type Deps struct {
 	Wallet      *walletauth.Service
 	Keys        *keys.Service
 	OAuth       *oauth.Server
+	Admin       *admin.Service
 	TelegramBot string // bot username for activation deep links
 }
 
@@ -61,13 +64,15 @@ func NewRouter(d Deps) http.Handler {
 		r.Post("/api/oauth/revoke", h.revoke)
 	})
 
-	// ---- Admin plane ----
+	// ---- Admin plane (owner-key session + RBAC + step-up) ----
 	r.Route("/api/admin", func(r chi.Router) {
-		r.Post("/auth/challenge", notImplemented)
-		r.Post("/auth/verify", notImplemented)
+		r.Post("/auth/challenge", h.adminChallenge)
+		r.Post("/auth/verify", h.adminVerify)
 		r.Group(func(r chi.Router) {
-			r.Use(requireAdminSession)
-			r.Get("/audit", notImplemented)
+			r.Use(h.requireSession)
+			r.Post("/auth/logout", h.adminLogout)
+			r.With(h.requireRole(domain.RoleViewer)).Get("/me", h.adminMe)
+			h.mountAdminResources(r) // p8-2 resource endpoints
 		})
 	})
 
@@ -80,12 +85,4 @@ func health(w http.ResponseWriter, _ *http.Request) {
 
 func notImplemented(w http.ResponseWriter, _ *http.Request) {
 	respond.Error(w, http.StatusNotImplemented, "not_implemented", "endpoint not yet implemented")
-}
-
-// requireAdminSession is a placeholder gate replaced by the real session + RBAC
-// middleware in p8-1.
-func requireAdminSession(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		respond.Error(w, http.StatusUnauthorized, "unauthorized", "admin session required")
-	})
 }

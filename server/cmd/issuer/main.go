@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/poolops/issuer/internal/config"
+	"github.com/poolops/issuer/internal/core/admin"
 	"github.com/poolops/issuer/internal/core/keys"
 	"github.com/poolops/issuer/internal/core/oauth"
 	"github.com/poolops/issuer/internal/core/walletauth"
@@ -63,9 +64,13 @@ func run() error {
 	}
 	slog.Info("database ready", "driver", cfg.DBDriver)
 
+	walletSvc := walletauth.New(st, nonceTTL)
 	deps := httpapi.Deps{
-		Wallet:      walletauth.New(st, nonceTTL),
+		Wallet:      walletSvc,
 		TelegramBot: cfg.TelegramBot,
+		Admin: admin.New(admin.Config{
+			Wallet: walletSvc, Store: st, OwnerKeyHash: cfg.OwnerKeyHashes, PoolID: cfg.PoolID,
+		}),
 	}
 	// The signing-key service (and any 🔒-field handling) needs the field key.
 	// Without it the service still boots; key/JWKS routes degrade to 501.

@@ -42,6 +42,9 @@ type Config struct {
 	// Telegram
 	TelegramBot   string // bot username (for deep links)
 	TelegramToken string // bot API token (🔒, env only)
+
+	// Admin
+	OwnerKeyHashes []string // on-chain pool owner stake key hashes (D9)
 }
 
 // Default values for non-secret knobs.
@@ -73,6 +76,7 @@ func Load() (*Config, error) {
 		CardanoCLI:      env("POOLOPS_CARDANO_CLI", ""),
 		TelegramBot:     env("POOLOPS_TELEGRAM_BOT", ""),
 		TelegramToken:   env("POOLOPS_TELEGRAM_TOKEN", ""),
+		OwnerKeyHashes:  splitCSV(env("POOLOPS_OWNER_KEYS", "")),
 	}
 	c.Issuer = env("POOLOPS_ISSUER", "poolops:"+c.PoolID)
 
@@ -105,6 +109,21 @@ func (c *Config) validate() error {
 		return fmt.Errorf("POOLOPS_DB_DSN must not be empty")
 	}
 	return nil
+}
+
+// splitCSV splits a comma-separated env value into trimmed, non-empty entries.
+func splitCSV(s string) []string {
+	if strings.TrimSpace(s) == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if v := strings.TrimSpace(p); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 func env(key, def string) string {

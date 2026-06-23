@@ -127,6 +127,30 @@ func (r *AdminUserRepo) GetByOwnerKeyHash(ctx context.Context, ownerKeyHash stri
 	return &u, nil
 }
 
+// GetByID loads an admin by id (session → role lookup).
+func (r *AdminUserRepo) GetByID(ctx context.Context, adminID string) (*domain.AdminUser, error) {
+	var u domain.AdminUser
+	var role, created string
+	var lastLogin sql.NullString
+	err := r.s.DB.QueryRowContext(ctx, r.s.Rebind(`
+		SELECT admin_id, pool_id, owner_key_hash, role, last_login_at, created_at FROM AdminUser WHERE admin_id = ?`), adminID).
+		Scan(&u.AdminID, &u.PoolID, &u.OwnerKeyHash, &role, &lastLogin, &created)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	u.Role = domain.AdminRole(role)
+	if u.LastLoginAt, err = scanTS(lastLogin); err != nil {
+		return nil, err
+	}
+	if u.CreatedAt, err = parseTS(created); err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
 // TouchLogin stamps last_login_at.
 func (r *AdminUserRepo) TouchLogin(ctx context.Context, adminID string, at time.Time) error {
 	_, err := r.s.DB.ExecContext(ctx, r.s.Rebind(`UPDATE AdminUser SET last_login_at = ? WHERE admin_id = ?`), ts(at), adminID)
