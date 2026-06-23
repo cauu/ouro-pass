@@ -9,6 +9,8 @@ package store
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"os"
 	"sync"
 	"sync/atomic"
@@ -21,6 +23,14 @@ import (
 
 	"ouro-pass/server/internal/domain"
 )
+
+// uk returns a per-run unique key so the suite is re-runnable against a
+// persistent PG (OUROPASS_TEST_PG_DSN) without primary-key collisions.
+func uk(prefix string) string {
+	b := make([]byte, 6)
+	rand.Read(b)
+	return prefix + hex.EncodeToString(b)
+}
 
 // pgStore returns a migrated store backed by PostgreSQL: an existing instance
 // via OUROPASS_TEST_PG_DSN, or an ephemeral testcontainers Postgres otherwise.
@@ -83,13 +93,14 @@ func TestPG_ConcurrentConsume_NonceExactlyOnce(t *testing.T) {
 	st := pgStore(t)
 	ctx := context.Background()
 	now := time.Now()
+	nk := uk("race-n")
 	if err := st.AuthNonces().Create(ctx, domain.AuthNonce{
-		Nonce: "race-n", Purpose: domain.NonceIssue, ExpiresAt: now.Add(time.Minute), CreatedAt: now,
+		Nonce: nk, Purpose: domain.NonceIssue, ExpiresAt: now.Add(time.Minute), CreatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	won := raceN(racers, func() error {
-		_, err := st.AuthNonces().Consume(ctx, "race-n", domain.NonceIssue, now)
+		_, err := st.AuthNonces().Consume(ctx, nk, domain.NonceIssue, now)
 		return err
 	})
 	if won != 1 {
@@ -101,14 +112,15 @@ func TestPG_ConcurrentConsume_AuthCodeExactlyOnce(t *testing.T) {
 	st := pgStore(t)
 	ctx := context.Background()
 	now := time.Now()
+	ck := uk("race-c")
 	if err := st.AuthCodes().Create(ctx, domain.AuthorizationCode{
-		Code: "race-c", ClientID: "c1", StakeCredentialHash: "h1", Aud: "app",
+		Code: ck, ClientID: "c1", StakeCredentialHash: "h1", Aud: "app",
 		RedirectURI: "https://cb", ExpiresAt: now.Add(time.Minute), CreatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	won := raceN(racers, func() error {
-		_, err := st.AuthCodes().Consume(ctx, "race-c", now)
+		_, err := st.AuthCodes().Consume(ctx, ck, now)
 		return err
 	})
 	if won != 1 {
@@ -120,14 +132,15 @@ func TestPG_ConcurrentConsume_ActivationExactlyOnce(t *testing.T) {
 	st := pgStore(t)
 	ctx := context.Background()
 	now := time.Now()
+	ak := uk("race-a")
 	if err := st.ActivationCodes().Create(ctx, domain.ActivationCode{
-		Code: "race-a", StakeCredentialHash: "h1", ChannelType: "telegram",
+		Code: ak, StakeCredentialHash: "h1", ChannelType: "telegram",
 		Status: domain.ActivationActive, ExpiresAt: now.Add(time.Minute), CreatedAt: now,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	won := raceN(racers, func() error {
-		_, err := st.ActivationCodes().Consume(ctx, "race-a", "telegram", now)
+		_, err := st.ActivationCodes().Consume(ctx, ak, "telegram", now)
 		return err
 	})
 	if won != 1 {
@@ -138,15 +151,16 @@ func TestPG_ConcurrentConsume_ActivationExactlyOnce(t *testing.T) {
 func TestPG_ConcurrentRefreshRotate_ExactlyOnce(t *testing.T) {
 	st := pgStore(t)
 	ctx := context.Background()
+	gk := uk("race-g")
 	if err := st.RefreshGrants().Create(ctx, nil, domain.RefreshGrant{
-		RefreshGrantID: "race-g", StakeCredentialHash: "h1", Audience: "app",
+		RefreshGrantID: gk, StakeCredentialHash: "h1", Audience: "app",
 		ClientType: domain.ClientPublic, Status: domain.GrantActive, CreatedAt: time.Now(),
 	}); err != nil {
 		t.Fatal(err)
 	}
 	var won int64
 	_ = raceN(racers, func() error {
-		ok, err := st.RefreshGrants().RotateIfActive(ctx, nil, "race-g")
+		ok, err := st.RefreshGrants().RotateIfActive(ctx, nil, gk)
 		if err == nil && ok {
 			atomic.AddInt64(&won, 1)
 		}
@@ -164,19 +178,31 @@ func TestPG_DialectRoundTrip(t *testing.T) {
 	st := pgStore(t)
 	ctx := context.Background()
 	now := time.Now().UTC().Truncate(time.Millisecond)
+	cid := uk("pg-c")
 	if err := st.OAuthClients().Upsert(ctx, domain.OAuthClient{
-		ClientID: "pg-c", Name: "PG", ClientType: domain.ClientConfidential, Party: domain.FirstParty,
+		ClientID: cid, Name: "PG", ClientType: domain.ClientConfidential, Party: domain.FirstParty,
 		RedirectURIs: []string{"https://a/cb", "https://b/cb"}, AllowedAudiences: []string{"app:ouro"},
 		AllowedScopes: []string{"read", "push"}, PKCERequired: true, Status: "active", CreatedAt: now,
 	}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
-	got, err := st.OAuthClients().Get(ctx, "pg-c")
+	got, err := st.OAuthClients().Get(ctx, cid)
 	if err != nil || len(got.RedirectURIs) != 2 || len(got.AllowedScopes) != 2 || !got.PKCERequired {
 		t.Fatalf("roundtrip mismatch: %+v err=%v", got, err)
 	}
+	// List must succeed on PG (Rebind path) and include our client (don't assume
+	// an empty DB — OUROPASS_TEST_PG_DSN may point at a shared instance).
 	list, err := st.OAuthClients().List(ctx)
-	if err != nil || len(list) != 1 {
-		t.Fatalf("list on pg: %v (n=%d)", err, len(list))
+	if err != nil {
+		t.Fatalf("list on pg: %v", err)
+	}
+	var found bool
+	for _, c := range list {
+		if c.ClientID == cid {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("list did not include %s (n=%d)", cid, len(list))
 	}
 }

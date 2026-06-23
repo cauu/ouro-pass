@@ -218,7 +218,7 @@ server/
 ### p13 — 测试补全（单元 + e2e + PG 集成；用户要求）
 - [x] p13-1 Tier-1 单元补齐：`config.validate` table test（network/driver/dsn/poolid 非法各报错）；`cmd/issuer` 可测化——抽 `buildDeps(cfg,st)`/worker 装配，测 worker 生命周期 + 优雅关停 join；补 store/httpapi 负向路径，httpapi 覆盖率上抬（TC-23）。
 - [x] p13-2 Tier-1 端到端（新 `internal/e2e` 包，驱动完整 `NewRouter`/httptest，SQLite + mock chain + 内存 telegram transport，零外部依赖）：① confidential 授权码全生命周期（challenge→/connect→authorize→token→introspect→refresh→revoke）；② public PKCE+device-PoP（cnf.jkt + refresh 需设备）；③ 不合格/blacklist + admin revoke 级联；④ 激活→mock bot `/start`→SubscriptionSession + push job→mock sender→DeliveryLog；⑤ reconciliation 降级；⑥ 密钥轮换 JWKS overlap（TC-24）。
-- [~] p13-3 Tier-2 PG 集成（`//go:build integration`，testcontainers-go 拉临时 PG，D23）：① 全量 store 仓库在 PG 上跑通（方言：`?`→`$n`、TEXT/JSON 往返、时间格式）；② **并发 CAS 真验证**——N goroutine 并发兑换同一 nonce/授权码/激活码恰好一次成功（P0 修复，SQLite 串行掩盖、唯 PG 可证）；③ 并发 refresh 仅一路成功（p12-2）。需 Docker daemon 运行；缺 Docker/`-tags integration` 时跳过（TC-25）。
+- [x] p13-3 Tier-2 PG 集成（`//go:build integration`，testcontainers-go 拉临时 PG，D23）：① 全量 store 仓库在 PG 上跑通（方言：`?`→`$n`、TEXT/JSON 往返、时间格式）；② **并发 CAS 真验证**——N goroutine 并发兑换同一 nonce/授权码/激活码恰好一次成功（P0 修复，SQLite 串行掩盖、唯 PG 可证）；③ 并发 refresh 仅一路成功（p12-2）。需 Docker daemon 运行；缺 Docker/`-tags integration` 时跳过（TC-25）。
 
 ## 4. Test and Acceptance Criteria
 
@@ -282,6 +282,8 @@ server/
 - 2026-06-23 TC-24 | stack: go | command: `go test ./internal/e2e/` | result: pass | note: 5 个 e2e 测试函数全绿（0.5s）；走完整路由+中间件+真 OAuth/admin/keys/walletauth 逻辑，SQLite+mock chain+内存 sender，零外部依赖。
 - 2026-06-23 p13-3 awaiting execution（实现完成、编译已验、待 Docker 运行）：`internal/store/pg_integration_test.go`（`//go:build integration`）——testcontainers-go 拉临时 PG（或 `OUROPASS_TEST_PG_DSN` 指向现成 PG）；测 N=24 goroutine 并发兑换同一 nonce/authcode/activation 恰好一次 + 并发 RotateIfActive 恰好一次 + OAuthClient PG 方言往返。依赖 `testcontainers-go@v0.35.0` 为 **test-only**：默认 `go build ./...` 绿、`go list -deps ./cmd/issuer | grep testcontainers`=**0**（生产二进制不含）。
 - 2026-06-23 TC-25 | stack: go | command: `go vet -tags integration ./internal/store/`（编译验证）+ 默认 `go build ./... && go test ./...` | result: partial | note: 集成测试**编译通过**、默认构建/16 包测试不受影响、生产二进制零 testcontainers 依赖；**并发断言尚未执行**（本机 Docker daemon 未运行）。待 Docker 起后 `go test -tags integration ./internal/store/...` 跑通即补 result:pass、标 p13-3 `[x]`。
+- 2026-06-23 p13-3 completed：用户提供本地 PG（127.0.0.1:5432，postgres/password）；先 pgx 连通+ping 通过。把固定行键改为 per-run 唯一（`uk(prefix)`+`crypto/rand`），dialect 断言改为"List 含本 client"而非 len==1，**对持久 PG 可重复运行**。testcontainers 路径（拉 `postgres:16-alpine` 临时容器）同样验证过一轮（5/5 绿，63s 含容器启动）。
+- 2026-06-23 TC-25 | stack: go | command: `OUROPASS_TEST_PG_DSN=postgres://postgres:password@127.0.0.1:5432/postgres?sslmode=disable go test -tags integration -count=1 ./internal/store/ -run TestPG_` | result: **pass** | note: 真 PG 上 5/5 绿、连跑两遍仍绿（可重复）：N=24 goroutine 并发兑换同一 nonce/authcode/activation **恰好 1 次**赢、并发 `RotateIfActive` 恰好 1 次、OAuthClient 方言往返（`?`→`$n`/TEXT-JSON/时间）通过。**P0 双花修复 + p12-2 轮换在真实 PG 并发下得证**（SQLite 串行掩盖、唯 PG 可证，TC-2 双栈闭环）。另：testcontainers 路径独立验证 5/5 绿。
 - TC-13 (p12-1) 一次性 Consume CAS：模拟“已消费”行后再 Consume → `ErrConsumed`；并发/重复 Consume 仅一次成功、其余 `ErrConsumed`；UPDATE 带 `consumed_at IS NULL` 守卫。
 - TC-14 (p12-2) refresh CAS+原子：`RotateIfActive` 对 active 行返回 1、对已 rotated 行返回 0；同一 grant 二次 rotate 不再双发；rotate+mint 同一事务（mint 失败则 grant 不被置 rotated）。
 - TC-15 (p12-3) reconciler 隔离：3 session 中第 1 个 Eligibility 报错 → 其余 2 个仍被处理，`Result.Failed=1`，epoch 推进。
