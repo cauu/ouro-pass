@@ -87,6 +87,57 @@ func TestReconcile_DowngradeExpireKeep(t *testing.T) {
 	}
 }
 
+// faultyElig errors for credentials in failFor; otherwise defers to verdicts.
+type faultyElig struct {
+	verdicts map[string]rules.Decision
+	failFor  map[string]bool
+}
+
+func (f faultyElig) Eligibility(_ context.Context, sch string) (bool, rules.Decision, error) {
+	if f.failFor[sch] {
+		return false, rules.Decision{}, context.DeadlineExceeded // simulate a transient chain error
+	}
+	d := f.verdicts[sch]
+	return d.Eligible, d, nil
+}
+
+// TestReconcile_FaultIsolation verifies p12-3: one credential's eligibility
+// error is isolated (logged, counted) and the remaining sessions are still
+// reconciled, instead of the whole pass aborting on the first error.
+func TestReconcile_FaultIsolation(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	seed(t, st, "bad", "sch-bad", "gold")   // eligibility errors
+	seed(t, st, "gone", "sch-gone", "gold") // ineligible → expired
+	seed(t, st, "keep", "sch-keep", "gold") // stays gold
+
+	elig := faultyElig{
+		verdicts: map[string]rules.Decision{
+			"sch-keep": {Eligible: true, Tier: "gold", Entitlements: []string{"read"}},
+			// sch-gone absent → ineligible
+		},
+		failFor: map[string]bool{"sch-bad": true},
+	}
+	rec := New(st, elig, chain.NewMockSource(481), "pool1")
+
+	res, err := rec.Reconcile(ctx)
+	if err != nil {
+		t.Fatalf("whole pass must not error on a single bad session: %v", err)
+	}
+	if res.Checked != 3 || res.Failed != 1 || res.Expired != 1 || res.Unchanged != 1 {
+		t.Fatalf("result = %+v, want Checked3/Failed1/Expired1/Unchanged1", res)
+	}
+	// The failing session is untouched (still active); the others applied.
+	bad, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-bad")
+	if bad.Status != domain.SubActive {
+		t.Errorf("bad session should be left active, got %s", bad.Status)
+	}
+	gone, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-gone")
+	if gone.Status != domain.SubExpired {
+		t.Errorf("gone session not expired despite earlier failure: %s", gone.Status)
+	}
+}
+
 func TestReconcile_EmptyIsNoop(t *testing.T) {
 	st := newStore(t)
 	rec := New(st, programmableElig{verdicts: map[string]rules.Decision{}}, chain.NewMockSource(1), "pool1")

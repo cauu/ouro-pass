@@ -37,15 +37,19 @@ func New(st *store.Store, elig Eligibilizer, source chain.Source, poolID string)
 
 // Result summarizes a reconciliation pass.
 type Result struct {
-	Checked     int
-	Downgraded  int
-	Expired     int
-	Unchanged   int
+	Checked    int
+	Downgraded int
+	Expired    int
+	Unchanged  int
+	Failed     int // per-session errors that were isolated (logged, skipped)
 }
 
 // Reconcile re-evaluates every active session once: ineligible → expired;
 // tier change → downgrade/upgrade with refreshed entitlements; otherwise the
-// verification timestamp is refreshed.
+// verification timestamp is refreshed. A per-session error (transient chain
+// query or store write) is fault-isolated — logged, counted, and skipped — so
+// one bad credential never blocks revocation/downgrade for the rest of the pool
+// (p12-3). Only a whole-pass failure (listing active sessions) returns an error.
 func (r *Reconciler) Reconcile(ctx context.Context) (Result, error) {
 	sessions, err := r.subs.ListActive(ctx, r.poolID)
 	if err != nil {
@@ -56,11 +60,16 @@ func (r *Reconciler) Reconcile(ctx context.Context) (Result, error) {
 		res.Checked++
 		eligible, decision, err := r.elig.Eligibility(ctx, sess.StakeCredentialHash)
 		if err != nil {
-			return res, err
+			slog.Warn("reconciliation: eligibility failed, skipping session",
+				"session", sess.SessionID, "err", err)
+			res.Failed++
+			continue
 		}
 		if !eligible {
 			if err := r.subs.SetStatus(ctx, sess.SessionID, domain.SubExpired); err != nil {
-				return res, err
+				slog.Warn("reconciliation: expire failed, skipping session", "session", sess.SessionID, "err", err)
+				res.Failed++
+				continue
 			}
 			res.Expired++
 			continue
@@ -72,14 +81,18 @@ func (r *Reconciler) Reconcile(ctx context.Context) (Result, error) {
 			sess.Topics = decision.Entitlements
 			sess.LastVerifiedAt = now
 			if err := r.subs.Upsert(ctx, sess); err != nil {
-				return res, err
+				slog.Warn("reconciliation: downgrade failed, skipping session", "session", sess.SessionID, "err", err)
+				res.Failed++
+				continue
 			}
 			res.Downgraded++
 			continue
 		}
 		sess.LastVerifiedAt = now
 		if err := r.subs.Upsert(ctx, sess); err != nil {
-			return res, err
+			slog.Warn("reconciliation: touch failed, skipping session", "session", sess.SessionID, "err", err)
+			res.Failed++
+			continue
 		}
 		res.Unchanged++
 	}
@@ -100,11 +113,15 @@ func (r *Reconciler) Run(ctx context.Context, pollInterval time.Duration) {
 			slog.Warn("reconciliation: epoch query failed", "err", err)
 		} else if epoch > lastEpoch {
 			if res, err := r.Reconcile(ctx); err != nil {
+				// Whole-pass failure (couldn't list sessions): do not advance the
+				// cursor, retry next poll. Per-session failures are isolated inside
+				// Reconcile and do NOT block the epoch advancing.
 				slog.Warn("reconciliation failed", "err", err)
 			} else {
 				lastEpoch = epoch
 				slog.Info("reconciliation complete", "epoch", epoch,
-					"checked", res.Checked, "downgraded", res.Downgraded, "expired", res.Expired)
+					"checked", res.Checked, "downgraded", res.Downgraded,
+					"expired", res.Expired, "failed", res.Failed)
 			}
 		}
 		if !sleep(ctx, pollInterval) {
