@@ -181,7 +181,7 @@ server/
 - [x] p6-2 Telegram transport：long-poll worker（+ webhook 占位）+ 命令 `/start|/activate|/status|/unsubscribe|/help` → SubscriptionSession
 
 ### p7 — 推送与调度 worker
-- [ ] p7-1 推送任务 CRUD（PushJob）+ Push Scheduler（限速 sendMessage + 退避重试 + DeliveryLog）
+- [x] p7-1 推送任务 CRUD（PushJob）+ Push Scheduler（限速 sendMessage + 退避重试 + DeliveryLog）
 - [ ] p7-2 Reconciliation Job：每 epoch 重算资格、维护/降级/失效 SubscriptionSession
 
 ### p8 — Admin 平面
@@ -200,6 +200,7 @@ server/
 - TC-8 签名密钥轮换/吊销：`/api/keys/issuer/rotate` 生成新 kid → JWKS overlap 新旧 kid；`/api/oauth/revoke` 后 introspect 反映 token 吊销。
 - TC-9 渠道激活 + Telegram：`/api/activation/create` 返回 activation token + deep link；bot `/start <code>` 建 SubscriptionSession 且标记 jti 已消费（零查链）；`/status`、`/unsubscribe` 按 from.id 生效。
 - TC-10 推送：建 PushJob → Scheduler 按 tier/topic/entitlement 过滤 active session → sendMessage 限速 + 退避 + DeliveryLog 记录。
+  - 2026-06-23 TC-10 | stack: go | command: `go test ./internal/worker/push/...` | result: pass | note: tier=gold 仅 2 金会员收到、银会员跳过；vip 权益+alerts 主题组合过滤仅 1 命中；失败 2 次后第 3 次成功(退避重试)；持续失败耗尽重试→DeliveryLog failed + job→failed；成功路径 job→done、DeliveryLog sent 计数正确
 - TC-11 Reconciliation：epoch 边界重算，掉级会员的 session 自动降级/失效。
 - TC-12 Admin：owner-key 签名登录下发 session；RBAC 拒绝越权；敏感操作缺 step-up 被拒；操作写 AuditLog。
 - Pass/fail：每个 item 仅在其映射的 TC 全部 `pass` 且证据 append 后方可标 `[x]`。
@@ -232,6 +233,7 @@ server/
 - 2026-06-23 p5-4 completed（phase p5 收尾）：`Introspect`(token→JWKS 验签+ledger 交叉校验 / 裸 jti→ledger，失活/撤销/未知→inactive) + `Revoke`(JWS→jti 撤 IssuedToken / opaque→撤 RefreshGrant，RFC 7009 幂等)；`jose.JTIUnverified`(ParseInsecure 取 jti 供撤销)。handler `POST /api/oauth/{introspect,revoke}`(JSON/form 单次解析)。证据见 §6（TC-8 introspect 侧）。
 - 2026-06-23 p6-1 completed：`Server.CreateActivation`(验 activation nonce→评估资格→发短码存 ActivationCode 哈希行+Telegram deep link，D8)；`Server.Eligibility` 导出供 bot 重评；config 加 TelegramBot/Token，Deps 加 TelegramBot；handler `POST /api/activation/create`。证据见 §6（TC-9 部分）。
 - 2026-06-23 p6-2 completed（phase p6 收尾）：`worker/telegram`——`Processor`(命令文法 /start|/activate|/status|/unsubscribe|/help：消费 ActivationCode→重评资格→建 SubscriptionSession 绑 from.id)、`Worker.Run`(long-poll 循环 + 优雅退出)、`BotAPITransport`(Telegram getUpdates/sendMessage HTTP，真集成走 D5)。main 在 TelegramToken 存在时起 worker goroutine。Transport 接口化、命令逻辑用 mock 单测。证据见 §6（TC-9）。
+- 2026-06-23 p7-1 completed：`store` 加 Subscriptions.ListActiveByChannel；`worker/push.Scheduler`——按 tier/topic/entitlement 三选一可组合过滤匹配 session，经 `Sender` 接口 rate.Limiter 限速(~30/s)+指数退避重试发送，每接收者写 DeliveryLog，job 状态 running→done/failed。Sender 接口化、用 mock 单测。证据见 §6（TC-10）。
 
 ## 6. Validation Evidence (append-only)
 

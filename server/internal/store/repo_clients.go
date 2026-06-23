@@ -143,6 +143,27 @@ func (r *SubscriptionRepo) GetByChannelUser(ctx context.Context, poolID, channel
 		` WHERE pool_id = ? AND channel_type = ? AND channel_user_id = ?`), poolID, channelType, channelUserID))
 }
 
+// ListActiveByChannel returns all active sessions for a pool's channel (the
+// push-scheduler candidate set; tier/topic/entitlement filtering is applied by
+// the scheduler in code over the JSON array columns).
+func (r *SubscriptionRepo) ListActiveByChannel(ctx context.Context, poolID, channelType string) ([]domain.SubscriptionSession, error) {
+	rows, err := r.s.DB.QueryContext(ctx, r.s.Rebind(subscriptionCols+
+		` WHERE pool_id = ? AND channel_type = ? AND status = ?`), poolID, channelType, string(domain.SubActive))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.SubscriptionSession
+	for rows.Next() {
+		x, err := scanSubscription(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *x)
+	}
+	return out, rows.Err()
+}
+
 // SetStatus transitions a session's status (downgrade/cancel/expire).
 func (r *SubscriptionRepo) SetStatus(ctx context.Context, sessionID string, status domain.SubscriptionStatus) error {
 	_, err := r.s.DB.ExecContext(ctx, r.s.Rebind(`UPDATE SubscriptionSession SET status = ? WHERE session_id = ?`),
