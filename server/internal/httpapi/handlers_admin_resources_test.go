@@ -83,6 +83,43 @@ func TestAdminRBAC_Matrix(t *testing.T) {
 	}
 }
 
+func TestAdminRevokeMember_BlacklistAndCascade(t *testing.T) {
+	srv, client, _, _, st := adminResourceEnv(t, domain.RoleOperator)
+	ctx := context.Background()
+	const sch = "sch-deadbeef"
+
+	// Seed an active token + grant + session for the member.
+	st.IssuedTokens().Create(ctx, nil, domain.IssuedToken{
+		JTI: "jti1", StakeCredentialHash: sch, Kind: domain.TokenAccess, Audience: "app",
+		KID: "k1", Status: domain.TokenActive, IssuedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour),
+	})
+	st.RefreshGrants().Create(ctx, nil, domain.RefreshGrant{
+		RefreshGrantID: "g1", StakeCredentialHash: sch, Audience: "app",
+		ClientType: domain.ClientPublic, Status: domain.GrantActive, CreatedAt: time.Now(),
+	})
+	st.Subscriptions().Upsert(ctx, domain.SubscriptionSession{
+		SessionID: "s1", PoolID: "pool1", StakeCredentialHash: sch, ChannelType: "telegram",
+		ChannelUserID: "u1", Status: domain.SubActive, Tier: "gold",
+		CreatedAt: time.Now(), LastVerifiedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour),
+	})
+
+	if code := postCode(t, client, srv.URL+"/api/admin/members/"+sch+"/revoke", ``); code != 200 {
+		t.Fatalf("revoke = %d, want 200", code)
+	}
+
+	// Blacklisted by the same key evaluate() checks (D1 fix).
+	if has, _ := st.Blacklist().Has(ctx, sch); !has {
+		t.Fatal("member not blacklisted by sch")
+	}
+	// Cascade revoke happened (D2 fix).
+	tok, _ := st.IssuedTokens().Get(ctx, "jti1")
+	g, _ := st.RefreshGrants().Get(ctx, "g1")
+	sub, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u1")
+	if tok.Status != domain.TokenRevoked || g.Status != domain.GrantRevoked || sub.Status != domain.SubCancelled {
+		t.Fatalf("cascade incomplete: token=%s grant=%s sub=%s", tok.Status, g.Status, sub.Status)
+	}
+}
+
 func TestAdminOperator_RulesAndPush(t *testing.T) {
 	srv, client, _, _, st := adminResourceEnv(t, domain.RoleOperator)
 	// Upsert a rule.

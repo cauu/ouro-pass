@@ -192,6 +192,9 @@ server/
 - [x] p9-1 `domain/` 按实体拆分：一实体一文件（共享哨兵错误归 `errors.go`，跨实体枚举归其主属实体文件），文件树即实体清单。纯移动、零逻辑改动。
 - [x] p9-2 `store/` 按实体拆分：每个 `XxxRepo`（含其专属 cols 常量/scan 函数）一文件；共享 `rowScanner` 移入 `scan.go`。纯移动、零逻辑改动。
 
+### p10 — 正确性修复（走查发现）
+- [x] p10-1 修复 admin revoke-member：改为按 **`stake_credential_hash`(sch)** 寻址（非 sub），Blacklist 写 sch（与 `evaluate` 查询一致，修 D1）+ 级联撤销其 IssuedToken/RefreshGrant/SubscriptionSession（满足 §9.8，修 D2）；admin 名册改显 sch；文档 §9.8/overview 端点与名册口径对齐 sch（修 D3）；顺带补 D4（AuthNonce.purpose 文档对齐 §9.3）、D5（Blacklist 进 §1 实体总览）。
+
 ## 4. Test and Acceptance Criteria
 
 - TC-1 服务启动：`go build ./...` 通过；二进制启动后健康检查 200，四平面路由可达（404/401 符合预期），SIGTERM 优雅退出。
@@ -213,6 +216,7 @@ server/
 - 2026-06-23 全量 | stack: go | command: `go vet ./... && go test ./...`（14 包）+ 真二进制全配置 smoke | result: pass | note: 全部包测试绿；真二进制开库迁移+JWKS(OAuth on 空集)+reconciliation worker 启动+admin /me 401+challenge 200，SIGTERM 优雅退出 exit 0
 - 2026-06-23 p9-1 | stack: go | command: `go build ./... && go test ./...` | result: pass | note: domain 拆为一实体一文件（18 实体 + doc.go + errors.go）后全部包编译+测试绿；零逻辑改动
 - 2026-06-23 p9-2 | stack: go | command: `go build ./... && go vet ./... && go test ./...`（14 包） | result: pass | note: store 拆为 18 个 repo_<entity>.go + scan.go 后全部编译/vet/测试绿；AdminUserRepo 抽 scanAdmin 去重行为等价；测试文件保持按组
+- 2026-06-23 p10-1 | stack: go | command: `go vet ./... && go test ./internal/store/... ./internal/httpapi/...` | result: pass | note: 新增 IssuedToken/RefreshGrant.RevokeByStakeCredential、Subscription.CancelByStakeCredential（仅影响目标 sch 的 active 行、不波及他人、幂等 0 行）；handler revoke-by-sch 写 Blacklist[sch] + 级联撤销 token/grant/session 并验证状态；现有 TestAuthorize_BlacklistedRejected 已覆盖"blacklist[sch]→evaluate 拒绝"闭环。文档 §1/§3.2/§4.5/§9.8 + overview 对齐 sch（docs/v1.0 本地未入库）
 - Pass/fail：每个 item 仅在其映射的 TC 全部 `pass` 且证据 append 后方可标 `[x]`。
 
 测试栈映射（验收证据用）：`stack: go`，命令以 `go test ./...`、`go build ./...` 为主，集成测试（真链/真 Telegram）单独打 build tag 标注。
@@ -292,4 +296,5 @@ server/
 - 2026-06-23 D6 **MVP 用可移植列类型**：为让 PG/SQLite 双栈 repository 完全同构，`array`/`json` 列在两栈统一用 `TEXT`(JSON)，时间统一用 `TEXT`(RFC3339Nano)，lovelace 用 `TEXT`(math/big 解析)，二进制用 `BYTEA`(PG)/`BLOB`(SQLite)。详细设计 §0 的 PG `jsonb`/`timestamptz`/`numeric(20)` 作为后续优化迁移（post-MVP），不影响实体语义。
 - 2026-06-23 D7 **public client PoP：PKCE 强制、DPoP 简化**：token 端点对 public client 强制 PKCE(S256) 校验；sender-constrained PoP 的 `cnf.jkt` 用请求携带的 `device_pubkey` 的 SHA-256 thumbprint 近似设置；完整 RFC 9449 DPoP proof 头校验（jws over htu/htm/nonce）留作后续/integration。confidential client 用 client_secret(SHA-256 比对) 充当 holder-of-key，完整实现。
 - 2026-06-23 D8 **渠道激活用一次性短码（非签名 JWT 变体）**：Telegram deep-link `start` 参数限 64 字符，签名 JWT 放不下；故 MVP 用短随机码作 `start` 参数 + `ActivationCode` 行（存码哈希、sch、channel、一次性/短效），与详细设计 §4.4「退化为已消费记录」一致。`ActivationCode` 不带 tier/entitlements 列，故兑换时由 bot 重评一次资格（§9.7）——把「兑换零查链」放宽为「绑定时一次查链」（低频操作可接受）；带已解析权益的自包含 JWT 变体留作 post-MVP。`jose.SignActivationToken` 已就绪备用。
+- 2026-06-23 D10 **Admin 成员平面按 sch 寻址（非 sub）**：走查发现 revoke 把 `sub` 写进 Blacklist 而 `evaluate` 按 `sch` 查，二者经 HMAC 不可逆永不相等→拉黑失效（D1）。决策：admin 名册/撤销统一用 `stake_credential_hash`（sch），不用伪匿名 `sub`。理由：sch = `blake2b224(stake_vkey)` 本就是**链上公开派生值**，SPO admin 可自行查链，对受信 admin 暴露 sch 无隐私损失；伪匿名 `sub` 仅服务**外部 token 消费方**（token `sub` claim 不变）。同时所有 durable 行都按 sch 键，故 revoke 可级联撤销 token/grant/session（D2）。文档 §9.8/overview 的 `/members/:sub` 与"按 sub 名册"改为 sch。
 - 2026-06-23 D9 **链上 pool owner 列表用配置 allowlist 近似**：详细设计 §8.1/C9 要求 admin `owner` 角色对照链上 pool 注册 owner 列表校验；`chain.Source` 接口尚无 PoolOwners 查询，故 MVP 用配置项 `POOLOPS_OWNER_KEYS`(逗号分隔 owner stake key hash) 代表链上注册 owners——命中即 owner 角色(自动 upsert AdminUser)；`operator`/`viewer` 由 owner 在后台添加(AdminUser 行)。实时 pool-registration 查询(给 Source 加 PoolOwners 方法)留作 integration/post-MVP。

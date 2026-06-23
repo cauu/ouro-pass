@@ -83,6 +83,18 @@ func (r *SubscriptionRepo) SetStatus(ctx context.Context, sessionID string, stat
 	return err
 }
 
+// CancelByStakeCredential cancels every active session for a credential (admin
+// member revoke, §9.8). Returns the number of rows affected.
+func (r *SubscriptionRepo) CancelByStakeCredential(ctx context.Context, sch string) (int64, error) {
+	res, err := r.s.DB.ExecContext(ctx, r.s.Rebind(
+		`UPDATE SubscriptionSession SET status = ? WHERE stake_credential_hash = ? AND status = ?`),
+		string(domain.SubCancelled), sch, string(domain.SubActive))
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 const subscriptionCols = `SELECT session_id, pool_id, stake_credential_hash, channel_type, channel_user_id, channel_account_id, status, tier, topics, entitlements, created_at, last_verified_at, expires_at, cancelled_at FROM SubscriptionSession`
 
 func (r *SubscriptionRepo) scanOne(row rowScanner) (*domain.SubscriptionSession, error) {

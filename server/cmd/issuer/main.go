@@ -74,7 +74,6 @@ func run() error {
 	deps := httpapi.Deps{
 		Wallet:      walletSvc,
 		Store:       st,
-		ServerSalt:  serverSalt,
 		PoolID:      cfg.PoolID,
 		TelegramBot: cfg.TelegramBot,
 		Admin: admin.New(admin.Config{

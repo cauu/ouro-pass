@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -20,7 +19,7 @@ func (h *apiHandlers) mountAdminResources(r chi.Router) {
 	owner := func(fn http.HandlerFunc) http.Handler { return h.requireRole(domain.RoleOwner)(fn) }
 
 	r.Method(http.MethodGet, "/members", viewer(h.adminMembers))
-	r.Method(http.MethodPost, "/members/{sub}/revoke", operator(h.adminRevokeMember))
+	r.Method(http.MethodPost, "/members/{sch}/revoke", operator(h.adminRevokeMember))
 	r.Method(http.MethodGet, "/subscriptions", viewer(h.adminSubscriptions))
 	r.Method(http.MethodPost, "/subscriptions/{id}/cancel", operator(h.adminCancelSub))
 	r.Method(http.MethodGet, "/rules", operator(h.adminListRules))
@@ -58,36 +57,58 @@ func (h *apiHandlers) adminMembers(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
 		return
 	}
+	// The admin roster addresses members by their on-chain stake credential hash
+	// (a public derived value the SPO can already see on-chain). The pseudonymous
+	// token `sub` is only for external token consumers (decision D10).
 	type member struct {
-		Sub     string `json:"sub"`
-		Tier    string `json:"tier"`
-		Channel string `json:"channel_type"`
+		StakeCredentialHash string `json:"stake_credential_hash"`
+		Tier                string `json:"tier"`
+		Channel             string `json:"channel_type"`
 	}
 	seen := map[string]bool{}
 	out := []member{}
 	for _, s := range sessions {
-		sub := h.subFor(s.StakeCredentialHash)
-		if seen[sub] {
+		if seen[s.StakeCredentialHash] {
 			continue
 		}
-		seen[sub] = true
-		out = append(out, member{Sub: sub, Tier: s.Tier, Channel: s.ChannelType})
+		seen[s.StakeCredentialHash] = true
+		out = append(out, member{StakeCredentialHash: s.StakeCredentialHash, Tier: s.Tier, Channel: s.ChannelType})
 	}
 	respond.JSON(w, http.StatusOK, map[string]any{"members": out})
 }
 
+// adminRevokeMember blacklists a member by stake credential hash and immediately
+// revokes their active tokens, refresh grants, and subscriptions (§9.8, D10).
 func (h *apiHandlers) adminRevokeMember(w http.ResponseWriter, r *http.Request) {
-	sub := chi.URLParam(r, "sub")
-	// Blacklist + the subsequent reconcile/refresh deny is the durable effect;
-	// a sparse Blacklist entry keyed by the opaque sub identifier.
+	sch := chi.URLParam(r, "sch")
+	now := time.Now()
+	// Blacklist gates future authorize/refresh/activation (evaluate() keys on sch).
 	if err := h.d.Store.Blacklist().Add(r.Context(), domain.Blacklist{
-		StakeCredentialHash: sub, Reason: ptrStr("admin revoke"), CreatedAt: time.Now(),
+		StakeCredentialHash: sch, Reason: ptrStr("admin revoke"), CreatedAt: now,
 	}); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		respond.Error(w, http.StatusInternalServerError, "server_error", "could not blacklist member")
 		return
 	}
-	h.audit(r, "member.revoke", sub)
-	respond.JSON(w, http.StatusOK, map[string]bool{"revoked": true})
+	// Cascade-revoke so existing credentials stop working immediately.
+	tokens, err := h.d.Store.IssuedTokens().RevokeByStakeCredential(r.Context(), sch, now)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "server_error", "could not revoke tokens")
+		return
+	}
+	grants, err := h.d.Store.RefreshGrants().RevokeByStakeCredential(r.Context(), sch)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "server_error", "could not revoke grants")
+		return
+	}
+	subs, err := h.d.Store.Subscriptions().CancelByStakeCredential(r.Context(), sch)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "server_error", "could not cancel subscriptions")
+		return
+	}
+	h.audit(r, "member.revoke", sch)
+	respond.JSON(w, http.StatusOK, map[string]any{
+		"revoked": true, "tokens_revoked": tokens, "grants_revoked": grants, "sessions_cancelled": subs,
+	})
 }
 
 func (h *apiHandlers) adminSubscriptions(w http.ResponseWriter, r *http.Request) {
@@ -304,18 +325,6 @@ func (h *apiHandlers) adminAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respond.JSON(w, http.StatusOK, map[string]any{"audit": entries})
-}
-
-// subFor derives the outward pseudonymous subject when a salt is configured,
-// else falls back to the raw credential hash (admin-only view).
-func (h *apiHandlers) subFor(stakeCredentialHash string) string {
-	if len(h.d.ServerSalt) == 0 {
-		return stakeCredentialHash
-	}
-	if raw, err := hex.DecodeString(stakeCredentialHash); err == nil {
-		return crypto.DeriveSub(h.d.ServerSalt, raw)
-	}
-	return stakeCredentialHash
 }
 
 func ptrIfSet(s string) *string {

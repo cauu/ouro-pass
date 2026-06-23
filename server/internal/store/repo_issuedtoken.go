@@ -66,3 +66,15 @@ func (r *IssuedTokenRepo) Revoke(ctx context.Context, jti string, at time.Time) 
 		string(domain.TokenRevoked), ts(at), jti)
 	return err
 }
+
+// RevokeByStakeCredential revokes every still-active token for a credential
+// (admin member revoke, §9.8). Returns the number of rows affected.
+func (r *IssuedTokenRepo) RevokeByStakeCredential(ctx context.Context, sch string, at time.Time) (int64, error) {
+	res, err := r.s.DB.ExecContext(ctx, r.s.Rebind(
+		`UPDATE IssuedToken SET status = ?, revoked_at = ? WHERE stake_credential_hash = ? AND status = ?`),
+		string(domain.TokenRevoked), ts(at), sch, string(domain.TokenActive))
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}

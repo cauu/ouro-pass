@@ -28,7 +28,6 @@ type Deps struct {
 	OAuth       *oauth.Server
 	Admin       *admin.Service
 	Store       *store.Store // admin resource handlers use repos directly
-	ServerSalt  []byte       // for deriving member `sub` in the admin roster
 	PoolID      string
 	TelegramBot string // bot username for activation deep links
 }

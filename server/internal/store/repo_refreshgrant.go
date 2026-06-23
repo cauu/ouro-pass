@@ -66,6 +66,18 @@ func (r *RefreshGrantRepo) SetStatus(ctx context.Context, q Querier, id string, 
 	return err
 }
 
+// RevokeByStakeCredential revokes every non-revoked grant for a credential
+// (admin member revoke, §9.8). Returns the number of rows affected.
+func (r *RefreshGrantRepo) RevokeByStakeCredential(ctx context.Context, sch string) (int64, error) {
+	res, err := r.s.DB.ExecContext(ctx, r.s.Rebind(
+		`UPDATE RefreshGrant SET status = ? WHERE stake_credential_hash = ? AND status != ?`),
+		string(domain.GrantRevoked), sch, string(domain.GrantRevoked))
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // RevokeChain revokes a grant and every descendant reachable via rotated_from,
 // the theft-response action when a rotated grant is replayed (detailed §9.4).
 func (r *RefreshGrantRepo) RevokeChain(ctx context.Context, startID string) error {
