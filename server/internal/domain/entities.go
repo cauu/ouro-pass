@@ -9,8 +9,13 @@ import (
 	"time"
 )
 
-// ErrNotFound is returned by repositories when a row is absent.
-var ErrNotFound = errors.New("not found")
+// Repository / one-time-credential sentinel errors.
+var (
+	ErrNotFound = errors.New("not found")
+	ErrConsumed = errors.New("already consumed")
+	ErrExpired  = errors.New("expired")
+	ErrPurpose  = errors.New("purpose mismatch")
+)
 
 // ---- §2 Pool & signing keys ----
 

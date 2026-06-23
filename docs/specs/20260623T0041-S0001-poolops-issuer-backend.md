@@ -157,7 +157,7 @@ server/
 ### p2 — 数据模型（详细设计 §2–§8）
 - [x] p2-1 池与签名密钥：PoolConfig / IssuerKey（签名密钥，无证书链实体）
 - [x] p2-2 规则与身份：MembershipRule / StakeSnapshotCache(可选) / Blacklist(可选)
-- [ ] p2-3 Token 与凭证：IssuedToken / RefreshGrant / AuthorizationCode / ActivationCode / AuthNonce
+- [x] p2-3 Token 与凭证：IssuedToken / RefreshGrant / AuthorizationCode / ActivationCode / AuthNonce
 - [ ] p2-4 客户端与渠道：OAuthClient / ChannelConfig / SubscriptionSession
 - [ ] p2-5 推送与管理审计：PushJob / DeliveryLog / AdminUser / AdminSession / AuditLog
 
@@ -218,6 +218,7 @@ server/
 - 2026-06-23 p1-5 completed：新增 `httpapi/respond`(OAuth 错误信封) + `httpapi/middleware`(RequestLogger/slog、IPRateLimiter per-IP token bucket、Idempotency-Key replay)；chi RequestID/Recoverer 组合。router 重构为按平面挂中间件（public/verifier 限速、token/activation 幂等）。证据见 §6（middleware 单测 + TC-1 路由仍通过）。
 - 2026-06-23 p2-1 completed：`domain` 包起步（ErrNotFound、PoolConfig、IssuerKey + 状态枚举）；迁移 0002_pool_keys（双方言，D6 可移植列类型）；`store` repo——PoolConfig Upsert/Get、IssuerKey Create/Get/SetStatus/ListByStatus。embedded Migrate 修正为 fs.Sub("migrations")。证据见 §6（TC-2）。
 - 2026-06-23 p2-2 completed：`domain/rules`（MembershipRule + RuleStatus、StakeSnapshotCache、Blacklist）；迁移 0003_rules_identity；repo——Rules Upsert/ListActive（priority desc 确定性排序，喂 p3-2）、Blacklist Add/Has、SnapshotCache Upsert/Get。lovelace 大数以 TEXT 精确往返。证据见 §6（TC-2）。
+- 2026-06-23 p2-3 completed：`domain/tokens`（IssuedToken/RefreshGrant/AuthorizationCode/ActivationCode/AuthNonce + 全枚举 + 哨兵错误 ErrConsumed/ErrExpired/ErrPurpose）；迁移 0004_tokens；repo——IssuedToken CRUD+Revoke、RefreshGrant Create/Get/SetStatus/**RevokeChain**(rotated_from BFS)、AuthNonce/AuthCode/ActivationCode 原子一次性 Consume(并发安全 via WithTx)。证据见 §6（TC-2）。
 
 ## 6. Validation Evidence (append-only)
 
@@ -229,6 +230,7 @@ server/
 - 2026-06-23 p1-5 | stack: go | command: `go test ./internal/httpapi/...` | result: pass | note: IPRateLimiter 突发后 429 且每 IP 独立桶；Idempotency-Key 重放（handler 仅执行一次、回放 header）、无 key 透传；RequestLogger 透传；TC-1 平面路由测试在中间件重构后仍通过
 - 2026-06-23 TC-2(p2-1) | stack: go | command: `go test ./internal/store/...`（embedded 迁移, SQLite） | result: pass | note: 0002 迁移应用；PoolConfig upsert/get/更新/ErrNotFound；IssuerKey create/get/SetStatus(retired+时间戳)/ListByStatus 往返均通过
 - 2026-06-23 TC-2(p2-2) | stack: go | command: `go test ./internal/store/...` | result: pass | note: 0003 迁移应用；MembershipRule ListActive 优先级降序+排除 disabled+重排序；Blacklist Has/Add；SnapshotCache 大数 lovelace 精确往返
+- 2026-06-23 TC-2(p2-3) | stack: go | command: `go test ./internal/store/...` | result: pass | note: 0004 迁移应用；IssuedToken create/get/revoke；RefreshGrant 轮换链 g1→g2→g3 RevokeChain 全撤销；AuthNonce 一次性消费 + 重放/缺失/错 purpose/过期 四类哨兵错误；AuthCode/ActivationCode 一次性 + 错渠道拒绝
 
 ## 7. Change Requests (append-only)
 
