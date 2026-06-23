@@ -228,6 +228,23 @@ func TestOneTimeConsume_CASGuard(t *testing.T) {
 	}
 }
 
+// TestAuthCode_ConsumeExpired covers the auth-code expiry branch (p14-5): an
+// expired code is rejected (the nonce path had this; the code path did not).
+func TestAuthCode_ConsumeExpired(t *testing.T) {
+	ctx := context.Background()
+	st := migratedStore(t)
+	now := time.Now()
+	if err := st.AuthCodes().Create(ctx, domain.AuthorizationCode{
+		Code: "expired-code", ClientID: "c1", StakeCredentialHash: "h1", Aud: "app",
+		RedirectURI: "https://cb", ExpiresAt: now.Add(-time.Minute), CreatedAt: now.Add(-time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := st.AuthCodes().Consume(ctx, "expired-code", now); err != domain.ErrExpired {
+		t.Fatalf("expired auth code Consume = %v, want ErrExpired", err)
+	}
+}
+
 func TestAuthCodeAndActivation_ConsumeOnce(t *testing.T) {
 	ctx := context.Background()
 	st := migratedStore(t)

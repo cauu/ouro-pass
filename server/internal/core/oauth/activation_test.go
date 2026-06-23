@@ -5,11 +5,29 @@ import (
 	"encoding/hex"
 	"strings"
 	"testing"
+	"time"
 
 	"ouro-pass/server/internal/domain"
 	"ouro-pass/server/internal/utils/chain"
 	"ouro-pass/server/internal/utils/crypto"
 )
+
+// TestCreateActivation_BlacklistedRejected covers blacklist gating on the
+// activation face (p14-5): an otherwise-eligible credential on the blacklist is
+// denied (blacklist was only previously tested on the authorize face).
+func TestCreateActivation_BlacklistedRejected(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	sch := hex.EncodeToString(crypto.Blake2b224(h.pub))
+	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakeLovelace: "5000000"})
+	if err := h.st.Blacklist().Add(ctx, domain.Blacklist{StakeCredentialHash: sch, CreatedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	nonce, _, _ := h.srv.cfg.Wallet.Challenge(ctx, domain.NonceActivation, h.vkey)
+	if _, err := h.srv.CreateActivation(ctx, "telegram", nonce, h.vkey, h.sign(t, nonce), "PaoBot"); err != ErrNotEligible {
+		t.Fatalf("blacklisted activation: %v, want ErrNotEligible", err)
+	}
+}
 
 func TestCreateActivation_EligibleIssuesCodeAndLink(t *testing.T) {
 	h := newHarness(t)

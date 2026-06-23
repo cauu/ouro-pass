@@ -255,6 +255,78 @@ func stepUpNonce(t *testing.T, st *store.Store, vkey string) string {
 	return nonce
 }
 
+// TestAdminCancelSubscription covers the operator subscription-cancel mutation
+// (p14-3): 200 + DB状态 + audit; viewer is forbidden.
+func TestAdminCancelSubscription(t *testing.T) {
+	srv, client, _, _, st := adminResourceEnv(t, domain.RoleOperator)
+	ctx := context.Background()
+	if err := st.Subscriptions().Upsert(ctx, domain.SubscriptionSession{
+		SessionID: "sess1", PoolID: "pool1", StakeCredentialHash: "h1", ChannelType: "telegram",
+		ChannelUserID: "u1", Status: domain.SubActive, Tier: "gold",
+		CreatedAt: time.Now(), LastVerifiedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if code := postCode(t, client, srv.URL+"/api/admin/subscriptions/sess1/cancel", ``); code != 200 {
+		t.Fatalf("operator cancel = %d, want 200", code)
+	}
+	sub, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u1")
+	if sub.Status != domain.SubCancelled {
+		t.Fatalf("status = %s, want cancelled", sub.Status)
+	}
+	entries, _ := st.Audit().Recent(ctx, 10)
+	var audited bool
+	for _, e := range entries {
+		if e.Action == "subscription.cancel" {
+			audited = true
+		}
+	}
+	if !audited {
+		t.Error("subscription.cancel not written to AuditLog")
+	}
+
+	// viewer must not be able to cancel.
+	vsrv, vclient, _, _, _ := adminResourceEnv(t, domain.RoleViewer)
+	if code := postCode(t, vclient, vsrv.URL+"/api/admin/subscriptions/x/cancel", ``); code != http.StatusForbidden {
+		t.Fatalf("viewer cancel = %d, want 403", code)
+	}
+}
+
+// TestAdminListClients_NoSecretLeak ensures the owner client-list response never
+// carries client_secret_hash material (handlers strip it) (p14-3).
+func TestAdminListClients_NoSecretLeak(t *testing.T) {
+	srv, client, _, _, st := adminResourceEnv(t, domain.RoleOwner)
+	secretHash := crypto.HashToken("super-secret")
+	if err := st.OAuthClients().Upsert(context.Background(), domain.OAuthClient{
+		ClientID: "c1", Name: "App", ClientType: domain.ClientConfidential, Party: domain.FirstParty,
+		ClientSecretHash: &secretHash, RedirectURIs: []string{"https://cb"}, Status: "active", CreatedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Get(srv.URL + "/api/admin/oauth-clients")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var body map[string]any
+	json.NewDecoder(resp.Body).Decode(&body)
+	raw, _ := json.Marshal(body)
+	if strings.Contains(string(raw), secretHash) || strings.Contains(string(raw), "secret_hash") {
+		t.Fatalf("client list leaked secret material: %s", raw)
+	}
+}
+
+// TestAdminListEndpoints_Smoke checks the read endpoints are mounted and respond
+// 200 for an owner (covers route wiring + SQL scan paths) (p14-3).
+func TestAdminListEndpoints_Smoke(t *testing.T) {
+	srv, client, _, _, _ := adminResourceEnv(t, domain.RoleOwner)
+	for _, path := range []string{"/api/admin/subscriptions", "/api/admin/rules", "/api/admin/push/jobs", "/api/admin/audit"} {
+		if code := getCode(t, client, srv.URL+path); code != 200 {
+			t.Errorf("GET %s = %d, want 200", path, code)
+		}
+	}
+}
+
 func getCode(t *testing.T, c *http.Client, url string) int {
 	resp, err := c.Get(url)
 	if err != nil {

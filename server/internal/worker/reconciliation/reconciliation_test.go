@@ -138,6 +138,31 @@ func TestReconcile_FaultIsolation(t *testing.T) {
 	}
 }
 
+// TestReconcile_Upgrade covers the upgrade direction of the tier-change branch
+// (p14-6): a silver member who now qualifies for gold is upgraded with refreshed
+// entitlements (only downgrade was previously asserted).
+func TestReconcile_Upgrade(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	seed(t, st, "up", "sch-up", "silver")
+	elig := programmableElig{verdicts: map[string]rules.Decision{
+		"sch-up": {Eligible: true, Tier: "gold", Entitlements: []string{"read", "vip"}},
+	}}
+	rec := New(st, elig, chain.NewMockSource(481), "pool1")
+
+	res, err := rec.Reconcile(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Downgraded != 1 { // the tier-change counter covers both directions
+		t.Fatalf("result = %+v, want tier-change(Downgraded)=1", res)
+	}
+	up, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-up")
+	if up.Tier != "gold" || len(up.Entitlements) != 2 {
+		t.Fatalf("upgraded session: tier=%s entitlements=%v, want gold + 2", up.Tier, up.Entitlements)
+	}
+}
+
 func TestReconcile_EmptyIsNoop(t *testing.T) {
 	st := newStore(t)
 	rec := New(st, programmableElig{verdicts: map[string]rules.Decision{}}, chain.NewMockSource(1), "pool1")

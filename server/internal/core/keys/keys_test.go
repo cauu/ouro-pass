@@ -90,6 +90,40 @@ func TestActiveSigner_SignsVerifiably(t *testing.T) {
 	}
 }
 
+// TestRevoke_DropsKeyFromJWKS covers the §3.5 emergency revocation path (p14-2):
+// a revoked key disappears from the JWKS, and revoking the active key leaves no
+// signer and an empty JWKS.
+func TestRevoke_DropsKeyFromJWKS(t *testing.T) {
+	ctx := context.Background()
+	s := testService(t)
+	kid1, _ := s.Rotate(ctx)
+	time.Sleep(2 * time.Millisecond)
+	kid2, _ := s.Rotate(ctx) // kid1 → rotating, kid2 → active (overlap: JWKS has both)
+
+	// Revoke the rotating key → drops from JWKS; the active key remains usable.
+	if err := s.Revoke(ctx, kid1); err != nil {
+		t.Fatal(err)
+	}
+	keys, _ := s.PublicJWKSKeys(ctx)
+	if len(keys) != 1 || keys[0].KID != kid2 {
+		t.Fatalf("after revoke %s, JWKS = %+v, want only %s", kid1, keys, kid2)
+	}
+	if _, err := s.ActiveSigner(ctx); err != nil {
+		t.Fatalf("active key must still sign after revoking the rotating one: %v", err)
+	}
+
+	// Revoke the active key → no active signer, empty JWKS (its tokens stop verifying).
+	if err := s.Revoke(ctx, kid2); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ActiveSigner(ctx); err == nil {
+		t.Fatal("ActiveSigner must error once the active key is revoked")
+	}
+	if keys, _ := s.PublicJWKSKeys(ctx); len(keys) != 0 {
+		t.Fatalf("JWKS must be empty after all keys revoked, got %d", len(keys))
+	}
+}
+
 func TestRetireRotating(t *testing.T) {
 	ctx := context.Background()
 	s := testService(t)

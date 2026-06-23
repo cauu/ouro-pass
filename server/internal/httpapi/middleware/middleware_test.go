@@ -79,6 +79,64 @@ func TestIdempotency_ReplaysResponse(t *testing.T) {
 	}
 }
 
+// TestIdempotency_DoesNotCacheNon2xx covers the p12-7 hardening (TC-19): a
+// transient non-2xx must NOT be cached, so the same key can be retried.
+func TestIdempotency_DoesNotCacheNon2xx(t *testing.T) {
+	idem := NewIdempotency(time.Minute)
+	calls := 0
+	h := idem.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls == 1 {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`err`))
+			return
+		}
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`ok`))
+	}))
+	do := func() (int, string) {
+		req := httptest.NewRequest(http.MethodPost, "/create", nil)
+		req.Header.Set("Idempotency-Key", "K")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+		body, _ := io.ReadAll(rr.Result().Body)
+		return rr.Code, string(body)
+	}
+	if c, _ := do(); c != http.StatusInternalServerError {
+		t.Fatalf("first call = %d, want 500", c)
+	}
+	if c, b := do(); c != http.StatusCreated || b != "ok" {
+		t.Fatalf("retry after 500 = %d %q, want 201 ok (a 500 must not be cached)", c, b)
+	}
+	if calls != 2 {
+		t.Fatalf("handler ran %d times, want 2 (500 was wrongly replayed)", calls)
+	}
+}
+
+// TestIdempotency_ScopedByMethodPath covers the p12-7 key namespacing (TC-19):
+// the same Idempotency-Key on a different path must not cross-replay.
+func TestIdempotency_ScopedByMethodPath(t *testing.T) {
+	idem := NewIdempotency(time.Minute)
+	h := idem.Middleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(r.URL.Path))
+	}))
+	do := func(path string) (string, string) {
+		req := httptest.NewRequest(http.MethodPost, path, nil)
+		req.Header.Set("Idempotency-Key", "SAME")
+		rr := httptest.NewRecorder()
+		h.ServeHTTP(rr, req)
+		body, _ := io.ReadAll(rr.Result().Body)
+		return string(body), rr.Header().Get("Idempotency-Replayed")
+	}
+	if b, _ := do("/a"); b != "/a" {
+		t.Fatalf("/a body = %q", b)
+	}
+	if b, replayed := do("/b"); b != "/b" || replayed == "true" {
+		t.Fatalf("/b with same key = %q replayed=%q, want /b not-replayed", b, replayed)
+	}
+}
+
 func TestRequestLogger_PassesThrough(t *testing.T) {
 	h := RequestLogger(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTeapot)

@@ -165,4 +165,73 @@ func TestDeliver_ExhaustsRetriesAndFails(t *testing.T) {
 	}
 }
 
+// TestListScheduled_DueFilterAndOrder covers the worker's source query (p14-1):
+// only status=scheduled jobs whose schedule is due, oldest-first.
+func TestListScheduled_DueFilterAndOrder(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	now := time.Now()
+	past, future := now.Add(-time.Minute), now.Add(time.Hour)
+	mk := func(id string, status domain.PushJobStatus, sched *time.Time, created time.Time) {
+		if err := st.PushJobs().Create(ctx, domain.PushJob{
+			JobID: id, PoolID: "pool1", Title: "t", Content: "c", ChannelType: "telegram",
+			Status: status, ScheduledAt: sched, CreatedBy: "a", CreatedAt: created,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk("due-null", domain.PushScheduled, nil, now.Add(-3*time.Second))   // due (no schedule)
+	mk("due-past", domain.PushScheduled, &past, now.Add(-2*time.Second)) // due (scheduled past)
+	mk("not-future", domain.PushScheduled, &future, now)                 // not due yet
+	mk("not-done", domain.PushDone, nil, now)                            // not scheduled
+
+	got, err := st.PushJobs().ListScheduled(ctx, now, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("ListScheduled returned %d, want 2 due", len(got))
+	}
+	if got[0].JobID != "due-null" || got[1].JobID != "due-past" {
+		t.Fatalf("order = %s,%s want due-null,due-past (oldest-first)", got[0].JobID, got[1].JobID)
+	}
+}
+
+// TestWorker_DrainsDueJobs drives the worker poll loop end to end (p14-1): it must
+// pick up the due job via ListScheduled, deliver + mark it done, and leave a
+// future-scheduled job untouched — the p12-4 runtime driver, previously 0%.
+func TestWorker_DrainsDueJobs(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	seedSession(t, st, "s1", "u1", "gold", nil, nil)
+	now := time.Now()
+	past, future := now.Add(-time.Minute), now.Add(time.Hour)
+	mkJob := func(id string, sched *time.Time) {
+		if err := st.PushJobs().Create(ctx, domain.PushJob{
+			JobID: id, PoolID: "pool1", Title: "t", Content: "c", ChannelType: "telegram",
+			TargetTier: ptrStr("gold"), Status: domain.PushScheduled, ScheduledAt: sched, CreatedBy: "a", CreatedAt: now,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mkJob("j-due", &past)
+	mkJob("j-future", &future)
+
+	sender := newSender()
+	w := NewWorker(st, sender, time.Millisecond, Options{RatePerSec: 100000, Burst: 1000, MaxAttempts: 3, Backoff: time.Millisecond})
+	runCtx, cancel := context.WithTimeout(ctx, 100*time.Millisecond)
+	defer cancel()
+	w.Run(runCtx) // returns when ctx times out
+
+	if sender.sent["u1"] != 1 {
+		t.Fatalf("worker delivered %d to u1, want exactly 1 (due job once)", sender.sent["u1"])
+	}
+	if jd, _ := st.PushJobs().Get(ctx, "j-due"); jd.Status != domain.PushDone {
+		t.Fatalf("due job status = %s, want done", jd.Status)
+	}
+	if jf, _ := st.PushJobs().Get(ctx, "j-future"); jf.Status != domain.PushScheduled {
+		t.Fatalf("future job status = %s, want still scheduled (not picked up early)", jf.Status)
+	}
+}
+
 func ptrStr(s string) *string { return &s }

@@ -8,7 +8,41 @@ import (
 	"testing"
 
 	"github.com/fxamacker/cbor/v2"
+	cose "github.com/veraison/go-cose"
 )
+
+// TestCOSEVerify_InteropWithGoCose is the independent cross-check the prior tests
+// lacked (p14-7/TC-3): a COSE_Sign1 produced by an INDEPENDENT implementation
+// (veraison/go-cose) must verify under our hand-rolled verifier. This catches a
+// Sig_structure field-order/encoding bug that a same-code round-trip cannot — the
+// closest substitute to a real-wallet golden vector without an external capture.
+func TestCOSEVerify_InteropWithGoCose(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	payload := []byte("interop-nonce-12345")
+
+	signer, err := cose.NewSigner(cose.AlgorithmEdDSA, priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	headers := cose.Headers{
+		Protected: cose.ProtectedHeader{cose.HeaderLabelAlgorithm: cose.AlgorithmEdDSA},
+	}
+	raw, err := cose.Sign1(rand.Reader, signer, headers, payload, nil)
+	if err != nil {
+		t.Fatalf("go-cose sign: %v", err)
+	}
+
+	c, err := ParseCOSESign1(raw)
+	if err != nil {
+		t.Fatalf("parse independently-produced COSE_Sign1: %v", err)
+	}
+	if err := c.Verify(pub, payload); err != nil {
+		t.Fatalf("our Verify rejected a standards-conformant COSE_Sign1 (Sig_structure mismatch?): %v", err)
+	}
+	if err := c.Verify(pub, []byte("tampered")); err == nil {
+		t.Fatal("tampered payload against the independent signature must be rejected")
+	}
+}
 
 func TestBlake2b224_LengthAndDeterminism(t *testing.T) {
 	a := Blake2b224([]byte("hello"))
@@ -140,6 +174,23 @@ func TestCOSEVerify_ValidAndTampered(t *testing.T) {
 
 // TestCOSEVerify_StrictAlgHeader covers p12-12: a non-empty protected header must
 // declare alg=EdDSA — a missing alg label is rejected (was previously tolerated).
+// TestParseCOSESign1_Malformed covers the malformed-input branches (p14-5): bad
+// CBOR / wrong array shape are rejected (not panicked).
+func TestParseCOSESign1_Malformed(t *testing.T) {
+	threeEl, _ := cbor.Marshal([]any{[]byte{}, map[int]int{}, []byte("p")})
+	notArray, _ := cbor.Marshal("just a string")
+	for name, raw := range map[string][]byte{
+		"empty":          {},
+		"truncated cbor": {0xa1, 0x01},
+		"not an array":   notArray,
+		"three elements": threeEl,
+	} {
+		if _, err := ParseCOSESign1(raw); err == nil {
+			t.Errorf("%s: ParseCOSESign1 must error, got nil", name)
+		}
+	}
+}
+
 func TestCOSEVerify_StrictAlgHeader(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	nonce := []byte("challenge-nonce-12345")

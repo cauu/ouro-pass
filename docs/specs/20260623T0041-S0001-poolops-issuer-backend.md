@@ -221,6 +221,16 @@ server/
 - [x] p13-3 Tier-2 PG 集成（`//go:build integration`，testcontainers-go 拉临时 PG，D23）：① 全量 store 仓库在 PG 上跑通（方言：`?`→`$n`、TEXT/JSON 往返、时间格式）；② **并发 CAS 真验证**——N goroutine 并发兑换同一 nonce/授权码/激活码恰好一次成功（P0 修复，SQLite 串行掩盖、唯 PG 可证）；③ 并发 refresh 仅一路成功（p12-2）。需 Docker daemon 运行；缺 Docker/`-tags integration` 时跳过（TC-25）。
 - [x] p13-4 测试编排：`server/Makefile`（build/vet/fmt/tidy/`test`(单元+e2e)/`test-e2e`/`cover`/`test-integration`/`test-all`）+ `.github/workflows/ci.yml`（job `test`：build+vet+`make test`；job `integration`：postgres:16-alpine service container + `OUROPASS_TEST_PG_DSN` + `make test-integration`）。PG 集成测试移到独立 `internal/inttest` 包并去除 `openTestStore` 的共享-DSN 分支（D24）（TC-26）。
 
+### p14 — 测试完备性整改（multi-agent test-completeness review remediation；见 `code_review/S0001-test-completeness/summary.md`）
+- [x] p14-1 **P1** push worker 轮询层：`push_test.go` 加 `ListScheduled` 谓词/排序单测 + `Worker.Run` 端到端(种 due/未来/done job→worker 拾取投递、断言只投 due 并 job→done)；不再绕过走 Scheduler（TC-27）。
+- [x] p14-2 **P1** `keys.Revoke`：吊销后该 kid 从 `PublicJWKSKeys` 消失、吊销 active key 后 `ActiveSigner` 报错/JWKS 空（TC-28）。
+- [x] p14-3 **P1/P3** admin 端点：`adminCancelSub`(operator 200+DB SubCancelled+审计、viewer 403)、`adminListClients`(断言响应**不含** client_secret_hash)、`adminSubscriptions`/`adminListRules`/`adminAudit` 冒烟（TC-29）。
+- [x] p14-4 **P2** 路由级安全否定:introspect 裸 jti(POST `{"jti":active}`→active:false)、签发面 429(同 IP 超 burst→429)、TrustedProxy IP(默认忽略 XFF / 信任时取最右跳，审计 IP 断言)、幂等加固(非 2xx 不缓存可重试 + 同 key 不同 path 不串)（TC-30）。
+- [x] p14-5 **P2** oauth/refresh/activation 边界:refresh tier 降级(gold→silver 仍合格,断言新 token tier)、activation blacklist 否定、过期 authcode `Consume`→`ErrExpired`、`ParseCOSESign1` 畸形输入→`ErrCOSEMalformed`（TC-31）。
+- [x] p14-6 **P2** reconciliation:e2e 经 `NewRouter`+reconciler `Run` 全链路降级(补回 TC-24 第 6 流程) + 升级方向(silver→gold)单测（TC-32）。
+- [x] p14-7 **P1** TC-3 COSE 独立交叉验证:用独立 COSE 实现(`veraison/go-cose`)构造 `signData`,断言我方 `Verify` 接受、且我方构造能被独立实现验签——打破"两侧同一套 cbor 自洽"盲区(真钱包抓样仍建议后续补,见 D25)（TC-33）。
+- [x] p14-8 **P2** TC-2 PG 双栈补全:`internal/inttest` 加多 repo 在 PG 的往返(StakeSnapshotCache numeric / MembershipRule json / SubscriptionSession / PushJob `ListScheduled` / IssuedToken),在真 PG 跑通（TC-34）。
+
 ## 4. Test and Acceptance Criteria
 
 - TC-1 服务启动：`go build ./...` 通过；二进制启动后健康检查 200，四平面路由可达（404/401 符合预期），SIGTERM 优雅退出。
@@ -287,6 +297,8 @@ server/
 - 2026-06-23 TC-25 | stack: go | command: `OUROPASS_TEST_PG_DSN=postgres://postgres:password@127.0.0.1:5432/postgres?sslmode=disable go test -tags integration -count=1 ./internal/store/ -run TestPG_` | result: **pass** | note: 真 PG 上 5/5 绿、连跑两遍仍绿（可重复）：N=24 goroutine 并发兑换同一 nonce/authcode/activation **恰好 1 次**赢、并发 `RotateIfActive` 恰好 1 次、OAuthClient 方言往返（`?`→`$n`/TEXT-JSON/时间）通过。**P0 双花修复 + p12-2 轮换在真实 PG 并发下得证**（SQLite 串行掩盖、唯 PG 可证，TC-2 双栈闭环）。另：testcontainers 路径独立验证 5/5 绿。
 - 2026-06-23 p13-4 completed：`server/Makefile`（build/vet/fmt/tidy/test/test-e2e/cover/test-integration/test-all）+ `.github/workflows/ci.yml`（test job + integration job 带 postgres:16-alpine service container）。PG 测试迁到独立 `internal/inttest` 包（package + `doc.go` 占位保证默认 tag 下非空包可 build）、`openTestStore` 去除共享-DSN 分支恒用隔离 SQLite（D24）；删 `internal/store/pg_integration_test.go`。
 - 2026-06-23 TC-26 | stack: go | command: `make build` / `make vet` / `make test`（无 DSN，17 包）/ `OUROPASS_TEST_PG_DSN=… make test-integration`（×2）/ CI YAML `yaml.safe_load` | result: pass | note: 默认 `go build ./...` 绿（inttest 占位包不破坏 `./...`）；`make test` 单元+e2e 17 包绿（store 回到隔离 SQLite、不再因共享 PG 撞键）；`make test-integration` 对 `internal/inttest` 在用户本地 PG 连跑两遍均绿；CI yaml 合法（jobs=test,integration；integration 含 postgres service）。
+- 2026-06-24 p14-1..p14-8 completed：按 `code_review/S0001-test-completeness/summary.md` 补测——push `Worker.Run`+`ListScheduled`(worker.go/push_test)、`keys.Revoke`(keys_test)、admin cancel-sub+list+secret-strip(handlers_admin_resources_test)、路由级 introspect 裸 jti+签发面 429(e2e)+`clientIP` table test(clientip_test)+幂等加固(middleware_test)、refresh tier 降级/activation blacklist/过期 authcode/畸形 COSE(oauth+store+crypto _test)、reconciliation e2e+升级方向、COSE×`veraison/go-cose` 互操作、PG 多 repo 往返(inttest)。`go-cose`@v1.3.0 为 **test-only** 依赖（`go list -deps ./cmd/issuer|grep veraison`=**0**）。
+- 2026-06-24 TC-27..TC-34 全量 | stack: go | command: `make build`+`make vet`+`make test`（17 包）+`OUROPASS_TEST_PG_DSN=… make test-integration`+真二进制 smoke+`go test -coverpkg=./...` | result: pass | note: 全 17 包绿；集成（含新 `TestPG_ReposRoundTrip`）在用户本地 PG 绿；二进制健康 200+优雅关停 exit 0；**总覆盖率 73.6%→77.5%**，原 0% 关键函数现已覆盖（`keys.Revoke`100%、`push.Worker.Run`78.6%、`ListScheduled`84.2%、`adminCancelSub`、`clientIP`87.5%）。
 - TC-13 (p12-1) 一次性 Consume CAS：模拟“已消费”行后再 Consume → `ErrConsumed`；并发/重复 Consume 仅一次成功、其余 `ErrConsumed`；UPDATE 带 `consumed_at IS NULL` 守卫。
 - TC-14 (p12-2) refresh CAS+原子：`RotateIfActive` 对 active 行返回 1、对已 rotated 行返回 0；同一 grant 二次 rotate 不再双发；rotate+mint 同一事务（mint 失败则 grant 不被置 rotated）。
 - TC-15 (p12-3) reconciler 隔离：3 session 中第 1 个 Eligibility 报错 → 其余 2 个仍被处理，`Result.Failed=1`，epoch 推进。
@@ -301,6 +313,14 @@ server/
 - TC-24 (p13-2) e2e：完整路由下授权码/刷新/吊销、PKCE+PoP、blacklist 级联、激活+telegram+push、reconciliation、密钥轮换 6 条主链路全绿（SQLite+mock，无外部依赖）。
 - TC-25 (p13-3) PG 集成（`-tags integration`+Docker）：store 仓库全套在 PG 通过；并发兑换同一 nonce/code 恰好一次成功、其余 `ErrConsumed`；并发 refresh 仅一路成功。无 Docker 时跳过、不算失败。
 - TC-26 (p13-4) 测试编排：`make test`（无 DSN）单元+e2e 全绿、`make test-integration`（设 DSN/Docker）跑 `internal/inttest` 全绿；`make build`/`make vet` 通过；CI YAML 合法（test + integration 两 job，后者带 postgres service）。
+- TC-27 (p14-1) `ListScheduled` 只返 due（null/past）oldest-first、不含 future/done；`Worker.Run` 拾取 due job 投递 1 次 + job→done、future job 不动。
+- TC-28 (p14-2) `Revoke` 后该 kid 从 JWKS 消失、active 仍可签；吊销 active 后 `ActiveSigner` 报错 + JWKS 空。
+- TC-29 (p14-3) operator cancel sub→200+DB SubCancelled+审计、viewer→403；list clients 响应不含 secret hash；list/rules/jobs/audit owner→200。
+- TC-30 (p14-4) introspect 裸 jti→active:false；`/api/oauth/token` 超 burst→429；clientIP 默认忽略 XFF/信任取最右跳；幂等 500 不缓存可重试 + 同 key 异 path 不串。
+- TC-31 (p14-5) refresh gold→silver tier 降级成功；activation blacklist→`ErrNotEligible`；过期 authcode→`ErrExpired`；畸形 COSE→error。
+- TC-32 (p14-6) e2e reconciler Run 使不合格 session→expired；reconcile 升级 silver→gold + entitlements 刷新。
+- TC-33 (p14-7) `veraison/go-cose` 独立签出的 COSE_Sign1 被我方 `Verify` 接受、篡改被拒（编码互操作）。
+- TC-34 (p14-8) PG 上 StakeSnapshotCache numeric(大数)/MembershipRule jsonb/SubscriptionSession ListActive/PushJob ListScheduled 往返通过。
 - Pass/fail：每个 item 仅在其映射的 TC 全部 `pass` 且证据 append 后方可标 `[x]`。
 
 测试栈映射（验收证据用）：`stack: go`，命令以 `go test ./...`、`go build ./...` 为主，集成测试（真链/真 Telegram）单独打 build tag 标注。
@@ -385,6 +405,7 @@ server/
 - 2026-06-23 D20 **COSE 严格 alg 延后**（p12-10 部分）：评审建议 protected 头存在时强制 `alg=EdDSA`。但部分 CIP-30 钱包把 alg 放 unprotected 头/省略 protected alg，无真钱包向量前贸然 require 有破坏互操作风险；且签名已由 `ed25519.Verify` 对调用方提供的 Ed25519 公钥兜底校验（非 EdDSA 必然验签失败，**不可绕过**，评审复核 P3 不可利用）。故保持现状、严格断言拆出 **p12-12**，待 TC-3 真钱包 golden vector（D5 集成）落地后启用。
 - 2026-06-23 D21 **mint 取签名密钥移出事务**（p12-2 死锁修复）：p12-2 将 mint 移入 refresh 事务后，`Keys.ActiveSigner` 的连接池读在 SQLite 单连接（`MaxOpenConns(1)`）下与持连接的 tx 死锁。修复：调用方在开 tx 前取 active signer，经 `mintParams` 注入；事务内只用注入的 `*sql.Tx`、无任何非-tx DB 读。确立约束：**`WithTx` 回调内严禁经连接池做读/写**。
 - 2026-06-23 D24 **PG 测试隔离到 `internal/inttest` 包；移除 `openTestStore` 的共享-DSN 分支**（取代 D3 的 PG 路径）：原 `openTestStore`（被 `migratedStore` 包装）在 `OUROPASS_TEST_PG_DSN` 设置时让**每个** store 单测都指向**同一个** PG 库——这些用例按 SQLite「每测一个临时文件」隔离设计、用固定主键，跑共享 PG 必然撞键（实测 14 个用例 FAIL）。改为：store 单测恒用隔离 SQLite；真 PG 验证（并发 CAS + 方言往返 + 真迁移在 PG 应用）全部收进独立 `internal/inttest` 包（per-run 唯一键、可重复跑）。`make test-integration`/CI 只对 `./internal/inttest/...` 跑，互不干扰。
+- 2026-06-24 D25 **COSE 互操作用独立实现交叉验证；保留的测试残留**（p14-7 + 关闭说明）：TC-3 的"真钱包 golden vector"用 **`veraison/go-cose`(独立 COSE 实现)交叉验证**替代——它签出标准 COSE_Sign1、我方 `Verify` 接受，证明我方 `Sig_structure` 编码符合标准、打破"两侧同一套 cbor 自洽"盲区；比单一抓样更全面，且 test-only、生产二进制不含。**仍建议**后续补一份真实 CIP-30(Nami/Eternl/Lace)`signData` 抓样做最终互操作确认（外部依赖，非阻塞）。**经评估接受的测试残留**（评审 P2、价值/成本不划算，关闭时明示）：① refresh `rotate→mint` 失败回滚的直接单测（需给 oauth.Server 加 fault-injection 缝，happy-path 原子性+CAS+并发已测）；② main `startWorkers`/WaitGroup join 的自动化单测（已由二进制 smoke 覆盖）。二者列为未来加固项，不阻塞本 spec 交付。
 - 2026-06-23 D23 **测试分层：Tier-1（无外部依赖）+ Tier-2（PG 集成，testcontainers）**：单元 + e2e 全部跑在 SQLite（modernc）+ mock chain + 内存 telegram transport，零外部进程、CI 友好。需真并发/方言验证的部分（P0 双花、TC-2 双栈）拆到 `//go:build integration`，用 testcontainers-go 拉临时 PG（仅 test-only 依赖，不进默认构建图的运行期）；Docker daemon 缺失时该层跳过、不阻塞 Tier-1。e2e 走 httptest+`NewRouter`（非真二进制进程）——足以覆盖装配/路由/中间件 wiring（如"push worker 未接线"类 bug），又快又稳。
 - 2026-06-23 D22 **解除 D19/D20 延后**（应用户要求）：p12-11（step-up 扩展）与 p12-12（COSE 严格 alg）由延后改为本轮交付。step-up 扩展覆盖 member-revoke + client-register（subscription-cancel 因爆炸半径较低暂不纳入，如需可续）；COSE 采保守收紧（仅约束**非空** protected 头，空头仍由 `ed25519.Verify` 兜底），真钱包 golden vector 仍建议作为 TC-3 集成补充。D19/D20 的风险分析仍成立、作为该决策的依据保留。
 - 2026-06-23 D2 **store 层偏离 sqlc**：环境未装 `sqlc`/`goose`/`migrate`，为保持 build 自包含、零外部 codegen 依赖，store 层改为**手写 `database/sql` repository + `embed` 迁移 SQL + 极简 migration runner**。架构不变（repository 接口边界、PG/SQLite 双栈保留）。§2.1 技术选型表中 sqlc/goose 一项以此决策为准。

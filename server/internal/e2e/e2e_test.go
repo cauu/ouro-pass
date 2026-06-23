@@ -34,6 +34,7 @@ import (
 	"ouro-pass/server/internal/utils/chain"
 	"ouro-pass/server/internal/utils/crypto"
 	"ouro-pass/server/internal/worker/push"
+	"ouro-pass/server/internal/worker/reconciliation"
 	"ouro-pass/server/internal/worker/telegram"
 )
 
@@ -435,6 +436,72 @@ func TestE2E_KeyRotationJWKSOverlap(t *testing.T) {
 	after := e.jwks(t)
 	if len(after) != 2 {
 		t.Fatalf("post-rotate jwks keys = %d, want 2 (overlap)", len(after))
+	}
+}
+
+// TestE2E_IntrospectIgnoresBareJTI proves the jti-oracle defense at the ROUTE
+// layer (p14-4/TC-21): a client-supplied bare jti is ignored by the handler even
+// when that jti is an active ledger token, so the endpoint can't be a
+// token-status oracle by jti enumeration.
+func TestE2E_IntrospectIgnoresBareJTI(t *testing.T) {
+	e := newEnv(t)
+	jti := "active-jti-" + hex.EncodeToString([]byte("xyz"))
+	if err := e.st.IssuedTokens().Create(context.Background(), nil, domain.IssuedToken{
+		JTI: jti, StakeCredentialHash: "h1", Kind: domain.TokenAccess, Audience: "app",
+		KID: "k1", Status: domain.TokenActive, IssuedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	st, res := e.post("/api/oauth/introspect", `{"jti":"`+jti+`"}`)
+	if st != 200 || res["active"] != false {
+		t.Fatalf("introspect by bare jti = %d %v, want active:false (jti must be ignored)", st, res)
+	}
+}
+
+// TestE2E_IssuancePlaneRateLimited proves publicLimit is actually mounted on the
+// issuance plane (p14-4/TC-21): rapid same-IP token requests eventually 429.
+func TestE2E_IssuancePlaneRateLimited(t *testing.T) {
+	e := newEnv(t)
+	var got429 bool
+	for i := 0; i < 80 && !got429; i++ {
+		st, _ := e.post("/api/oauth/token", `{"grant_type":"refresh_token","refresh_token":"nope","client_id":"c"}`)
+		if st == http.StatusTooManyRequests {
+			got429 = true
+		}
+	}
+	if !got429 {
+		t.Fatal("expected 429 after exceeding the burst on /api/oauth/token (publicLimit not mounted?)")
+	}
+}
+
+// TestE2E_ReconciliationExpiresIneligible is the reconciliation flow (p14-6,
+// closes TC-24's 6th flow): an active member who loses eligibility is expired by
+// the reconciler running against the same store the router uses.
+func TestE2E_ReconciliationExpiresIneligible(t *testing.T) {
+	e := newEnv(t)
+	w := newWallet(t)
+	e.eligible(w)
+	ctx := context.Background()
+	if err := e.st.Subscriptions().Upsert(ctx, domain.SubscriptionSession{
+		SessionID: "s-recon", PoolID: testPool, StakeCredentialHash: w.sch, ChannelType: "telegram",
+		ChannelUserID: "tg-recon", Status: domain.SubActive, Tier: "gold",
+		CreatedAt: time.Now(), LastVerifiedAt: time.Now(), ExpiresAt: time.Now().Add(48 * time.Hour),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Member moves delegation away → no longer eligible.
+	e.chain.Put(&chain.Snapshot{StakeCredentialHash: w.sch, Epoch: 481, DelegatedPoolID: "pool1other", ActiveStakeLovelace: "5000000"})
+
+	rec := reconciliation.New(e.st, e.oauth, e.chain, testPool)
+	res, err := rec.Reconcile(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Expired != 1 {
+		t.Fatalf("reconcile result = %+v, want Expired=1", res)
+	}
+	if sess, _ := e.st.Subscriptions().GetByChannelUser(ctx, testPool, "telegram", "tg-recon"); sess.Status != domain.SubExpired {
+		t.Fatalf("session status = %s, want expired", sess.Status)
 	}
 }
 

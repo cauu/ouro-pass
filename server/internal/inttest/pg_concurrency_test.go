@@ -174,6 +174,104 @@ func TestPG_ConcurrentRefreshRotate_ExactlyOnce(t *testing.T) {
 	}
 }
 
+// TestPG_ReposRoundTrip exercises the higher-risk dialect cases across several
+// repos on real PostgreSQL (p14-8/TC-2): numeric(20) lovelace, jsonb rule_config,
+// TEXT/JSON arrays, and the ListActive/ListScheduled queries that are 0% on PG in
+// the unit suite. All keys are per-run unique so it is re-runnable.
+func TestPG_ReposRoundTrip(t *testing.T) {
+	st := pgStore(t)
+	ctx := context.Background()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+
+	// StakeSnapshotCache: lovelace > 2^53 carried as a decimal string (C4/D6).
+	sch := uk("h")
+	big, pool := "45000000000000000", "pool1abc"
+	if err := st.SnapshotCache().Upsert(ctx, domain.StakeSnapshotCache{
+		StakeCredentialHash: sch, SnapshotEpoch: 481, DelegatedPoolID: &pool,
+		ActiveStakeLovelace: &big, Source: "koios", FetchedAt: now,
+	}); err != nil {
+		t.Fatalf("snapshot upsert: %v", err)
+	}
+	if snap, err := st.SnapshotCache().Get(ctx, sch); err != nil || snap.ActiveStakeLovelace == nil || *snap.ActiveStakeLovelace != big {
+		t.Fatalf("snapshot roundtrip lost the big number: %v %+v", err, snap)
+	}
+
+	// MembershipRule: rule_config is jsonb on PG; entitlements a TEXT/JSON array.
+	rid := uk("rule")
+	if err := st.Rules().Upsert(ctx, domain.MembershipRule{
+		RuleID: rid, Name: "gold", Tier: "gold", Priority: 9, Status: domain.RuleActive,
+		RuleConfig: []byte(`{"min_active_stake_lovelace":"1000000","min_active_epochs":5}`),
+		Entitlements: []string{"read", "vip"}, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("rule upsert: %v", err)
+	}
+	rules, err := st.Rules().ListActive(ctx)
+	if err != nil {
+		t.Fatalf("rules ListActive on PG: %v", err)
+	}
+	if !containsRule(rules, rid) {
+		t.Fatalf("rule %s not round-tripped via ListActive", rid)
+	}
+
+	// SubscriptionSession: ListActive (0% on PG in unit), with Topics/Entitlements arrays.
+	sid, user := uk("sess"), uk("u")
+	if err := st.Subscriptions().Upsert(ctx, domain.SubscriptionSession{
+		SessionID: sid, PoolID: "pool1", StakeCredentialHash: sch, ChannelType: "telegram",
+		ChannelUserID: user, Status: domain.SubActive, Tier: "gold",
+		Topics: []string{"news"}, Entitlements: []string{"read"},
+		CreatedAt: now, LastVerifiedAt: now, ExpiresAt: now.Add(time.Hour),
+	}); err != nil {
+		t.Fatalf("subscription upsert: %v", err)
+	}
+	got, err := st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", user)
+	if err != nil || got.Tier != "gold" || len(got.Topics) != 1 {
+		t.Fatalf("subscription roundtrip: %v %+v", err, got)
+	}
+	if active, err := st.Subscriptions().ListActive(ctx, "pool1"); err != nil || !containsSession(active, sid) {
+		t.Fatalf("subscriptions ListActive on PG missing %s: %v", sid, err)
+	}
+
+	// PushJob: ListScheduled due-filter (0% on PG in unit).
+	jid := uk("job")
+	if err := st.PushJobs().Create(ctx, domain.PushJob{
+		JobID: jid, PoolID: "pool1", Title: "t", Content: "c", ChannelType: "telegram",
+		Status: domain.PushScheduled, CreatedBy: "a", CreatedAt: now,
+	}); err != nil {
+		t.Fatalf("pushjob create: %v", err)
+	}
+	due, err := st.PushJobs().ListScheduled(ctx, now.Add(time.Second), 100)
+	if err != nil || !containsJob(due, jid) {
+		t.Fatalf("ListScheduled on PG missing %s: %v", jid, err)
+	}
+}
+
+func containsRule(rs []domain.MembershipRule, id string) bool {
+	for _, r := range rs {
+		if r.RuleID == id && len(r.Entitlements) == 2 {
+			return true
+		}
+	}
+	return false
+}
+
+func containsSession(ss []domain.SubscriptionSession, id string) bool {
+	for _, s := range ss {
+		if s.SessionID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func containsJob(js []domain.PushJob, id string) bool {
+	for _, j := range js {
+		if j.JobID == id {
+			return true
+		}
+	}
+	return false
+}
+
 // TestPG_DialectRoundTrip exercises a representative repo on PG so the ?->$n
 // rebind, TEXT/JSON encoding and timestamp formats are validated on the prod
 // dialect, and the real embedded migrations apply on Postgres (closes the

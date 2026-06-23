@@ -9,6 +9,7 @@ require (
 	github.com/lestrrat-go/jwx/v2 v2.1.6
 	github.com/testcontainers/testcontainers-go v0.35.0
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.35.0
+	github.com/veraison/go-cose v1.3.0
 	golang.org/x/crypto v0.53.0
 	golang.org/x/time v0.15.0
 	modernc.org/sqlite v1.53.0
