@@ -16,7 +16,12 @@ var embeddedMigrations embed.FS
 // Migrate applies all pending migrations for the store's driver from the
 // embedded migration set. Idempotent: already-applied files are skipped.
 func (s *Store) Migrate(ctx context.Context) error {
-	return MigrateFS(ctx, s, embeddedMigrations)
+	// The embed FS is rooted at "migrations/"; sub-root so "<driver>/" is at top.
+	sub, err := fs.Sub(embeddedMigrations, "migrations")
+	if err != nil {
+		return err
+	}
+	return MigrateFS(ctx, s, sub)
 }
 
 // MigrateFS applies migrations from an arbitrary fs.FS (tests inject their own

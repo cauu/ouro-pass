@@ -21,8 +21,11 @@ func TestIPRateLimiter_BlocksOverBurst(t *testing.T) {
 		h.ServeHTTP(rr, req)
 		return rr.Code
 	}
-	if call() != 200 || call() != 200 {
-		t.Fatal("first two (burst) should pass")
+	if call() != 200 {
+		t.Fatal("first burst call should pass")
+	}
+	if call() != 200 {
+		t.Fatal("second burst call should pass")
 	}
 	if got := call(); got != http.StatusTooManyRequests {
 		t.Fatalf("third call = %d, want 429", got)

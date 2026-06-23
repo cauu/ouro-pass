@@ -155,7 +155,7 @@ server/
 - [x] p1-5 通用中间件：request-id / slog / recover / ipRateLimit / idempotency / OAuth 风格错误信封
 
 ### p2 — 数据模型（详细设计 §2–§8）
-- [ ] p2-1 池与签名密钥：PoolConfig / IssuerKey（签名密钥，无证书链实体）
+- [x] p2-1 池与签名密钥：PoolConfig / IssuerKey（签名密钥，无证书链实体）
 - [ ] p2-2 规则与身份：MembershipRule / StakeSnapshotCache(可选) / Blacklist(可选)
 - [ ] p2-3 Token 与凭证：IssuedToken / RefreshGrant / AuthorizationCode / ActivationCode / AuthNonce
 - [ ] p2-4 客户端与渠道：OAuthClient / ChannelConfig / SubscriptionSession
@@ -216,6 +216,7 @@ server/
 - 2026-06-23 p1-3 completed：`utils/crypto`——`Blake2b224`(pool_id/credential)、`DeriveSub`(base32(HMAC-SHA256))、`FieldCipher`(AES-256-GCM)、`COSESign1.Verify`(CIP-8 Sig_structure + ed25519，自实现 per D4)。COSE 验签覆盖 tagged/untagged、payload/key/sig 篡改、错误 alg 拒绝。真实钱包 golden vector 留作 integration（D5）。证据见 §6（TC-3）。
 - 2026-06-23 p1-4 completed：`utils/jose`——`SignAccessToken`/`SignActivationToken`(EdDSA JWS, header typ/alg/kid)、`BuildJWKS`(OKP/Ed25519 公钥 + status, 无证书链)、`Verify`(JWKS 验签 + 标准时间 claim 校验)。注：jwx keyset 验签要求 JWKS key 带 `alg`，已在 BuildJWKS 设 EdDSA。证据见 §6（TC-4）。
 - 2026-06-23 p1-5 completed：新增 `httpapi/respond`(OAuth 错误信封) + `httpapi/middleware`(RequestLogger/slog、IPRateLimiter per-IP token bucket、Idempotency-Key replay)；chi RequestID/Recoverer 组合。router 重构为按平面挂中间件（public/verifier 限速、token/activation 幂等）。证据见 §6（middleware 单测 + TC-1 路由仍通过）。
+- 2026-06-23 p2-1 completed：`domain` 包起步（ErrNotFound、PoolConfig、IssuerKey + 状态枚举）；迁移 0002_pool_keys（双方言，D6 可移植列类型）；`store` repo——PoolConfig Upsert/Get、IssuerKey Create/Get/SetStatus/ListByStatus。embedded Migrate 修正为 fs.Sub("migrations")。证据见 §6（TC-2）。
 
 ## 6. Validation Evidence (append-only)
 
@@ -225,6 +226,7 @@ server/
 - 2026-06-23 TC-3 | stack: go | command: `go test ./internal/utils/crypto/...` | result: pass | note: blake2b224("") 已知向量匹配；COSE_Sign1 验签（含 tag18 剥离）通过，nonce/key/sig 篡改与错误 alg 均被拒；AES-GCM 往返+篡改检测；DeriveSub 确定性+salt 敏感。注：自构造 CIP-8 向量；真实钱包捕获向量属 integration（D5）
 - 2026-06-23 TC-4 | stack: go | command: `go test ./internal/utils/jose/...` | result: pass | note: access token JWS 经 JWKS 公钥独立验签通过；header 含 kid/typ=at+jwt/alg=EdDSA 且无 cert_hash/x5c；JWKS 仅 OKP 公钥（无 d/x5c/chain）；错误公钥验签失败；activation token one_time/channel_type 校验
 - 2026-06-23 p1-5 | stack: go | command: `go test ./internal/httpapi/...` | result: pass | note: IPRateLimiter 突发后 429 且每 IP 独立桶；Idempotency-Key 重放（handler 仅执行一次、回放 header）、无 key 透传；RequestLogger 透传；TC-1 平面路由测试在中间件重构后仍通过
+- 2026-06-23 TC-2(p2-1) | stack: go | command: `go test ./internal/store/...`（embedded 迁移, SQLite） | result: pass | note: 0002 迁移应用；PoolConfig upsert/get/更新/ErrNotFound；IssuerKey create/get/SetStatus(retired+时间戳)/ListByStatus 往返均通过
 
 ## 7. Change Requests (append-only)
 
@@ -238,3 +240,4 @@ server/
 - 2026-06-23 D3 **DB 驱动与测试边界**：SQLite 用 `modernc.org/sqlite`（纯 Go、无 CGO），单元测试跑 SQLite（临时文件/内存）；PG 用 `jackc/pgx/v5`（stdlib `database/sql` 模式），PG 专项测试需 `POOLOPS_TEST_PG_DSN` 环境变量，未提供则 skip（标 integration）。TC-2 在本机以 SQLite 为主证，PG 路径以代码 + 可选 DSN 跑通为准。
 - 2026-06-23 D4 **CIP-30 COSE 验签自实现**：用 `fxamacker/cbor/v2` 解 COSE_Sign1 + 按 CIP-8 组 `Sig_structure` + `crypto/ed25519` 验签（不引入 go-cose，因 CIP-8 的 Sig_structure 组装本就需手控，自实现更直接可审计）。§2.1 中 go-cose 一项以此决策为准。
 - 2026-06-23 D5 **真链 / 真 Telegram 不在本机集成测试**：`chain` 的 `node_lsq`/`db_sync`/`koios` 与 telegram transport 以接口 + mock 单测逻辑，真实集成打 `//go:build integration` tag，本 spec 验收以单测 + 可编译为准（与 §4 测试栈映射一致）。
+- 2026-06-23 D6 **MVP 用可移植列类型**：为让 PG/SQLite 双栈 repository 完全同构，`array`/`json` 列在两栈统一用 `TEXT`(JSON)，时间统一用 `TEXT`(RFC3339Nano)，lovelace 用 `TEXT`(math/big 解析)，二进制用 `BYTEA`(PG)/`BLOB`(SQLite)。详细设计 §0 的 PG `jsonb`/`timestamptz`/`numeric(20)` 作为后续优化迁移（post-MVP），不影响实体语义。
