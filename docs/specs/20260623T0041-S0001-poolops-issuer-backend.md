@@ -152,7 +152,7 @@ server/
 - [x] p1-2 持久层底座：手写 `database/sql` repository 底座（D2）+ pgx/SQLite 双栈、embed migration 框架、Querier/WithTx/Rebind
 - [x] p1-3 crypto 基础（`utils/crypto`）：ed25519、blake2b224、HMAC `sub` 派生、字段加密(AES-GCM)、CIP-30 COSE 验签
 - [x] p1-4 JOSE（`utils/jose`）：access/activation token JWS builder + JWKS publisher（jwx）
-- [ ] p1-5 通用中间件：request-id / slog / recover / ipRateLimit / idempotency / OAuth 风格错误信封
+- [x] p1-5 通用中间件：request-id / slog / recover / ipRateLimit / idempotency / OAuth 风格错误信封
 
 ### p2 — 数据模型（详细设计 §2–§8）
 - [ ] p2-1 池与签名密钥：PoolConfig / IssuerKey（签名密钥，无证书链实体）
@@ -215,6 +215,7 @@ server/
 - 2026-06-23 p1-2 completed：`internal/store` 底座——`Open`(sqlite/pgx 双驱动)、`Querier`/`WithTx`/`Rebind`(? → $n)、`embed` 迁移 runner（按 `<driver>/NNNN.sql` 顺序应用 + schema_migrations 记录 + 幂等）。SQLite 全测通过；PG 路径置于 `POOLOPS_TEST_PG_DSN` 后（D3）。证据见 §6（TC-2）。
 - 2026-06-23 p1-3 completed：`utils/crypto`——`Blake2b224`(pool_id/credential)、`DeriveSub`(base32(HMAC-SHA256))、`FieldCipher`(AES-256-GCM)、`COSESign1.Verify`(CIP-8 Sig_structure + ed25519，自实现 per D4)。COSE 验签覆盖 tagged/untagged、payload/key/sig 篡改、错误 alg 拒绝。真实钱包 golden vector 留作 integration（D5）。证据见 §6（TC-3）。
 - 2026-06-23 p1-4 completed：`utils/jose`——`SignAccessToken`/`SignActivationToken`(EdDSA JWS, header typ/alg/kid)、`BuildJWKS`(OKP/Ed25519 公钥 + status, 无证书链)、`Verify`(JWKS 验签 + 标准时间 claim 校验)。注：jwx keyset 验签要求 JWKS key 带 `alg`，已在 BuildJWKS 设 EdDSA。证据见 §6（TC-4）。
+- 2026-06-23 p1-5 completed：新增 `httpapi/respond`(OAuth 错误信封) + `httpapi/middleware`(RequestLogger/slog、IPRateLimiter per-IP token bucket、Idempotency-Key replay)；chi RequestID/Recoverer 组合。router 重构为按平面挂中间件（public/verifier 限速、token/activation 幂等）。证据见 §6（middleware 单测 + TC-1 路由仍通过）。
 
 ## 6. Validation Evidence (append-only)
 
@@ -223,6 +224,7 @@ server/
 - 2026-06-23 TC-2 | stack: go | command: `go test ./internal/store/...`（SQLite） | result: pass | note: 迁移应用+幂等、widget DDL 往返、WithTx 回滚、Rebind ?→$n 均通过；PG 路径需 POOLOPS_TEST_PG_DSN（本机未跑，代码就绪）
 - 2026-06-23 TC-3 | stack: go | command: `go test ./internal/utils/crypto/...` | result: pass | note: blake2b224("") 已知向量匹配；COSE_Sign1 验签（含 tag18 剥离）通过，nonce/key/sig 篡改与错误 alg 均被拒；AES-GCM 往返+篡改检测；DeriveSub 确定性+salt 敏感。注：自构造 CIP-8 向量；真实钱包捕获向量属 integration（D5）
 - 2026-06-23 TC-4 | stack: go | command: `go test ./internal/utils/jose/...` | result: pass | note: access token JWS 经 JWKS 公钥独立验签通过；header 含 kid/typ=at+jwt/alg=EdDSA 且无 cert_hash/x5c；JWKS 仅 OKP 公钥（无 d/x5c/chain）；错误公钥验签失败；activation token one_time/channel_type 校验
+- 2026-06-23 p1-5 | stack: go | command: `go test ./internal/httpapi/...` | result: pass | note: IPRateLimiter 突发后 429 且每 IP 独立桶；Idempotency-Key 重放（handler 仅执行一次、回放 header）、无 key 透传；RequestLogger 透传；TC-1 平面路由测试在中间件重构后仍通过
 
 ## 7. Change Requests (append-only)
 
