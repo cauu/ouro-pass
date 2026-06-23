@@ -85,7 +85,7 @@ func TestAdminRBAC_Matrix(t *testing.T) {
 }
 
 func TestAdminRevokeMember_BlacklistAndCascade(t *testing.T) {
-	srv, client, _, _, st := adminResourceEnv(t, domain.RoleOperator)
+	srv, client, priv, vkey, st := adminResourceEnv(t, domain.RoleOperator)
 	ctx := context.Background()
 	const sch = "sch-deadbeef"
 
@@ -104,8 +104,15 @@ func TestAdminRevokeMember_BlacklistAndCascade(t *testing.T) {
 		CreatedAt: time.Now(), LastVerifiedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour),
 	})
 
-	if code := postCode(t, client, srv.URL+"/api/admin/members/"+sch+"/revoke", ``); code != 200 {
-		t.Fatalf("revoke = %d, want 200", code)
+	// Without a step-up signature → rejected (p12-11).
+	if code := postCode(t, client, srv.URL+"/api/admin/members/"+sch+"/revoke", `{}`); code != http.StatusUnauthorized && code != http.StatusForbidden {
+		t.Fatalf("revoke without step-up = %d, want 401/403", code)
+	}
+	// With a fresh step-up signature → success.
+	suNonce := stepUpNonce(t, st, vkey)
+	revokeBody, _ := json.Marshal(map[string]string{"owner_vkey": vkey, "step_up_nonce": suNonce, "step_up_signature": signNonce(t, priv, suNonce)})
+	if code := postCode(t, client, srv.URL+"/api/admin/members/"+sch+"/revoke", string(revokeBody)); code != 200 {
+		t.Fatalf("revoke with step-up = %d, want 200", code)
 	}
 
 	// Blacklisted by the same key evaluate() checks (D1 fix).
@@ -192,8 +199,15 @@ func TestAdminOperator_RulesAndPush(t *testing.T) {
 func TestAdminOwner_RegisterClientAndRotateKey(t *testing.T) {
 	srv, client, priv, vkey, st := adminResourceEnv(t, domain.RoleOwner)
 
-	// Register a confidential client → secret returned once.
-	resp := postJSON(t, client, srv.URL+"/api/admin/oauth-clients", `{"client_id":"c1","name":"App","client_type":"confidential","party":"first_party","redirect_uris":["https://app/cb"],"allowed_audiences":["app:ouro"],"allowed_scopes":["read"]}`)
+	// Registering a client requires step-up (p12-11): without it → rejected.
+	const regFields = `"client_id":"c1","name":"App","client_type":"confidential","party":"first_party","redirect_uris":["https://app/cb"],"allowed_audiences":["app:ouro"],"allowed_scopes":["read"]`
+	if code := postCode(t, client, srv.URL+"/api/admin/oauth-clients", `{`+regFields+`}`); code != http.StatusUnauthorized && code != http.StatusForbidden {
+		t.Fatalf("register without step-up = %d, want 401/403", code)
+	}
+	// With a fresh step-up signature → confidential client + one-time secret.
+	regNonce := stepUpNonce(t, st, vkey)
+	regBody := `{` + regFields + `,"owner_vkey":"` + vkey + `","step_up_nonce":"` + regNonce + `","step_up_signature":"` + signNonce(t, priv, regNonce) + `"}`
+	resp := postJSON(t, client, srv.URL+"/api/admin/oauth-clients", regBody)
 	if resp["client_secret"] == "" || resp["client_secret"] == nil {
 		t.Fatalf("expected one-time client_secret: %v", resp)
 	}

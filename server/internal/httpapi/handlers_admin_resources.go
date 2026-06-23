@@ -85,6 +85,18 @@ func (h *apiHandlers) adminMembers(w http.ResponseWriter, r *http.Request) {
 // revokes their active tokens, refresh grants, and subscriptions (§9.8, D10).
 func (h *apiHandlers) adminRevokeMember(w http.ResponseWriter, r *http.Request) {
 	sch := chi.URLParam(r, "sch")
+	// Member revoke cascades token/grant/session revocation — a high blast-radius
+	// op, so it requires a fresh step-up signature like key rotation (p12-11/D19).
+	var su struct {
+		OwnerVkey       string `json:"owner_vkey"`
+		StepUpNonce     string `json:"step_up_nonce"`
+		StepUpSignature string `json:"step_up_signature"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&su)
+	if err := h.requireStepUp(r, struct{ OwnerVkey, Nonce, Signature string }{su.OwnerVkey, su.StepUpNonce, su.StepUpSignature}); err != nil {
+		writeAdminErr(w, err)
+		return
+	}
 	now := time.Now()
 	// Blacklist gates future authorize/refresh/activation (evaluate() keys on sch).
 	if err := h.d.Store.Blacklist().Add(r.Context(), domain.Blacklist{
@@ -267,14 +279,19 @@ func (h *apiHandlers) adminListClients(w http.ResponseWriter, r *http.Request) {
 
 func (h *apiHandlers) adminRegisterClient(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ClientID      string   `json:"client_id"`
-		Name          string   `json:"name"`
-		ClientType    string   `json:"client_type"`
-		Party         string   `json:"party"`
-		RedirectURIs  []string `json:"redirect_uris"`
-		Audiences     []string `json:"allowed_audiences"`
-		Scopes        []string `json:"allowed_scopes"`
-		PKCERequired  bool     `json:"pkce_required"`
+		ClientID     string   `json:"client_id"`
+		Name         string   `json:"name"`
+		ClientType   string   `json:"client_type"`
+		Party        string   `json:"party"`
+		RedirectURIs []string `json:"redirect_uris"`
+		Audiences    []string `json:"allowed_audiences"`
+		Scopes       []string `json:"allowed_scopes"`
+		PKCERequired bool     `json:"pkce_required"`
+		// Registering a client issues credentials → require a fresh step-up
+		// signature like key rotation (p12-11/D19).
+		OwnerVkey       string `json:"owner_vkey"`
+		StepUpNonce     string `json:"step_up_nonce"`
+		StepUpSignature string `json:"step_up_signature"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ClientID == "" {
 		respond.Error(w, http.StatusBadRequest, "invalid_request", "client_id required")
@@ -286,6 +303,11 @@ func (h *apiHandlers) adminRegisterClient(w http.ResponseWriter, r *http.Request
 	}
 	if p := domain.ClientParty(body.Party); !p.Valid() {
 		respond.Error(w, http.StatusBadRequest, "invalid_request", "party must be first_party or third_party")
+		return
+	}
+	// Step-up gates the actual registration (after request-shape validation).
+	if err := h.requireStepUp(r, struct{ OwnerVkey, Nonce, Signature string }{body.OwnerVkey, body.StepUpNonce, body.StepUpSignature}); err != nil {
+		writeAdminErr(w, err)
 		return
 	}
 	c := domain.OAuthClient{
