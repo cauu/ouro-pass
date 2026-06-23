@@ -120,6 +120,12 @@ func (r *RefreshGrantRepo) RevokeChain(ctx context.Context, startID string) erro
 				}
 				ids = append(ids, child)
 			}
+			// A mid-iteration read error must abort the chain revoke, not be
+			// silently treated as a complete walk (under-revocation, p12-9).
+			if err := rows.Err(); err != nil {
+				rows.Close()
+				return err
+			}
 			rows.Close()
 		}
 		return nil

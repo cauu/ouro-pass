@@ -31,6 +31,8 @@ type Deps struct {
 	Store       *store.Store // admin resource handlers use repos directly
 	PoolID      string
 	TelegramBot string // bot username for activation deep links
+	TrustedProxy  bool // trust X-Forwarded-For for client IP (only behind a known proxy, D15)
+	SecureCookies bool // set Secure on admin session cookies (off for local HTTP, D17)
 }
 
 type apiHandlers struct{ d Deps }
@@ -53,12 +55,14 @@ func NewRouter(d Deps) http.Handler {
 	r.With(publicLimit).Post("/api/auth/challenge", h.authChallenge)
 
 	// ---- Issuance (OAuth) plane ----
-	r.Get("/connect", h.connect)
-	r.Post("/api/connect/authorize", h.connectAuthorize)
-	r.With(idem).Post("/api/oauth/token", h.oauthToken)
+	// Rate-limited: these are unauthenticated and do expensive work (COSE verify,
+	// external chain queries), so brute-force / amplification is bounded (p12-9).
+	r.With(publicLimit).Get("/connect", h.connect)
+	r.With(publicLimit).Post("/api/connect/authorize", h.connectAuthorize)
+	r.With(publicLimit, idem).Post("/api/oauth/token", h.oauthToken)
 
 	// ---- Channel activation plane ----
-	r.With(idem).Post("/api/activation/create", h.activationCreate)
+	r.With(publicLimit, idem).Post("/api/activation/create", h.activationCreate)
 
 	// ---- Verifier plane (public, read-only, rate-limited) ----
 	r.Group(func(r chi.Router) {

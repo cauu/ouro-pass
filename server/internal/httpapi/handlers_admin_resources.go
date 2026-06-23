@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"ouro-pass/server/internal/core/admin"
 	"ouro-pass/server/internal/domain"
 	"ouro-pass/server/internal/httpapi/respond"
 	"ouro-pass/server/internal/utils/crypto"
@@ -38,6 +39,9 @@ func (h *apiHandlers) mountAdminResources(r chi.Router) {
 // The body must carry {owner_vkey, step_up_nonce, step_up_signature}.
 func (h *apiHandlers) requireStepUp(r *http.Request, stepUp struct{ OwnerVkey, Nonce, Signature string }) error {
 	u := adminFromCtx(r.Context())
+	if u == nil { // defensive: requireSession should always populate this
+		return admin.ErrUnauthorized
+	}
 	return h.d.Admin.VerifyStepUp(r.Context(), stepUp.OwnerVkey, stepUp.Nonce, stepUp.Signature, u.OwnerKeyHash)
 }
 
@@ -45,7 +49,7 @@ func (h *apiHandlers) audit(r *http.Request, action, target string) {
 	u := adminFromCtx(r.Context())
 	_ = h.d.Store.Audit().Append(r.Context(), domain.AuditLog{
 		AuditID: crypto.RandomID(), Actor: u.AdminID, Action: action, Target: target,
-		IP: ptrIfSet(clientIPFromReq(r)), CreatedAt: time.Now(),
+		IP: ptrIfSet(h.clientIP(r)), CreatedAt: time.Now(),
 	})
 }
 

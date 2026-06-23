@@ -187,6 +187,11 @@ func (w *Worker) Run(ctx context.Context) {
 			if up.UpdateID >= offset {
 				offset = up.UpdateID + 1
 			}
+			// Skip updates with no authenticated sender (non-message updates carry
+			// from.id=0) so we never reply to chat "0" (p12-10).
+			if up.UserID == "" || up.UserID == "0" {
+				continue
+			}
 			reply := w.proc.Handle(ctx, up)
 			if err := w.transport.SendMessage(ctx, up.ChatID, reply); err != nil {
 				slog.Warn("telegram sendMessage failed", "err", err)

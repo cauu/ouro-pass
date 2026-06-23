@@ -105,29 +105,6 @@ func TestBuildJWKS_OKPOnlyNoCertChain(t *testing.T) {
 	}
 }
 
-func TestSignActivationToken(t *testing.T) {
-	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
-	s, err := SignActivationToken("k1", priv, ActivationClaims{
-		Issuer: "ouropass:pool1", Subject: "sub", ChannelType: "telegram",
-		Tier: "gold", Entitlements: []string{"news"}, JTI: "a1",
-		Expiry: time.Now().Add(10 * time.Minute),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	jwks, _ := BuildJWKS([]PublicKey{{KID: "k1", Public: pub, Status: "active"}})
-	tok, err := Verify(s, jwks)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if ot, _ := tok.Get("one_time"); ot != true {
-		t.Errorf("one_time = %v, want true", ot)
-	}
-	if ch, _ := tok.Get("channel_type"); ch != "telegram" {
-		t.Errorf("channel_type = %v", ch)
-	}
-}
-
 func decodeHeader(t *testing.T, jws string) map[string]any {
 	t.Helper()
 	parts := strings.Split(jws, ".")

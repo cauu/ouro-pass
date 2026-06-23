@@ -33,17 +33,6 @@ type AccessClaims struct {
 	Cnf          map[string]string // optional PoP confirmation, e.g. {"jkt": "..."}
 }
 
-// ActivationClaims is the payload of a channel activation token (detailed §9.2).
-type ActivationClaims struct {
-	Issuer       string
-	Subject      string
-	ChannelType  string
-	Tier         string
-	Entitlements []string
-	JTI          string
-	Expiry       time.Time
-}
-
 // SignAccessToken produces a compact JWS access token signed by (kid, priv).
 func SignAccessToken(kid string, priv ed25519.PrivateKey, c AccessClaims) (string, error) {
 	b := jwt.NewBuilder().
@@ -60,24 +49,6 @@ func SignAccessToken(kid string, priv ed25519.PrivateKey, c AccessClaims) (strin
 		b = b.Claim("cnf", c.Cnf)
 	}
 	tok, err := b.Build()
-	if err != nil {
-		return "", err
-	}
-	return sign(kid, priv, TypAccessToken, tok)
-}
-
-// SignActivationToken produces a one-time channel activation token.
-func SignActivationToken(kid string, priv ed25519.PrivateKey, c ActivationClaims) (string, error) {
-	tok, err := jwt.NewBuilder().
-		Issuer(c.Issuer).
-		Subject(c.Subject).
-		Expiration(c.Expiry).
-		JwtID(c.JTI).
-		Claim("channel_type", c.ChannelType).
-		Claim("tier", c.Tier).
-		Claim("entitlements", c.Entitlements).
-		Claim("one_time", true).
-		Build()
 	if err != nil {
 		return "", err
 	}

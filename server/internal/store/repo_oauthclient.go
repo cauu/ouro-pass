@@ -71,9 +71,9 @@ func (r *OAuthClientRepo) Get(ctx context.Context, clientID string) (*domain.OAu
 
 // List returns all registered clients (secret hashes omitted by callers).
 func (r *OAuthClientRepo) List(ctx context.Context) ([]domain.OAuthClient, error) {
-	rows, err := r.s.DB.QueryContext(ctx, `
+	rows, err := r.s.DB.QueryContext(ctx, r.s.Rebind(`
 		SELECT client_id, name, client_type, client_secret_hash, party, redirect_uris, allowed_audiences, allowed_scopes, pkce_required, status, created_at
-		FROM OAuthClient ORDER BY created_at`)
+		FROM OAuthClient ORDER BY created_at`))
 	if err != nil {
 		return nil, err
 	}
@@ -89,10 +89,20 @@ func (r *OAuthClientRepo) List(ctx context.Context) ([]domain.OAuthClient, error
 		}
 		c.ClientType, c.Party, c.Status = domain.ClientType(clientType), domain.ClientParty(party), status
 		c.PKCERequired = pkce != 0
-		c.RedirectURIs, _ = decodeStrings(redirects)
-		c.AllowedAudiences, _ = decodeStrings(auds)
-		c.AllowedScopes, _ = decodeStrings(scopes)
-		c.CreatedAt, _ = parseTS(created)
+		// Propagate decode errors instead of silently yielding empty fields
+		// (consistency with Get, p12-9).
+		if c.RedirectURIs, err = decodeStrings(redirects); err != nil {
+			return nil, err
+		}
+		if c.AllowedAudiences, err = decodeStrings(auds); err != nil {
+			return nil, err
+		}
+		if c.AllowedScopes, err = decodeStrings(scopes); err != nil {
+			return nil, err
+		}
+		if c.CreatedAt, err = parseTS(created); err != nil {
+			return nil, err
+		}
 		out = append(out, c)
 	}
 	return out, rows.Err()

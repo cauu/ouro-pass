@@ -3,7 +3,9 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
+	"strings"
 
 	"ouro-pass/server/internal/core/admin"
 	"ouro-pass/server/internal/domain"
@@ -33,7 +35,7 @@ func (h *apiHandlers) adminChallenge(w http.ResponseWriter, r *http.Request) {
 	}
 	nonce, exp, err := h.d.Admin.Challenge(r.Context(), req.OwnerVkey)
 	if err != nil {
-		respond.Error(w, http.StatusBadRequest, "invalid_request", err.Error())
+		respond.Error(w, http.StatusBadRequest, "invalid_request", "could not issue challenge")
 		return
 	}
 	respond.JSON(w, http.StatusOK, map[string]any{"nonce": nonce, "expires_at": exp.UTC().Format("2006-01-02T15:04:05Z07:00")})
@@ -56,13 +58,13 @@ func (h *apiHandlers) adminVerify(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusBadRequest, "invalid_request", "malformed JSON body")
 		return
 	}
-	token, role, err := h.d.Admin.Verify(r.Context(), req.OwnerVkey, req.Nonce, req.Signature, clientIPFromReq(r))
+	token, role, err := h.d.Admin.Verify(r.Context(), req.OwnerVkey, req.Nonce, req.Signature, h.clientIP(r))
 	if err != nil {
 		writeAdminErr(w, err)
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
-		Name: sessionCookie, Value: token, Path: "/", HttpOnly: true, Secure: true,
+		Name: sessionCookie, Value: token, Path: "/", HttpOnly: true, Secure: h.d.SecureCookies,
 		SameSite: http.SameSiteLaxMode,
 	})
 	respond.JSON(w, http.StatusOK, map[string]string{"role": string(role)})
@@ -131,13 +133,27 @@ func writeAdminErr(w http.ResponseWriter, err error) {
 	case admin.ErrForbidden:
 		respond.Error(w, http.StatusForbidden, "forbidden", "key is not an authorized admin")
 	default:
-		respond.Error(w, http.StatusBadRequest, "invalid_request", err.Error())
+		// Never reflect an unmapped error's text (could wrap an internal detail).
+		respond.Error(w, http.StatusBadRequest, "invalid_request", "invalid request")
 	}
 }
 
-func clientIPFromReq(r *http.Request) string {
-	if h := r.Header.Get("X-Forwarded-For"); h != "" {
-		return h
+// clientIP resolves the caller's IP for audit/throttling. X-Forwarded-For is
+// trusted ONLY when the deployment declares a trusted proxy (D15); otherwise the
+// header is ignored (it is attacker-controlled with no proxy in front) and the
+// transport RemoteAddr is used. Prevents audit-log IP forgery / throttle evasion
+// via a spoofed header (p12-6).
+func (h *apiHandlers) clientIP(r *http.Request) string {
+	if h.d.TrustedProxy {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.Split(xff, ",")
+			if ip := strings.TrimSpace(parts[len(parts)-1]); ip != "" {
+				return ip // rightmost hop = address the trusted proxy actually saw
+			}
+		}
+	}
+	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+		return host
 	}
 	return r.RemoteAddr
 }

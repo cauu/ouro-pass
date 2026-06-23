@@ -17,7 +17,10 @@ func (h *apiHandlers) introspect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	b := parseTokenBody(r)
-	res, err := h.d.OAuth.Introspect(r.Context(), b.token, b.jti)
+	// Only a full, signature-verified token is accepted — a caller-supplied bare
+	// jti is ignored so this unauthenticated endpoint can't be used as a
+	// token-status oracle by jti enumeration (RFC 7662 token-scanning, D16/p12-9).
+	res, err := h.d.OAuth.Introspect(r.Context(), b.token, "")
 	if err != nil {
 		serverError(w, r, err)
 		return

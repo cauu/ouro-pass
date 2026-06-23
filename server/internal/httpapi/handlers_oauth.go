@@ -108,7 +108,9 @@ func (h *apiHandlers) oauthToken(w http.ResponseWriter, r *http.Request) {
 		} else if code == "not_eligible" {
 			status = http.StatusForbidden
 		}
-		respond.Error(w, status, code, err.Error())
+		// Use a fixed description per code; never reflect err.Error() (which could
+		// carry a wrapped internal/DB detail for an unmapped error) (p12-10).
+		respond.Error(w, status, code, oauthErrDescription(code))
 		return
 	}
 	respond.JSON(w, http.StatusOK, map[string]any{
@@ -166,6 +168,25 @@ func oauthTokenErrCode(err error) string {
 	}
 }
 
+// oauthErrDescription maps an OAuth error code to a fixed, non-sensitive
+// human description, so handlers never reflect raw err.Error() to clients (p12-10).
+func oauthErrDescription(code string) string {
+	switch code {
+	case "invalid_grant":
+		return "the authorization code or refresh token is invalid, expired, or already used"
+	case "invalid_client":
+		return "client authentication failed"
+	case "not_eligible":
+		return "the stake credential is not eligible for membership"
+	case "unsupported_grant_type":
+		return "unsupported grant_type"
+	case "access_denied":
+		return "wallet authorization failed"
+	default:
+		return "invalid request"
+	}
+}
+
 func redirectWithParams(w http.ResponseWriter, r *http.Request, redirectURI string, params url.Values) {
 	u, err := url.Parse(redirectURI)
 	if err != nil {
@@ -190,7 +211,8 @@ func writeOAuthErr(w http.ResponseWriter, err error) {
 	if errors.Is(err, oauth.ErrInvalidClient) {
 		status = http.StatusUnauthorized
 	}
-	respond.Error(w, status, oauthErrCode(err), err.Error())
+	code := oauthErrCode(err)
+	respond.Error(w, status, code, oauthErrDescription(code))
 }
 
 func oauthErrCode(err error) string {

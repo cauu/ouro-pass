@@ -40,7 +40,14 @@ type tgUpdate struct {
 
 // GetUpdates long-polls the Telegram getUpdates endpoint.
 func (b *BotAPITransport) GetUpdates(ctx context.Context, offset int) ([]Update, error) {
-	q := url.Values{"timeout": {strconv.Itoa(b.timeout)}, "offset": {strconv.Itoa(offset)}}
+	// Only message updates are handled; restricting allowed_updates avoids
+	// receiving edited_message/channel_post/callback_query that carry no
+	// message.from and would otherwise be mis-dispatched (p12-10).
+	q := url.Values{
+		"timeout":         {strconv.Itoa(b.timeout)},
+		"offset":          {strconv.Itoa(offset)},
+		"allowed_updates": {`["message"]`},
+	}
 	var resp struct {
 		OK     bool       `json:"ok"`
 		Result []tgUpdate `json:"result"`
