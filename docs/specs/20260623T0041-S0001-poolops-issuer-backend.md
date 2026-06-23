@@ -159,7 +159,7 @@ server/
 - [x] p2-2 规则与身份：MembershipRule / StakeSnapshotCache(可选) / Blacklist(可选)
 - [x] p2-3 Token 与凭证：IssuedToken / RefreshGrant / AuthorizationCode / ActivationCode / AuthNonce
 - [x] p2-4 客户端与渠道：OAuthClient / ChannelConfig / SubscriptionSession
-- [ ] p2-5 推送与管理审计：PushJob / DeliveryLog / AdminUser / AdminSession / AuditLog
+- [x] p2-5 推送与管理审计：PushJob / DeliveryLog / AdminUser / AdminSession / AuditLog
 
 ### p3 — 链访问与规则引擎
 - [ ] p3-1 Staking Index Adapter（`utils/chain`）接口 + `node_lsq` 实现（MVP）+ `db_sync`/`koios` 占位
@@ -220,6 +220,7 @@ server/
 - 2026-06-23 p2-2 completed：`domain/rules`（MembershipRule + RuleStatus、StakeSnapshotCache、Blacklist）；迁移 0003_rules_identity；repo——Rules Upsert/ListActive（priority desc 确定性排序，喂 p3-2）、Blacklist Add/Has、SnapshotCache Upsert/Get。lovelace 大数以 TEXT 精确往返。证据见 §6（TC-2）。
 - 2026-06-23 p2-3 completed：`domain/tokens`（IssuedToken/RefreshGrant/AuthorizationCode/ActivationCode/AuthNonce + 全枚举 + 哨兵错误 ErrConsumed/ErrExpired/ErrPurpose）；迁移 0004_tokens；repo——IssuedToken CRUD+Revoke、RefreshGrant Create/Get/SetStatus/**RevokeChain**(rotated_from BFS)、AuthNonce/AuthCode/ActivationCode 原子一次性 Consume(并发安全 via WithTx)。证据见 §6（TC-2）。
 - 2026-06-23 p2-4 completed：`domain/clients`（OAuthClient/ChannelConfig/SubscriptionSession + 枚举）；`utils/crypto/random`（RandomID/RandomToken/HashToken）；迁移 0005_clients_channels（含 SubscriptionSession 唯一约束 + bool→INTEGER 可移植）；repo——OAuthClient Upsert/Get、Channels Upsert/GetByType、Subscriptions Upsert(唯一键 upsert)/GetByChannelUser/SetStatus。证据见 §6（TC-2）。
+- 2026-06-23 p2-5 completed（phase p2 收尾）：`domain/admin`（PushJob/DeliveryLog/AdminUser/AdminSession/AuditLog + 枚举）；迁移 0006_push_admin；repo——PushJob CRUD+SetStatus、DeliveryLog Append/CountByStatus、AdminUser Upsert/GetByOwnerKeyHash/TouchLogin、AdminSession Create/GetValid(过期判定)/Delete、Audit Append/Recent。全部 16 实体落库。证据见 §6（TC-2）。
 
 ## 6. Validation Evidence (append-only)
 
@@ -233,6 +234,7 @@ server/
 - 2026-06-23 TC-2(p2-2) | stack: go | command: `go test ./internal/store/...` | result: pass | note: 0003 迁移应用；MembershipRule ListActive 优先级降序+排除 disabled+重排序；Blacklist Has/Add；SnapshotCache 大数 lovelace 精确往返
 - 2026-06-23 TC-2(p2-3) | stack: go | command: `go test ./internal/store/...` | result: pass | note: 0004 迁移应用；IssuedToken create/get/revoke；RefreshGrant 轮换链 g1→g2→g3 RevokeChain 全撤销；AuthNonce 一次性消费 + 重放/缺失/错 purpose/过期 四类哨兵错误；AuthCode/ActivationCode 一次性 + 错渠道拒绝
 - 2026-06-23 TC-2(p2-4) | stack: go | command: `go test ./internal/store/... ./internal/utils/crypto/...` | result: pass | note: 0005 迁移应用；OAuthClient confidential/public(PKCE) 往返；ChannelConfig GetByType；SubscriptionSession 唯一键 upsert(tier 改写不重复)/SetStatus；RandomID/Token/Hash 可用
+- 2026-06-23 TC-2(p2-5) | stack: go | command: `go build ./... && go vet ./... && go test ./...` | result: pass | note: 0006 迁移应用；PushJob CRUD+SetStatus；DeliveryLog CountByStatus(2 sent/1 failed)；AdminUser/Session(valid→expired→deleted)/Audit Recent 全通过；整库 6 迁移、16 实体编译+测试绿
 
 ## 7. Change Requests (append-only)
 
