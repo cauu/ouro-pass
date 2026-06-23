@@ -163,7 +163,7 @@ server/
 
 ### p3 — 链访问与规则引擎
 - [x] p3-1 Staking Index Adapter（`utils/chain`）接口 + `node_lsq` 实现（MVP）+ `db_sync`/`koios` 占位
-- [ ] p3-2 Rule engine（`core/rules`，纯函数实现，输入参数注入 + 稳定排序）：snapshot + rule_config → eligibility / tier / entitlements
+- [x] p3-2 Rule engine（`core/rules`，纯函数实现，输入参数注入 + 稳定排序）：snapshot + rule_config → eligibility / tier / entitlements
 
 ### p4 — 钱包原语与签名密钥管理
 - [ ] p4-1 `POST /api/auth/challenge`（AuthNonce）+ COSE 验签接入 `stake_credential_hash` 映射
@@ -222,6 +222,7 @@ server/
 - 2026-06-23 p2-4 completed：`domain/clients`（OAuthClient/ChannelConfig/SubscriptionSession + 枚举）；`utils/crypto/random`（RandomID/RandomToken/HashToken）；迁移 0005_clients_channels（含 SubscriptionSession 唯一约束 + bool→INTEGER 可移植）；repo——OAuthClient Upsert/Get、Channels Upsert/GetByType、Subscriptions Upsert(唯一键 upsert)/GetByChannelUser/SetStatus。证据见 §6（TC-2）。
 - 2026-06-23 p2-5 completed（phase p2 收尾）：`domain/admin`（PushJob/DeliveryLog/AdminUser/AdminSession/AuditLog + 枚举）；迁移 0006_push_admin；repo——PushJob CRUD+SetStatus、DeliveryLog Append/CountByStatus、AdminUser Upsert/GetByOwnerKeyHash/TouchLogin、AdminSession Create/GetValid(过期判定)/Delete、Audit Append/Recent。全部 16 实体落库。证据见 §6（TC-2）。
 - 2026-06-23 p3-1 completed：`utils/chain`——`Source` 接口 + `Snapshot` 类型（lovelace 字符串保大数）；实现 MockSource、KoiosSource(HTTP /account_info+/tip)、NodeLSQSource(cardano-cli，runner 可注入)、DBSyncSource(占位 ErrNotImplemented)；`NewSource` 工厂按 kind 选型。真实 node/db-sync/HTTP 走 integration（D5）。证据见 §6（p3-1）。
+- 2026-06-23 p3-2 completed：`core/rules`——`Evaluate(Input, ruleset, epoch) → Decision` **纯函数**（C10）：内部稳定排序(priority desc, rule_id asc)、big.Int 精确比较 min stake、min_active_epochs 净 grace、首个命中胜出；`InputFromSnapshot` 纯映射。无 IO/时钟/随机。证据见 §6（TC-5）。
 
 ## 6. Validation Evidence (append-only)
 
@@ -237,6 +238,7 @@ server/
 - 2026-06-23 TC-2(p2-4) | stack: go | command: `go test ./internal/store/... ./internal/utils/crypto/...` | result: pass | note: 0005 迁移应用；OAuthClient confidential/public(PKCE) 往返；ChannelConfig GetByType；SubscriptionSession 唯一键 upsert(tier 改写不重复)/SetStatus；RandomID/Token/Hash 可用
 - 2026-06-23 TC-2(p2-5) | stack: go | command: `go build ./... && go vet ./... && go test ./...` | result: pass | note: 0006 迁移应用；PushJob CRUD+SetStatus；DeliveryLog CountByStatus(2 sent/1 failed)；AdminUser/Session(valid→expired→deleted)/Audit Recent 全通过；整库 6 迁移、16 实体编译+测试绿
 - 2026-06-23 p3-1 | stack: go | command: `go test ./internal/utils/chain/...` | result: pass | note: Mock(known/unknown/epoch)；Koios 经 httptest 解析 /tip+/account_info（大数 lovelace 精确，未注册账户清空 pool）；node_lsq parseStakeAddressInfo/parseTip + 注入 runner 全流程；NewSource 工厂 4 类 + 未知报错 + db_sync ErrNotImplemented
+- 2026-06-23 TC-5 | stack: go | command: `go test ./internal/core/...` | result: pass | note: 资格评估覆盖 whale→gold/小额→silver/全不达标/委托他池/未委托/未知 stake；**纯函数验证**——50 次同输入 DeepEqual 一致、规则乱序仍 gold(prio 10) 胜出；min_active_epochs 净 grace（2 失败/3 通过/未知跳过）；disabled 规则忽略
 
 ## 7. Change Requests (append-only)
 
