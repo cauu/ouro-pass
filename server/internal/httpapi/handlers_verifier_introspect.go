@@ -19,7 +19,7 @@ func (h *apiHandlers) introspect(w http.ResponseWriter, r *http.Request) {
 	b := parseTokenBody(r)
 	res, err := h.d.OAuth.Introspect(r.Context(), b.token, b.jti)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", "introspection failed")
+		serverError(w, r, err)
 		return
 	}
 	respond.JSON(w, http.StatusOK, res)
@@ -35,7 +35,7 @@ func (h *apiHandlers) revoke(w http.ResponseWriter, r *http.Request) {
 	}
 	b := parseTokenBody(r)
 	if err := h.d.OAuth.Revoke(r.Context(), b.token, b.hint); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", "revocation failed")
+		serverError(w, r, err)
 		return
 	}
 	respond.JSON(w, http.StatusOK, map[string]bool{"revoked": true})

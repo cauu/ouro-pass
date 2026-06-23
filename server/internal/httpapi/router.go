@@ -5,6 +5,7 @@
 package httpapi
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -88,4 +89,13 @@ func health(w http.ResponseWriter, _ *http.Request) {
 
 func notImplemented(w http.ResponseWriter, _ *http.Request) {
 	respond.Error(w, http.StatusNotImplemented, "not_implemented", "endpoint not yet implemented")
+}
+
+// serverError logs the underlying error server-side (with the request id) and
+// returns a generic 500 to the client — internal/DB error details are never
+// disclosed to callers (F1).
+func serverError(w http.ResponseWriter, r *http.Request, err error) {
+	slog.Error("request failed", "err", err, "method", r.Method, "path", r.URL.Path,
+		"req_id", chimw.GetReqID(r.Context()))
+	respond.Error(w, http.StatusInternalServerError, "server_error", "internal error")
 }

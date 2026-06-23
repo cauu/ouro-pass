@@ -11,6 +11,9 @@ const (
 	ClientConfidential ClientType = "confidential"
 )
 
+// Valid reports whether the client type is a known value.
+func (c ClientType) Valid() bool { return c == ClientPublic || c == ClientConfidential }
+
 // ClientParty distinguishes first-party from third-party integrations.
 type ClientParty string
 
@@ -18,6 +21,9 @@ const (
 	FirstParty ClientParty = "first_party"
 	ThirdParty ClientParty = "third_party"
 )
+
+// Valid reports whether the party is a known value.
+func (p ClientParty) Valid() bool { return p == FirstParty || p == ThirdParty }
 
 // OAuthClient is a registered integration application (§5.1).
 type OAuthClient struct {

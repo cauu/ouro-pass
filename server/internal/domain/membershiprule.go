@@ -13,6 +13,9 @@ const (
 	RuleDisabled RuleStatus = "disabled"
 )
 
+// Valid reports whether the rule status is a known value.
+func (s RuleStatus) Valid() bool { return s == RuleActive || s == RuleDisabled }
+
 // MembershipRule defines a tier's eligibility threshold and granted
 // entitlements. Match conditions live in the opaque RuleConfig JSON so rules
 // evolve without schema migrations (§3.1). No Member table — identity is the

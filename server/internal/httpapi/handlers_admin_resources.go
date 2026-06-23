@@ -54,7 +54,7 @@ func (h *apiHandlers) audit(r *http.Request, action, target string) {
 func (h *apiHandlers) adminMembers(w http.ResponseWriter, r *http.Request) {
 	sessions, err := h.d.Store.Subscriptions().ListActive(r.Context(), h.d.PoolID)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		serverError(w, r, err)
 		return
 	}
 	// The admin roster addresses members by their on-chain stake credential hash
@@ -86,23 +86,23 @@ func (h *apiHandlers) adminRevokeMember(w http.ResponseWriter, r *http.Request) 
 	if err := h.d.Store.Blacklist().Add(r.Context(), domain.Blacklist{
 		StakeCredentialHash: sch, Reason: ptrStr("admin revoke"), CreatedAt: now,
 	}); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", "could not blacklist member")
+		serverError(w, r, err)
 		return
 	}
 	// Cascade-revoke so existing credentials stop working immediately.
 	tokens, err := h.d.Store.IssuedTokens().RevokeByStakeCredential(r.Context(), sch, now)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", "could not revoke tokens")
+		serverError(w, r, err)
 		return
 	}
 	grants, err := h.d.Store.RefreshGrants().RevokeByStakeCredential(r.Context(), sch)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", "could not revoke grants")
+		serverError(w, r, err)
 		return
 	}
 	subs, err := h.d.Store.Subscriptions().CancelByStakeCredential(r.Context(), sch)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", "could not cancel subscriptions")
+		serverError(w, r, err)
 		return
 	}
 	h.audit(r, "member.revoke", sch)
@@ -114,7 +114,7 @@ func (h *apiHandlers) adminRevokeMember(w http.ResponseWriter, r *http.Request) 
 func (h *apiHandlers) adminSubscriptions(w http.ResponseWriter, r *http.Request) {
 	subs, err := h.d.Store.Subscriptions().ListActive(r.Context(), h.d.PoolID)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		serverError(w, r, err)
 		return
 	}
 	respond.JSON(w, http.StatusOK, map[string]any{"subscriptions": subs})
@@ -123,7 +123,7 @@ func (h *apiHandlers) adminSubscriptions(w http.ResponseWriter, r *http.Request)
 func (h *apiHandlers) adminCancelSub(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	if err := h.d.Store.Subscriptions().SetStatus(r.Context(), id, domain.SubCancelled); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		serverError(w, r, err)
 		return
 	}
 	h.audit(r, "subscription.cancel", id)
@@ -135,7 +135,7 @@ func (h *apiHandlers) adminCancelSub(w http.ResponseWriter, r *http.Request) {
 func (h *apiHandlers) adminListRules(w http.ResponseWriter, r *http.Request) {
 	rules, err := h.d.Store.Rules().ListActive(r.Context())
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		serverError(w, r, err)
 		return
 	}
 	respond.JSON(w, http.StatusOK, map[string]any{"rules": rules})
@@ -158,13 +158,16 @@ func (h *apiHandlers) adminUpsertRule(w http.ResponseWriter, r *http.Request) {
 	status := domain.RuleStatus(body.Status)
 	if status == "" {
 		status = domain.RuleActive
+	} else if !status.Valid() {
+		respond.Error(w, http.StatusBadRequest, "invalid_request", "status must be active or disabled")
+		return
 	}
 	now := time.Now()
 	if err := h.d.Store.Rules().Upsert(r.Context(), domain.MembershipRule{
 		RuleID: body.RuleID, Name: body.Name, RuleConfig: body.RuleConfig, Tier: body.Tier,
 		Entitlements: body.Entitlements, Priority: body.Priority, Status: status, CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		serverError(w, r, err)
 		return
 	}
 	h.audit(r, "rule.upsert", body.RuleID)
@@ -175,6 +178,10 @@ func (h *apiHandlers) adminUpsertRule(w http.ResponseWriter, r *http.Request) {
 
 func (h *apiHandlers) adminConfigureChannel(w http.ResponseWriter, r *http.Request) {
 	channelType := chi.URLParam(r, "type")
+	if !domain.ValidChannelType(channelType) {
+		respond.Error(w, http.StatusBadRequest, "invalid_request", "unsupported channel_type")
+		return
+	}
 	var body struct {
 		Config json.RawMessage `json:"config"`
 	}
@@ -188,7 +195,7 @@ func (h *apiHandlers) adminConfigureChannel(w http.ResponseWriter, r *http.Reque
 		ChannelID: id, PoolID: h.d.PoolID, ChannelType: channelType, Config: body.Config,
 		Status: "active", CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		serverError(w, r, err)
 		return
 	}
 	h.audit(r, "channel.configure", channelType)
@@ -200,7 +207,7 @@ func (h *apiHandlers) adminConfigureChannel(w http.ResponseWriter, r *http.Reque
 func (h *apiHandlers) adminListPushJobs(w http.ResponseWriter, r *http.Request) {
 	jobs, err := h.d.Store.PushJobs().ListByPool(r.Context(), h.d.PoolID, 100)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		serverError(w, r, err)
 		return
 	}
 	respond.JSON(w, http.StatusOK, map[string]any{"jobs": jobs})
@@ -217,8 +224,12 @@ func (h *apiHandlers) adminCreatePushJob(w http.ResponseWriter, r *http.Request)
 			Entitlement string `json:"entitlement"`
 		} `json:"target"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Title == "" || body.ChannelType == "" {
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Title == "" {
 		respond.Error(w, http.StatusBadRequest, "invalid_request", "title and channel_type required")
+		return
+	}
+	if !domain.ValidChannelType(body.ChannelType) {
+		respond.Error(w, http.StatusBadRequest, "invalid_request", "unsupported channel_type")
 		return
 	}
 	u := adminFromCtx(r.Context())
@@ -229,7 +240,7 @@ func (h *apiHandlers) adminCreatePushJob(w http.ResponseWriter, r *http.Request)
 		RequiredEntitlement: ptrIfSet(body.Target.Entitlement), Status: domain.PushScheduled,
 		CreatedBy: u.AdminID, CreatedAt: time.Now(),
 	}); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		serverError(w, r, err)
 		return
 	}
 	h.audit(r, "push.create", id)
@@ -241,7 +252,7 @@ func (h *apiHandlers) adminCreatePushJob(w http.ResponseWriter, r *http.Request)
 func (h *apiHandlers) adminListClients(w http.ResponseWriter, r *http.Request) {
 	clients, err := h.d.Store.OAuthClients().List(r.Context())
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		serverError(w, r, err)
 		return
 	}
 	for i := range clients {
@@ -265,6 +276,14 @@ func (h *apiHandlers) adminRegisterClient(w http.ResponseWriter, r *http.Request
 		respond.Error(w, http.StatusBadRequest, "invalid_request", "client_id required")
 		return
 	}
+	if ct := domain.ClientType(body.ClientType); !ct.Valid() {
+		respond.Error(w, http.StatusBadRequest, "invalid_request", "client_type must be public or confidential")
+		return
+	}
+	if p := domain.ClientParty(body.Party); !p.Valid() {
+		respond.Error(w, http.StatusBadRequest, "invalid_request", "party must be first_party or third_party")
+		return
+	}
 	c := domain.OAuthClient{
 		ClientID: body.ClientID, Name: body.Name, ClientType: domain.ClientType(body.ClientType),
 		Party: domain.ClientParty(body.Party), RedirectURIs: body.RedirectURIs,
@@ -279,7 +298,7 @@ func (h *apiHandlers) adminRegisterClient(w http.ResponseWriter, r *http.Request
 		c.ClientSecretHash = &hash
 	}
 	if err := h.d.Store.OAuthClients().Upsert(r.Context(), c); err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		serverError(w, r, err)
 		return
 	}
 	h.audit(r, "oauth_client.register", body.ClientID)
@@ -309,7 +328,7 @@ func (h *apiHandlers) adminRotateKey(w http.ResponseWriter, r *http.Request) {
 	}
 	kid, err := h.d.Keys.Rotate(r.Context())
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		serverError(w, r, err)
 		return
 	}
 	h.audit(r, "issuer_key.rotate", kid)
@@ -321,7 +340,7 @@ func (h *apiHandlers) adminRotateKey(w http.ResponseWriter, r *http.Request) {
 func (h *apiHandlers) adminAudit(w http.ResponseWriter, r *http.Request) {
 	entries, err := h.d.Store.Audit().Recent(r.Context(), 200)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		serverError(w, r, err)
 		return
 	}
 	respond.JSON(w, http.StatusOK, map[string]any{"audit": entries})

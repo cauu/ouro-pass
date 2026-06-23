@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -117,6 +118,54 @@ func TestAdminRevokeMember_BlacklistAndCascade(t *testing.T) {
 	sub, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u1")
 	if tok.Status != domain.TokenRevoked || g.Status != domain.GrantRevoked || sub.Status != domain.SubCancelled {
 		t.Fatalf("cascade incomplete: token=%s grant=%s sub=%s", tok.Status, g.Status, sub.Status)
+	}
+}
+
+func TestAdminF2_RejectsInvalidEnums(t *testing.T) {
+	// operator can hit rules/push/channels; owner needed for clients.
+	srvOp, op, _, _, _ := adminResourceEnv(t, domain.RoleOperator)
+	if c := postCode(t, op, srvOp.URL+"/api/admin/rules", `{"rule_id":"r","tier":"gold","status":"bogus"}`); c != http.StatusBadRequest {
+		t.Errorf("bad rule status = %d, want 400", c)
+	}
+	if c := postCode(t, op, srvOp.URL+"/api/admin/push/jobs", `{"title":"hi","channel_type":"carrier-pigeon"}`); c != http.StatusBadRequest {
+		t.Errorf("bad push channel_type = %d, want 400", c)
+	}
+	if c := postCode(t, op, srvOp.URL+"/api/admin/channels/carrier-pigeon/configure", `{"config":{}}`); c != http.StatusBadRequest {
+		t.Errorf("bad channel type = %d, want 400", c)
+	}
+
+	srvOwn, own, _, _, _ := adminResourceEnv(t, domain.RoleOwner)
+	if c := postCode(t, own, srvOwn.URL+"/api/admin/oauth-clients", `{"client_id":"c","client_type":"weird","party":"first_party"}`); c != http.StatusBadRequest {
+		t.Errorf("bad client_type = %d, want 400", c)
+	}
+	if c := postCode(t, own, srvOwn.URL+"/api/admin/oauth-clients", `{"client_id":"c","client_type":"public","party":"nobody"}`); c != http.StatusBadRequest {
+		t.Errorf("bad party = %d, want 400", c)
+	}
+	// Valid values still pass.
+	if c := postCode(t, op, srvOp.URL+"/api/admin/rules", `{"rule_id":"ok","tier":"gold","status":"disabled"}`); c != 200 {
+		t.Errorf("valid rule = %d, want 200", c)
+	}
+}
+
+func TestServerError_GenericNoLeak(t *testing.T) {
+	// A realistic raw DB error that must never reach the client.
+	rawErr := errors.New("sql: Scan error on column index 3: SELECT * FROM AdminUser; database is locked")
+	rr := httptest.NewRecorder()
+	serverError(rr, httptest.NewRequest(http.MethodGet, "/api/admin/members", nil), rawErr)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", rr.Code)
+	}
+	var body map[string]string
+	json.Unmarshal(rr.Body.Bytes(), &body)
+	if body["error"] != "server_error" || body["error_description"] != "internal error" {
+		t.Fatalf("body = %v, want generic envelope", body)
+	}
+	// The raw error text must not appear anywhere in the response.
+	for _, leak := range []string{"sql", "database", "AdminUser", "SELECT", "Scan"} {
+		if strings.Contains(rr.Body.String(), leak) {
+			t.Errorf("response leaks %q: %s", leak, rr.Body.String())
+		}
 	}
 }
 

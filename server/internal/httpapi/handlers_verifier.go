@@ -3,7 +3,6 @@ package httpapi
 import (
 	"net/http"
 
-	"github.com/poolops/issuer/internal/httpapi/respond"
 	"github.com/poolops/issuer/internal/utils/jose"
 )
 
@@ -18,12 +17,12 @@ func (h *apiHandlers) jwks(w http.ResponseWriter, r *http.Request) {
 	}
 	pub, err := h.d.Keys.PublicJWKSKeys(r.Context())
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", "could not load keys")
+		serverError(w, r, err)
 		return
 	}
 	doc, err := jose.BuildJWKS(pub)
 	if err != nil {
-		respond.Error(w, http.StatusInternalServerError, "server_error", "could not build jwks")
+		serverError(w, r, err)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
