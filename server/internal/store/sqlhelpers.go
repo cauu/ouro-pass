@@ -2,8 +2,30 @@ package store
 
 import (
 	"database/sql"
+	"encoding/json"
 	"time"
 )
+
+// encodeStrings stores a string slice as a JSON TEXT column (D6).
+func encodeStrings(v []string) string {
+	if v == nil {
+		v = []string{}
+	}
+	b, _ := json.Marshal(v)
+	return string(b)
+}
+
+// decodeStrings parses a JSON TEXT column into a string slice.
+func decodeStrings(s string) ([]string, error) {
+	if s == "" {
+		return nil, nil
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(s), &out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
 
 // Portable encodings (decision D6): times are RFC3339Nano UTC strings so SQLite
 // and PostgreSQL behave identically regardless of native time handling.
