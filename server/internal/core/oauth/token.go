@@ -54,10 +54,67 @@ func (s *Server) Token(ctx context.Context, req TokenRequest) (*TokenResponse, e
 	}
 }
 
-// tokenRefresh is implemented in p5-3 (refresh.go); stubbed here so the
-// dispatch compiles.
+// tokenRefresh rotates a refresh grant and re-evaluates eligibility. Replaying
+// an already-rotated grant is treated as theft: the whole rotation chain is
+// revoked (detailed §9.4).
 func (s *Server) tokenRefresh(ctx context.Context, req TokenRequest) (*TokenResponse, error) {
-	return nil, ErrUnsupportedGrant
+	grant, err := s.grants.Get(ctx, crypto.HashToken(req.RefreshToken))
+	if err != nil {
+		return nil, ErrInvalidGrant
+	}
+	now := s.now()
+	switch grant.Status {
+	case domain.GrantActive:
+		// proceed
+	case domain.GrantRotated:
+		// Replay of a superseded grant → revoke the entire chain.
+		_ = s.grants.RevokeChain(ctx, grant.RefreshGrantID)
+		return nil, ErrInvalidGrant
+	default:
+		return nil, ErrInvalidGrant
+	}
+	if grant.ExpiresAt != nil && now.After(*grant.ExpiresAt) {
+		_ = s.grants.SetStatus(ctx, nil, grant.RefreshGrantID, domain.GrantExpired)
+		return nil, ErrInvalidGrant
+	}
+
+	// Authenticate by client type (confidential: client_secret; public: DPoP
+	// deferred per D7, device re-bound from the stored grant).
+	if grant.ClientType == domain.ClientConfidential {
+		if grant.ClientID == nil {
+			return nil, ErrInvalidClientCreds
+		}
+		client, err := s.clients.Get(ctx, *grant.ClientID)
+		if err != nil {
+			return nil, ErrInvalidClientCreds
+		}
+		if client.ClientSecretHash == nil || crypto.HashToken(req.ClientSecret) != *client.ClientSecretHash {
+			return nil, ErrInvalidClientCreds
+		}
+	}
+
+	// Re-evaluate eligibility; a lower-tier match naturally downgrades, full
+	// ineligibility is denied.
+	eligible, decision, err := s.evaluate(ctx, grant.StakeCredentialHash)
+	if err != nil {
+		return nil, err
+	}
+	if !eligible {
+		return nil, ErrNotEligible
+	}
+
+	if err := s.grants.SetStatus(ctx, nil, grant.RefreshGrantID, domain.GrantRotated); err != nil {
+		return nil, err
+	}
+	devHex := ""
+	if len(grant.BoundDevicePubkey) > 0 {
+		devHex = hex.EncodeToString(grant.BoundDevicePubkey)
+	}
+	return s.mint(ctx, mintParams{
+		sch: grant.StakeCredentialHash, aud: grant.Audience, clientType: grant.ClientType,
+		clientID: grant.ClientID, tier: decision.Tier, entitlements: decision.Entitlements,
+		devicePubkey: devHex, rotatedFrom: &grant.RefreshGrantID,
+	})
 }
 
 // tokenAuthCode redeems an authorization code for tokens.
