@@ -2,6 +2,7 @@ package chain
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -38,7 +39,7 @@ func TestKoiosSource_ParsesAccountInfoAndTip(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	k := NewKoiosSource(srv.URL, "")
+	k := NewKoiosSource(srv.URL, "", "preview")
 	if k.Name() != "koios" {
 		t.Errorf("name = %s", k.Name())
 	}
@@ -46,7 +47,8 @@ func TestKoiosSource_ParsesAccountInfoAndTip(t *testing.T) {
 	if err != nil || ep != 481 {
 		t.Fatalf("epoch: %v %d", err, ep)
 	}
-	s, err := k.Snapshot(context.Background(), "stake1xyz")
+	// 28-byte hex stake credential (the mock server ignores the derived address).
+	s, err := k.Snapshot(context.Background(), "00112233445566778899aabbccddeeff00112233445566778899aabb")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,17 +93,17 @@ func TestNodeLSQ_InjectableRunner(t *testing.T) {
 		}
 		return []byte(`[{"stakeDelegation":"pool1z","rewardAccountBalance":5}]`), nil
 	}
-	s, err := n.Snapshot(context.Background(), "stakeAddr")
+	s, err := n.Snapshot(context.Background(), "00112233445566778899aabbccddeeff00112233445566778899aabb")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if s.Epoch != 490 || s.DelegatedPoolID != "pool1z" {
+	if s.Epoch != 490 || s.DelegatedPoolID != "pool1z" || s.AccountStatus != "registered" {
 		t.Fatalf("snapshot via injected runner: %+v", s)
 	}
 }
 
 func TestNewSource_Factory(t *testing.T) {
-	for _, kind := range []string{"mock", "koios", "node_lsq", "db_sync"} {
+	for _, kind := range []string{"mock", "koios", "node_lsq"} {
 		s, err := NewSource(Config{Kind: kind})
 		if err != nil || s == nil {
 			t.Fatalf("kind %s: %v", kind, err)
@@ -110,9 +112,8 @@ func TestNewSource_Factory(t *testing.T) {
 	if _, err := NewSource(Config{Kind: "bogus"}); err == nil {
 		t.Error("unknown kind should error")
 	}
-	// db_sync default build is not implemented.
-	d, _ := NewSource(Config{Kind: "db_sync"})
-	if _, err := d.Epoch(context.Background()); err != ErrNotImplemented {
-		t.Errorf("db_sync should be ErrNotImplemented, got %v", err)
+	// db_sync fails fast at construction in the default build (p12-10).
+	if _, err := NewSource(Config{Kind: "db_sync"}); !errors.Is(err, ErrNotImplemented) {
+		t.Errorf("db_sync should fail fast with ErrNotImplemented, got %v", err)
 	}
 }

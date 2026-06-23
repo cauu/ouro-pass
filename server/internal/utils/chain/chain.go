@@ -9,6 +9,7 @@ package chain
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -24,6 +25,8 @@ type Snapshot struct {
 	DelegatedPoolID     string // "" if undelegated
 	ActiveStakeLovelace string // "" if the source cannot provide per-credential stake
 	RewardsLovelace     string
+	EpochsDelegated     int    // epochs continuously delegated; -1 if the source can't tell
+	AccountStatus       string // registered | not_registered | ""(unknown)
 	Source              string
 	FetchedAt           time.Time
 }
@@ -84,11 +87,13 @@ func NewSource(cfg Config) (Source, error) {
 	case "mock":
 		return NewMockSource(0), nil
 	case "koios":
-		return NewKoiosSource(cfg.KoiosBaseURL, cfg.APIKey), nil
+		return NewKoiosSource(cfg.KoiosBaseURL, cfg.APIKey, cfg.Network), nil
 	case "node_lsq":
 		return NewNodeLSQSource(cfg.CardanoCLI, cfg.NodeSocket, cfg.Network), nil
 	case "db_sync":
-		return &DBSyncSource{}, nil
+		// Selectable but not wired in the default build: fail fast at startup
+		// rather than passing health checks then erroring on every query (p12-10).
+		return nil, fmt.Errorf("chain: db_sync requires the integration build: %w", ErrNotImplemented)
 	default:
 		return nil, errors.New("chain: unknown source kind " + cfg.Kind)
 	}

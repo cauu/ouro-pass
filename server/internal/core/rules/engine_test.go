@@ -77,9 +77,23 @@ func TestEvaluate_MinEpochsWithGrace(t *testing.T) {
 	if !Evaluate(Input{PoolID: pool, DelegatedPoolID: pool, EpochsDelegated: 3}, r, 480).Eligible {
 		t.Error("3 epochs >= effective 3 should pass")
 	}
-	// Unknown epoch age (-1) skips the epoch check (source can't provide it).
-	if !Evaluate(Input{PoolID: pool, DelegatedPoolID: pool, EpochsDelegated: -1}, r, 480).Eligible {
-		t.Error("unknown epoch age should not block on min_active_epochs")
+	// Unknown epoch age (-1) fails CLOSED when the rule requires a minimum age:
+	// a criterion the source can't prove must not silently pass (D13/p12-8).
+	if Evaluate(Input{PoolID: pool, DelegatedPoolID: pool, EpochsDelegated: -1}, r, 480).Eligible {
+		t.Error("unknown epoch age must fail closed on min_active_epochs")
+	}
+}
+
+func TestEvaluate_RequiredStatusFailsClosed(t *testing.T) {
+	pool := "p"
+	r := []domain.MembershipRule{rule("g", "gold", 1, `{"required_status":"registered"}`)}
+	// Matching status → eligible.
+	if !Evaluate(Input{PoolID: pool, DelegatedPoolID: pool, AccountStatus: "registered"}, r, 480).Eligible {
+		t.Error("registered should satisfy required_status")
+	}
+	// Unknown status ("") → fail closed.
+	if Evaluate(Input{PoolID: pool, DelegatedPoolID: pool, AccountStatus: ""}, r, 480).Eligible {
+		t.Error("unknown account status must fail closed on required_status")
 	}
 }
 

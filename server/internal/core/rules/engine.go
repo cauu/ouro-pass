@@ -21,6 +21,7 @@ type Input struct {
 	DelegatedPoolID     string // the credential's current delegation
 	ActiveStakeLovelace string // decimal string; "" if the source can't provide it
 	EpochsDelegated     int    // -1 if unknown
+	AccountStatus       string // registered | not_registered | ""(unknown)
 	Epoch               uint64
 }
 
@@ -30,7 +31,8 @@ func InputFromSnapshot(poolID string, s *chain.Snapshot) Input {
 		PoolID:              poolID,
 		DelegatedPoolID:     s.DelegatedPoolID,
 		ActiveStakeLovelace: s.ActiveStakeLovelace,
-		EpochsDelegated:     -1, // single snapshot carries no delegation age
+		EpochsDelegated:     s.EpochsDelegated, // -1 when the source can't provide it
+		AccountStatus:       s.AccountStatus,
 		Epoch:               s.Epoch,
 	}
 }
@@ -89,11 +91,18 @@ func Evaluate(in Input, ruleset []domain.MembershipRule, epoch uint64) Decision 
 	return Decision{Eligible: false, Reason: "no matching rule"}
 }
 
-// satisfies reports whether the input meets a rule's conditions (pure).
+// satisfies reports whether the input meets a rule's conditions (pure). When a
+// rule asserts a criterion the source cannot supply (delegation age, account
+// status), the input fails closed rather than silently passing — a stricter,
+// safer default (D13).
 func satisfies(in Input, cfg ruleConfig) bool {
 	// Must currently delegate to the issuer's pool.
 	if in.DelegatedPoolID == "" || in.DelegatedPoolID != in.PoolID {
 		return false
+	}
+	// Required on-chain account status, when the rule asserts one.
+	if cfg.RequiredStatus != "" && in.AccountStatus != cfg.RequiredStatus {
+		return false // mismatch, or status unknown ("") → fail closed
 	}
 	// Minimum active stake (exact big-int comparison; C4).
 	if cfg.MinActiveStakeLovelace != "" {
@@ -109,8 +118,12 @@ func satisfies(in Input, cfg ruleConfig) bool {
 			return false
 		}
 	}
-	// Minimum delegation age, net of grace, when the source provides it.
-	if cfg.MinActiveEpochs > 0 && in.EpochsDelegated >= 0 {
+	// Minimum delegation age, net of grace. If the rule requires an age the
+	// source can't provide (EpochsDelegated < 0), fail closed (D13).
+	if cfg.MinActiveEpochs > 0 {
+		if in.EpochsDelegated < 0 {
+			return false
+		}
 		effective := max(cfg.MinActiveEpochs-cfg.GraceEpochs, 0)
 		if in.EpochsDelegated < effective {
 			return false

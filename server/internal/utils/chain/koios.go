@@ -16,15 +16,16 @@ import (
 type KoiosSource struct {
 	baseURL string
 	apiKey  string
+	network string
 	client  *http.Client
 }
 
 // NewKoiosSource builds a Koios source; baseURL defaults to mainnet if empty.
-func NewKoiosSource(baseURL, apiKey string) *KoiosSource {
+func NewKoiosSource(baseURL, apiKey, network string) *KoiosSource {
 	if baseURL == "" {
 		baseURL = "https://api.koios.rest/api/v1"
 	}
-	return &KoiosSource{baseURL: baseURL, apiKey: apiKey, client: &http.Client{Timeout: 15 * time.Second}}
+	return &KoiosSource{baseURL: baseURL, apiKey: apiKey, network: network, client: &http.Client{Timeout: 15 * time.Second}}
 }
 
 // Name returns "koios".
@@ -48,14 +49,19 @@ type koiosTip struct {
 // passed to Koios as the `_stake_addresses` parameter (callers supply the
 // bech32 stake address form for real queries).
 func (k *KoiosSource) Snapshot(ctx context.Context, stakeCredentialHash string) (*Snapshot, error) {
-	body, _ := json.Marshal(map[string][]string{"_stake_addresses": {stakeCredentialHash}})
+	// Koios keys on the bech32 stake address, not the raw credential hash (p12-8).
+	stakeAddr, err := stakeAddressFromCredential(stakeCredentialHash, k.network)
+	if err != nil {
+		return nil, err
+	}
+	body, _ := json.Marshal(map[string][]string{"_stake_addresses": {stakeAddr}})
 	var infos []koiosAccountInfo
 	if err := k.post(ctx, "/account_info", body, &infos); err != nil {
 		return nil, err
 	}
 	epoch, _ := k.Epoch(ctx)
 	if len(infos) == 0 {
-		return &Snapshot{StakeCredentialHash: stakeCredentialHash, Epoch: epoch, Source: "koios", FetchedAt: time.Now().UTC()}, nil
+		return &Snapshot{StakeCredentialHash: stakeCredentialHash, Epoch: epoch, EpochsDelegated: -1, AccountStatus: "not_registered", Source: "koios", FetchedAt: time.Now().UTC()}, nil
 	}
 	return koiosToSnapshot(stakeCredentialHash, epoch, infos[0]), nil
 }
@@ -72,6 +78,8 @@ func koiosToSnapshot(hash string, epoch uint64, in koiosAccountInfo) *Snapshot {
 		DelegatedPoolID:     pool,
 		ActiveStakeLovelace: in.TotalBalance,
 		RewardsLovelace:     in.Rewards,
+		EpochsDelegated:     -1, // Koios /account_info does not expose continuous delegation age
+		AccountStatus:       in.Status,
 		Source:              "koios",
 		FetchedAt:           time.Now().UTC(),
 	}
