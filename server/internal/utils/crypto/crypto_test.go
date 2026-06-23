@@ -137,3 +137,26 @@ func TestCOSEVerify_ValidAndTampered(t *testing.T) {
 		t.Fatalf("bad alg: want ErrCOSEAlg, got %v", err)
 	}
 }
+
+// TestCOSEVerify_StrictAlgHeader covers p12-12: a non-empty protected header must
+// declare alg=EdDSA — a missing alg label is rejected (was previously tolerated).
+func TestCOSEVerify_StrictAlgHeader(t *testing.T) {
+	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
+	nonce := []byte("challenge-nonce-12345")
+
+	// Protected header present but WITHOUT an alg label (1).
+	protected, _ := cbor.Marshal(map[int]int{99: 1}) // some non-alg label
+	toSign, _ := cbor.Marshal(sigStructure{
+		Context: "Signature1", BodyProtect: protected, ExternalAAD: []byte{}, Payload: nonce,
+	})
+	sig := ed25519.Sign(priv, toSign)
+	msg, _ := cbor.Marshal([]any{protected, map[int]int{}, nonce, sig})
+
+	c, err := ParseCOSESign1(msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Verify(pub, nonce); err != ErrCOSEAlg {
+		t.Fatalf("protected header without alg: want ErrCOSEAlg, got %v", err)
+	}
+}

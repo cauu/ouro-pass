@@ -108,24 +108,27 @@ func (c *COSESign1) Verify(pubKey ed25519.PublicKey, expectedPayload []byte) err
 	return nil
 }
 
-// checkAlg parses the protected header map and, if it carries an alg label (1),
-// requires EdDSA (-8). A protected header that is empty/unparseable for alg is
-// tolerated (some wallets put alg only in the unprotected header).
+// checkAlg enforces the algorithm declared in the COSE protected header. CIP-8
+// signs the protected header, so a CIP-30 signData message carries alg there. A
+// non-empty protected header MUST therefore parse as a COSE int-keyed map and
+// declare alg=EdDSA (-8); anything else is rejected (p12-12/D20). An entirely
+// empty protected header is still tolerated (rare/unprotected case) — the
+// signature itself is independently verified by ed25519.Verify regardless.
 func (c *COSESign1) checkAlg() error {
 	if len(c.Protected) == 0 {
 		return nil
 	}
 	var hdr map[int]cbor.RawMessage
 	if err := cbor.Unmarshal(c.Protected, &hdr); err != nil {
-		return nil // not an int-keyed map; skip strict alg enforcement
+		return ErrCOSEAlg // non-empty but not a COSE int-keyed header map
 	}
 	raw, ok := hdr[1] // label 1 = alg
 	if !ok {
-		return nil
+		return ErrCOSEAlg // CIP-8 signs alg in the protected header; require it
 	}
 	var alg int
 	if err := cbor.Unmarshal(raw, &alg); err != nil {
-		return nil
+		return ErrCOSEAlg
 	}
 	if alg != algEdDSA {
 		return ErrCOSEAlg
