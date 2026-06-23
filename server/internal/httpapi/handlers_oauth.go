@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"github.com/poolops/issuer/internal/core/oauth"
 	"github.com/poolops/issuer/internal/httpapi/respond"
@@ -82,6 +83,87 @@ func (h *apiHandlers) connectAuthorize(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectWithParams(w, r, req.RedirectURI, url.Values{"code": {code}, "state": {req.State}})
+}
+
+// oauthToken exchanges an authorization code or refresh token for tokens
+// (detailed §9.4). Accepts JSON or form-encoded bodies.
+//
+//	POST /api/oauth/token
+func (h *apiHandlers) oauthToken(w http.ResponseWriter, r *http.Request) {
+	if h.d.OAuth == nil {
+		notImplemented(w, r)
+		return
+	}
+	req, err := parseTokenRequest(r)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	resp, err := h.d.OAuth.Token(r.Context(), req)
+	if err != nil {
+		status := http.StatusBadRequest
+		code := oauthTokenErrCode(err)
+		if code == "invalid_client" {
+			status = http.StatusUnauthorized
+		} else if code == "not_eligible" {
+			status = http.StatusForbidden
+		}
+		respond.Error(w, status, code, err.Error())
+		return
+	}
+	respond.JSON(w, http.StatusOK, map[string]any{
+		"access_token":  resp.AccessToken,
+		"token_type":    resp.TokenType,
+		"refresh_token": resp.RefreshToken,
+		"expires_at":    resp.ExpiresAt.UTC().Format("2006-01-02T15:04:05Z07:00"),
+		"membership":    map[string]string{"status": resp.Status, "tier": resp.Tier},
+	})
+}
+
+func parseTokenRequest(r *http.Request) (oauth.TokenRequest, error) {
+	var req oauth.TokenRequest
+	ct := r.Header.Get("Content-Type")
+	if strings.HasPrefix(ct, "application/json") {
+		var body struct {
+			GrantType    string `json:"grant_type"`
+			Code         string `json:"code"`
+			ClientID     string `json:"client_id"`
+			ClientSecret string `json:"client_secret"`
+			CodeVerifier string `json:"code_verifier"`
+			RedirectURI  string `json:"redirect_uri"`
+			RefreshToken string `json:"refresh_token"`
+			DevicePubkey string `json:"device_pubkey"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			return req, err
+		}
+		req = oauth.TokenRequest(body)
+		return req, nil
+	}
+	if err := r.ParseForm(); err != nil {
+		return req, err
+	}
+	return oauth.TokenRequest{
+		GrantType: r.PostFormValue("grant_type"), Code: r.PostFormValue("code"),
+		ClientID: r.PostFormValue("client_id"), ClientSecret: r.PostFormValue("client_secret"),
+		CodeVerifier: r.PostFormValue("code_verifier"), RedirectURI: r.PostFormValue("redirect_uri"),
+		RefreshToken: r.PostFormValue("refresh_token"), DevicePubkey: r.PostFormValue("device_pubkey"),
+	}, nil
+}
+
+func oauthTokenErrCode(err error) string {
+	switch {
+	case errors.Is(err, oauth.ErrInvalidGrant):
+		return "invalid_grant"
+	case errors.Is(err, oauth.ErrUnsupportedGrant):
+		return "unsupported_grant_type"
+	case errors.Is(err, oauth.ErrInvalidClientCreds), errors.Is(err, oauth.ErrInvalidClient):
+		return "invalid_client"
+	case errors.Is(err, oauth.ErrNotEligible):
+		return "not_eligible"
+	default:
+		return "invalid_request"
+	}
 }
 
 func redirectWithParams(w http.ResponseWriter, r *http.Request, redirectURI string, params url.Values) {

@@ -172,7 +172,7 @@ server/
 
 ### p5 — 签发与刷新（OAuth 授权服务器）
 - [x] p5-1 `GET /connect`（Authorization Page 契约）+ `POST /api/connect/authorize`（验签→评估资格→AuthorizationCode）
-- [ ] p5-2 `POST /api/oauth/token` `grant_type=authorization_code` → access token JWS + RefreshGrant + IssuedToken 台账
+- [x] p5-2 `POST /api/oauth/token` `grant_type=authorization_code` → access token JWS + RefreshGrant + IssuedToken 台账
 - [ ] p5-3 `grant_type=refresh_token`：token 轮换、盗用重放撤销、按 client_type 认证(client_secret / PKCE+DPoP)、资格重评/降级
 - [ ] p5-4 `POST /api/oauth/introspect`(RFC 7662) + `POST /api/oauth/revoke`(RFC 7009)（Verifier 平面）
 
@@ -227,6 +227,7 @@ server/
 - 2026-06-23 p4-2 completed：`core/keys` Service（有状态，非纯，符合 C10）——`Rotate`(bootstrap 兼轮换：新 active + 旧 active→rotating overlap)、`ActiveSigner`(解密私钥签名)、`PublicJWKSKeys`(active+rotating 集合)、`RetireRotating`、`Revoke`。私钥 AES-GCM 加密落盘(C5)。证据见 §6（TC-8 部分）。
 - 2026-06-23 p4-3 completed（phase p4 收尾）：`GET /.well-known/poolops/jwks.json` handler（Keys.PublicJWKSKeys → jose.BuildJWKS，Cache-Control 60s）；Deps 加 Keys，main 在 POOLOPS_FIELD_KEY 存在时装配 keys.Service，否则降级 501。证据见 §6（p4-3/TC-4 端点侧）。
 - 2026-06-23 p5-1 completed：`core/oauth` Server——`ValidateClient`(client 状态/redirect allowlist/aud 校验+PKCE 要求) + `Authorize`(walletauth 验签→`evaluate` 黑名单+快照+规则→不合格 ErrNotEligible，合格发一次性 AuthorizationCode 存哈希)；`evaluate` 复用同一资格路径供 token/refresh。handler `GET /connect`(参数校验+占位 HTML) + `POST /api/connect/authorize`(302 带 code&state，不合格 302 error=not_eligible)。main 装配 chain.Source(默认 mock)+oauth.Server(需 Keys+salt)。证据见 §6（TC-6 部分）。
+- 2026-06-23 p5-2 completed：`Token` 分派 + `tokenAuthCode`——消费 authcode(一次性/校 client+redirect)→`authenticateClient`(confidential client_secret SHA-256 比对 / public PKCE S256，D7)→token 时重评资格→`mint`(签 access token JWS 含 sub=DeriveSub/tier/entitlements/cnf、写 IssuedToken 台账、发 RefreshGrant 存哈希)。handler `POST /api/oauth/token`(JSON/form 双解析、OAuth 错误码映射)。证据见 §6（TC-6）。
 
 ## 6. Validation Evidence (append-only)
 
@@ -247,6 +248,7 @@ server/
 - 2026-06-23 p4-2(TC-8) | stack: go | command: `go test ./internal/core/keys/...` | result: pass | note: bootstrap→1 active；二次 Rotate→旧 rotating+新 active 两 kid overlap 发布；ActiveSigner 解密私钥签名经公钥验签通过(加解密往返)；RetireRotating 退役旧 kid 后 JWKS 剩 1
 - 2026-06-23 p4-3 | stack: go | command: `go test ./internal/httpapi/...` | result: pass | note: JWKS 端点空集 200；Rotate 后发布 1 个 OKP/Ed25519/status=active key，无 d/x5c/chain 泄漏；无 Keys 服务时 501
 - 2026-06-23 TC-6(p5-1) | stack: go | command: `go test ./internal/core/oauth/... ./internal/httpapi/...` | result: pass | note: Authorize 合格发 code(存哈希、可一次性消费)；委托他池/黑名单→ErrNotEligible；未知 client→ErrInvalidClient、坏 redirect→ErrInvalidRequest；handler /connect 校验 response_type/client；/api/connect/authorize 合格 302 带 code&state、不合格 302 error=not_eligible
+- 2026-06-23 TC-6(p5-2) | stack: go | command: `go test ./internal/core/oauth/...` | result: pass | note: confidential authcode 换 token，access token 经 JWKS 验签通过且 sub=DeriveSub/tier=gold，refresh grant 落库；错 client_secret→invalid_client；public PKCE 正确 verifier 成功(带 cnf.jkt)、错 verifier→invalid_grant；code 复用→invalid_grant；password grant→unsupported_grant_type
 
 ## 7. Change Requests (append-only)
 
@@ -261,3 +263,4 @@ server/
 - 2026-06-23 D4 **CIP-30 COSE 验签自实现**：用 `fxamacker/cbor/v2` 解 COSE_Sign1 + 按 CIP-8 组 `Sig_structure` + `crypto/ed25519` 验签（不引入 go-cose，因 CIP-8 的 Sig_structure 组装本就需手控，自实现更直接可审计）。§2.1 中 go-cose 一项以此决策为准。
 - 2026-06-23 D5 **真链 / 真 Telegram 不在本机集成测试**：`chain` 的 `node_lsq`/`db_sync`/`koios` 与 telegram transport 以接口 + mock 单测逻辑，真实集成打 `//go:build integration` tag，本 spec 验收以单测 + 可编译为准（与 §4 测试栈映射一致）。
 - 2026-06-23 D6 **MVP 用可移植列类型**：为让 PG/SQLite 双栈 repository 完全同构，`array`/`json` 列在两栈统一用 `TEXT`(JSON)，时间统一用 `TEXT`(RFC3339Nano)，lovelace 用 `TEXT`(math/big 解析)，二进制用 `BYTEA`(PG)/`BLOB`(SQLite)。详细设计 §0 的 PG `jsonb`/`timestamptz`/`numeric(20)` 作为后续优化迁移（post-MVP），不影响实体语义。
+- 2026-06-23 D7 **public client PoP：PKCE 强制、DPoP 简化**：token 端点对 public client 强制 PKCE(S256) 校验；sender-constrained PoP 的 `cnf.jkt` 用请求携带的 `device_pubkey` 的 SHA-256 thumbprint 近似设置；完整 RFC 9449 DPoP proof 头校验（jws over htu/htm/nonce）留作后续/integration。confidential client 用 client_secret(SHA-256 比对) 充当 holder-of-key，完整实现。

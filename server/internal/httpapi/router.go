@@ -47,7 +47,7 @@ func NewRouter(d Deps) http.Handler {
 	// ---- Issuance (OAuth) plane ----
 	r.Get("/connect", h.connect)
 	r.Post("/api/connect/authorize", h.connectAuthorize)
-	r.With(idem).Post("/api/oauth/token", notImplemented)
+	r.With(idem).Post("/api/oauth/token", h.oauthToken)
 
 	// ---- Channel activation plane ----
 	r.With(idem).Post("/api/activation/create", notImplemented)
