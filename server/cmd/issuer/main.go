@@ -23,8 +23,12 @@ import (
 	"github.com/poolops/issuer/internal/store"
 	"github.com/poolops/issuer/internal/utils/chain"
 	"github.com/poolops/issuer/internal/utils/crypto"
+	"github.com/poolops/issuer/internal/worker/reconciliation"
 	"github.com/poolops/issuer/internal/worker/telegram"
 )
+
+// epochPollInterval is how often the reconciler checks for an epoch change.
+const epochPollInterval = 5 * time.Minute
 
 const (
 	nonceTTL   = 5 * time.Minute
@@ -106,12 +110,17 @@ func run() error {
 	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	// Telegram bot worker (long polling) when a token is configured.
-	if cfg.TelegramToken != "" && deps.OAuth != nil {
-		proc := telegram.NewProcessor(st, deps.OAuth, cfg.PoolID)
-		worker := telegram.NewWorker(proc, telegram.NewBotAPITransport(cfg.TelegramToken))
-		go worker.Run(sigCtx)
-		slog.Info("telegram worker started")
+	// Background workers run while issuance is enabled (they need eligibility).
+	if deps.OAuth != nil {
+		if cfg.TelegramToken != "" {
+			proc := telegram.NewProcessor(st, deps.OAuth, cfg.PoolID)
+			worker := telegram.NewWorker(proc, telegram.NewBotAPITransport(cfg.TelegramToken))
+			go worker.Run(sigCtx)
+			slog.Info("telegram worker started")
+		}
+		recon := reconciliation.New(st, deps.OAuth, chainSrc, cfg.PoolID)
+		go recon.Run(sigCtx, epochPollInterval)
+		slog.Info("reconciliation worker started")
 	}
 
 	errCh := make(chan error, 1)

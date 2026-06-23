@@ -182,7 +182,7 @@ server/
 
 ### p7 — 推送与调度 worker
 - [x] p7-1 推送任务 CRUD（PushJob）+ Push Scheduler（限速 sendMessage + 退避重试 + DeliveryLog）
-- [ ] p7-2 Reconciliation Job：每 epoch 重算资格、维护/降级/失效 SubscriptionSession
+- [x] p7-2 Reconciliation Job：每 epoch 重算资格、维护/降级/失效 SubscriptionSession
 
 ### p8 — Admin 平面
 - [ ] p8-1 Admin 鉴权：`/api/admin/auth/challenge` + `/verify`（owner-key 钱包签名 → httpOnly session）+ RBAC + step-up 中间件
@@ -202,6 +202,7 @@ server/
 - TC-10 推送：建 PushJob → Scheduler 按 tier/topic/entitlement 过滤 active session → sendMessage 限速 + 退避 + DeliveryLog 记录。
   - 2026-06-23 TC-10 | stack: go | command: `go test ./internal/worker/push/...` | result: pass | note: tier=gold 仅 2 金会员收到、银会员跳过；vip 权益+alerts 主题组合过滤仅 1 命中；失败 2 次后第 3 次成功(退避重试)；持续失败耗尽重试→DeliveryLog failed + job→failed；成功路径 job→done、DeliveryLog sent 计数正确
 - TC-11 Reconciliation：epoch 边界重算，掉级会员的 session 自动降级/失效。
+  - 2026-06-23 TC-11 | stack: go | command: `go test ./internal/worker/reconciliation/...` | result: pass | note: 三 session 一保持/一 gold→silver 降级/一不合格→expired，计数 checked=3/downgraded=1/expired=1/unchanged=1，last_verified 刷新；空集 noop；Run 在 mock epoch 490>0 时触发一次并使会员 expired
 - TC-12 Admin：owner-key 签名登录下发 session；RBAC 拒绝越权；敏感操作缺 step-up 被拒；操作写 AuditLog。
 - Pass/fail：每个 item 仅在其映射的 TC 全部 `pass` 且证据 append 后方可标 `[x]`。
 
@@ -234,6 +235,7 @@ server/
 - 2026-06-23 p6-1 completed：`Server.CreateActivation`(验 activation nonce→评估资格→发短码存 ActivationCode 哈希行+Telegram deep link，D8)；`Server.Eligibility` 导出供 bot 重评；config 加 TelegramBot/Token，Deps 加 TelegramBot；handler `POST /api/activation/create`。证据见 §6（TC-9 部分）。
 - 2026-06-23 p6-2 completed（phase p6 收尾）：`worker/telegram`——`Processor`(命令文法 /start|/activate|/status|/unsubscribe|/help：消费 ActivationCode→重评资格→建 SubscriptionSession 绑 from.id)、`Worker.Run`(long-poll 循环 + 优雅退出)、`BotAPITransport`(Telegram getUpdates/sendMessage HTTP，真集成走 D5)。main 在 TelegramToken 存在时起 worker goroutine。Transport 接口化、命令逻辑用 mock 单测。证据见 §6（TC-9）。
 - 2026-06-23 p7-1 completed：`store` 加 Subscriptions.ListActiveByChannel；`worker/push.Scheduler`——按 tier/topic/entitlement 三选一可组合过滤匹配 session，经 `Sender` 接口 rate.Limiter 限速(~30/s)+指数退避重试发送，每接收者写 DeliveryLog，job 状态 running→done/failed。Sender 接口化、用 mock 单测。证据见 §6（TC-10）。
+- 2026-06-23 p7-2 completed（phase p7 收尾）：`store` 加 Subscriptions.ListActive；`worker/reconciliation.Reconciler`——`Reconcile` 遍历 active session 重评资格：不合格→Expired、tier 变→降/升级并刷新 entitlements、否则刷新 last_verified；`Run` 轮询 chain.Epoch、epoch 推进时触发。main 在 OAuth 启用时起 reconciliation goroutine。证据见 §6（TC-11）。
 
 ## 6. Validation Evidence (append-only)
 

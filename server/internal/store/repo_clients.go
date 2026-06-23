@@ -164,6 +164,26 @@ func (r *SubscriptionRepo) ListActiveByChannel(ctx context.Context, poolID, chan
 	return out, rows.Err()
 }
 
+// ListActive returns all active sessions for a pool across channels (the
+// reconciliation candidate set).
+func (r *SubscriptionRepo) ListActive(ctx context.Context, poolID string) ([]domain.SubscriptionSession, error) {
+	rows, err := r.s.DB.QueryContext(ctx, r.s.Rebind(subscriptionCols+
+		` WHERE pool_id = ? AND status = ?`), poolID, string(domain.SubActive))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.SubscriptionSession
+	for rows.Next() {
+		x, err := scanSubscription(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *x)
+	}
+	return out, rows.Err()
+}
+
 // SetStatus transitions a session's status (downgrade/cancel/expire).
 func (r *SubscriptionRepo) SetStatus(ctx context.Context, sessionID string, status domain.SubscriptionStatus) error {
 	_, err := r.s.DB.ExecContext(ctx, r.s.Rebind(`UPDATE SubscriptionSession SET status = ? WHERE session_id = ?`),
