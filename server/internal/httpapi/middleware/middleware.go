@@ -154,7 +154,10 @@ func (i *Idempotency) Middleware(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if resp, ok := i.get(key); ok {
+		// Scope the key to method+path so the same Idempotency-Key reused across
+		// endpoints can't replay the wrong endpoint's body (p12-7).
+		scoped := r.Method + " " + r.URL.Path + "\x00" + key
+		if resp, ok := i.get(scoped); ok {
 			w.Header().Set("Idempotency-Replayed", "true")
 			respondRaw(w, resp.status, resp.body)
 			return
@@ -164,7 +167,11 @@ func (i *Idempotency) Middleware(next http.Handler) http.Handler {
 		if rec.status == 0 {
 			rec.status = http.StatusOK
 		}
-		i.put(key, rec.status, rec.body.Bytes())
+		// Only cache success: a transient 4xx/5xx must not be pinned and replayed
+		// for the whole TTL, which would block legitimate retries (p12-7).
+		if rec.status >= 200 && rec.status < 300 {
+			i.put(scoped, rec.status, rec.body.Bytes())
+		}
 	})
 }
 
@@ -184,9 +191,18 @@ func (i *Idempotency) get(key string) (idempotentResponse, bool) {
 func (i *Idempotency) put(key string, status int, body []byte) {
 	i.mu.Lock()
 	defer i.mu.Unlock()
+	// Opportunistically evict expired entries so a stream of unique keys can't
+	// grow the map without bound (memory-exhaustion DoS, p12-7) — same approach
+	// as the IP limiter's sweep.
+	now := time.Now()
+	for k, v := range i.cache {
+		if now.Sub(v.savedAt) > i.ttl {
+			delete(i.cache, k)
+		}
+	}
 	cp := make([]byte, len(body))
 	copy(cp, body)
-	i.cache[key] = idempotentResponse{status: status, body: cp, savedAt: time.Now()}
+	i.cache[key] = idempotentResponse{status: status, body: cp, savedAt: now}
 }
 
 func respondRaw(w http.ResponseWriter, status int, body []byte) {
