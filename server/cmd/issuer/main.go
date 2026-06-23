@@ -65,8 +65,17 @@ func run() error {
 	slog.Info("database ready", "driver", cfg.DBDriver)
 
 	walletSvc := walletauth.New(st, nonceTTL)
+	var serverSalt []byte
+	if cfg.ServerSaltHex != "" {
+		if serverSalt, err = hex.DecodeString(cfg.ServerSaltHex); err != nil {
+			return fmt.Errorf("POOLOPS_SERVER_SALT: %w", err)
+		}
+	}
 	deps := httpapi.Deps{
 		Wallet:      walletSvc,
+		Store:       st,
+		ServerSalt:  serverSalt,
+		PoolID:      cfg.PoolID,
 		TelegramBot: cfg.TelegramBot,
 		Admin: admin.New(admin.Config{
 			Wallet: walletSvc, Store: st, OwnerKeyHash: cfg.OwnerKeyHashes, PoolID: cfg.PoolID,
@@ -93,14 +102,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	if deps.Keys != nil && cfg.ServerSaltHex != "" {
-		salt, err := hex.DecodeString(cfg.ServerSaltHex)
-		if err != nil {
-			return fmt.Errorf("POOLOPS_SERVER_SALT: %w", err)
-		}
+	if deps.Keys != nil && len(serverSalt) > 0 {
 		deps.OAuth = oauth.New(oauth.Config{
 			Store: st, Wallet: deps.Wallet, Keys: deps.Keys, Chain: chainSrc,
-			PoolID: cfg.PoolID, Issuer: cfg.Issuer, ServerSalt: salt,
+			PoolID: cfg.PoolID, Issuer: cfg.Issuer, ServerSalt: serverSalt,
 			AccessTTL: accessTTL, RefreshTTL: refreshTTL,
 		})
 	} else {

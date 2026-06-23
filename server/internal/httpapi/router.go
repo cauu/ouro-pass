@@ -15,6 +15,7 @@ import (
 	"github.com/poolops/issuer/internal/core/oauth"
 	"github.com/poolops/issuer/internal/core/walletauth"
 	"github.com/poolops/issuer/internal/domain"
+	"github.com/poolops/issuer/internal/store"
 	appmw "github.com/poolops/issuer/internal/httpapi/middleware"
 	"github.com/poolops/issuer/internal/httpapi/respond"
 )
@@ -26,6 +27,9 @@ type Deps struct {
 	Keys        *keys.Service
 	OAuth       *oauth.Server
 	Admin       *admin.Service
+	Store       *store.Store // admin resource handlers use repos directly
+	ServerSalt  []byte       // for deriving member `sub` in the admin roster
+	PoolID      string
 	TelegramBot string // bot username for activation deep links
 }
 

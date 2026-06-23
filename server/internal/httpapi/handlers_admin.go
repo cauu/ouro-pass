@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/poolops/issuer/internal/core/admin"
 	"github.com/poolops/issuer/internal/domain"
 	"github.com/poolops/issuer/internal/httpapi/respond"
@@ -77,10 +76,6 @@ func (h *apiHandlers) adminLogout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: sessionCookie, Value: "", Path: "/", MaxAge: -1, HttpOnly: true})
 	respond.JSON(w, http.StatusOK, map[string]bool{"logged_out": true})
 }
-
-// mountAdminResources mounts the admin resource endpoints (p8-2). Defined here
-// as a stub so the router compiles after p8-1.
-func (h *apiHandlers) mountAdminResources(r chi.Router) {}
 
 // adminMe returns the current admin (any authenticated role).
 func (h *apiHandlers) adminMe(w http.ResponseWriter, r *http.Request) {

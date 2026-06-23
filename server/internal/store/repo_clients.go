@@ -71,6 +71,35 @@ func (r *OAuthClientRepo) Get(ctx context.Context, clientID string) (*domain.OAu
 	return &c, nil
 }
 
+// List returns all registered clients (secret hashes omitted by callers).
+func (r *OAuthClientRepo) List(ctx context.Context) ([]domain.OAuthClient, error) {
+	rows, err := r.s.DB.QueryContext(ctx, `
+		SELECT client_id, name, client_type, client_secret_hash, party, redirect_uris, allowed_audiences, allowed_scopes, pkce_required, status, created_at
+		FROM OAuthClient ORDER BY created_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.OAuthClient
+	for rows.Next() {
+		var c domain.OAuthClient
+		var clientType, party, redirects, auds, scopes, status, created string
+		var secretHash sql.NullString
+		var pkce int
+		if err := rows.Scan(&c.ClientID, &c.Name, &clientType, &secretHash, &party, &redirects, &auds, &scopes, &pkce, &status, &created); err != nil {
+			return nil, err
+		}
+		c.ClientType, c.Party, c.Status = domain.ClientType(clientType), domain.ClientParty(party), status
+		c.PKCERequired = pkce != 0
+		c.RedirectURIs, _ = decodeStrings(redirects)
+		c.AllowedAudiences, _ = decodeStrings(auds)
+		c.AllowedScopes, _ = decodeStrings(scopes)
+		c.CreatedAt, _ = parseTS(created)
+		out = append(out, c)
+	}
+	return out, rows.Err()
+}
+
 // ---- ChannelConfig (§6.1) ----
 
 // ChannelConfigRepo persists channel instances.

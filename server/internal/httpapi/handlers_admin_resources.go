@@ -1,0 +1,328 @@
+package httpapi
+
+import (
+	"encoding/hex"
+	"encoding/json"
+	"net/http"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/poolops/issuer/internal/domain"
+	"github.com/poolops/issuer/internal/httpapi/respond"
+	"github.com/poolops/issuer/internal/utils/crypto"
+)
+
+// mountAdminResources wires the admin resource endpoints with the §9.8 role
+// matrix. All routes are already behind requireSession.
+func (h *apiHandlers) mountAdminResources(r chi.Router) {
+	viewer := func(fn http.HandlerFunc) http.Handler { return h.requireRole(domain.RoleViewer)(fn) }
+	operator := func(fn http.HandlerFunc) http.Handler { return h.requireRole(domain.RoleOperator)(fn) }
+	owner := func(fn http.HandlerFunc) http.Handler { return h.requireRole(domain.RoleOwner)(fn) }
+
+	r.Method(http.MethodGet, "/members", viewer(h.adminMembers))
+	r.Method(http.MethodPost, "/members/{sub}/revoke", operator(h.adminRevokeMember))
+	r.Method(http.MethodGet, "/subscriptions", viewer(h.adminSubscriptions))
+	r.Method(http.MethodPost, "/subscriptions/{id}/cancel", operator(h.adminCancelSub))
+	r.Method(http.MethodGet, "/rules", operator(h.adminListRules))
+	r.Method(http.MethodPost, "/rules", operator(h.adminUpsertRule))
+	r.Method(http.MethodPost, "/channels/{type}/configure", operator(h.adminConfigureChannel))
+	r.Method(http.MethodGet, "/push/jobs", operator(h.adminListPushJobs))
+	r.Method(http.MethodPost, "/push/jobs", operator(h.adminCreatePushJob))
+	r.Method(http.MethodGet, "/oauth-clients", owner(h.adminListClients))
+	r.Method(http.MethodPost, "/oauth-clients", owner(h.adminRegisterClient))
+	r.Method(http.MethodPost, "/keys/issuer/generate", owner(h.adminRotateKey))
+	r.Method(http.MethodPost, "/keys/issuer/rotate", owner(h.adminRotateKey))
+	r.Method(http.MethodGet, "/audit", owner(h.adminAudit))
+}
+
+// requireStepUp re-verifies a fresh owner signature for sensitive ops (§9.8).
+// The body must carry {owner_vkey, step_up_nonce, step_up_signature}.
+func (h *apiHandlers) requireStepUp(r *http.Request, stepUp struct{ OwnerVkey, Nonce, Signature string }) error {
+	u := adminFromCtx(r.Context())
+	return h.d.Admin.VerifyStepUp(r.Context(), stepUp.OwnerVkey, stepUp.Nonce, stepUp.Signature, u.OwnerKeyHash)
+}
+
+func (h *apiHandlers) audit(r *http.Request, action, target string) {
+	u := adminFromCtx(r.Context())
+	_ = h.d.Store.Audit().Append(r.Context(), domain.AuditLog{
+		AuditID: crypto.RandomID(), Actor: u.AdminID, Action: action, Target: target,
+		IP: ptrIfSet(clientIPFromReq(r)), CreatedAt: time.Now(),
+	})
+}
+
+// ---- members & subscriptions ----
+
+func (h *apiHandlers) adminMembers(w http.ResponseWriter, r *http.Request) {
+	sessions, err := h.d.Store.Subscriptions().ListActive(r.Context(), h.d.PoolID)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		return
+	}
+	type member struct {
+		Sub     string `json:"sub"`
+		Tier    string `json:"tier"`
+		Channel string `json:"channel_type"`
+	}
+	seen := map[string]bool{}
+	out := []member{}
+	for _, s := range sessions {
+		sub := h.subFor(s.StakeCredentialHash)
+		if seen[sub] {
+			continue
+		}
+		seen[sub] = true
+		out = append(out, member{Sub: sub, Tier: s.Tier, Channel: s.ChannelType})
+	}
+	respond.JSON(w, http.StatusOK, map[string]any{"members": out})
+}
+
+func (h *apiHandlers) adminRevokeMember(w http.ResponseWriter, r *http.Request) {
+	sub := chi.URLParam(r, "sub")
+	// Blacklist + the subsequent reconcile/refresh deny is the durable effect;
+	// a sparse Blacklist entry keyed by the opaque sub identifier.
+	if err := h.d.Store.Blacklist().Add(r.Context(), domain.Blacklist{
+		StakeCredentialHash: sub, Reason: ptrStr("admin revoke"), CreatedAt: time.Now(),
+	}); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		return
+	}
+	h.audit(r, "member.revoke", sub)
+	respond.JSON(w, http.StatusOK, map[string]bool{"revoked": true})
+}
+
+func (h *apiHandlers) adminSubscriptions(w http.ResponseWriter, r *http.Request) {
+	subs, err := h.d.Store.Subscriptions().ListActive(r.Context(), h.d.PoolID)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		return
+	}
+	respond.JSON(w, http.StatusOK, map[string]any{"subscriptions": subs})
+}
+
+func (h *apiHandlers) adminCancelSub(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if err := h.d.Store.Subscriptions().SetStatus(r.Context(), id, domain.SubCancelled); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		return
+	}
+	h.audit(r, "subscription.cancel", id)
+	respond.JSON(w, http.StatusOK, map[string]bool{"cancelled": true})
+}
+
+// ---- rules ----
+
+func (h *apiHandlers) adminListRules(w http.ResponseWriter, r *http.Request) {
+	rules, err := h.d.Store.Rules().ListActive(r.Context())
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		return
+	}
+	respond.JSON(w, http.StatusOK, map[string]any{"rules": rules})
+}
+
+func (h *apiHandlers) adminUpsertRule(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		RuleID       string          `json:"rule_id"`
+		Name         string          `json:"name"`
+		RuleConfig   json.RawMessage `json:"rule_config"`
+		Tier         string          `json:"tier"`
+		Entitlements []string        `json:"entitlements"`
+		Priority     int             `json:"priority"`
+		Status       string          `json:"status"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RuleID == "" || body.Tier == "" {
+		respond.Error(w, http.StatusBadRequest, "invalid_request", "rule_id and tier required")
+		return
+	}
+	status := domain.RuleStatus(body.Status)
+	if status == "" {
+		status = domain.RuleActive
+	}
+	now := time.Now()
+	if err := h.d.Store.Rules().Upsert(r.Context(), domain.MembershipRule{
+		RuleID: body.RuleID, Name: body.Name, RuleConfig: body.RuleConfig, Tier: body.Tier,
+		Entitlements: body.Entitlements, Priority: body.Priority, Status: status, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		return
+	}
+	h.audit(r, "rule.upsert", body.RuleID)
+	respond.JSON(w, http.StatusOK, map[string]string{"rule_id": body.RuleID})
+}
+
+// ---- channels ----
+
+func (h *apiHandlers) adminConfigureChannel(w http.ResponseWriter, r *http.Request) {
+	channelType := chi.URLParam(r, "type")
+	var body struct {
+		Config json.RawMessage `json:"config"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respond.Error(w, http.StatusBadRequest, "invalid_request", "config required")
+		return
+	}
+	now := time.Now()
+	id := crypto.RandomID()
+	if err := h.d.Store.Channels().Upsert(r.Context(), domain.ChannelConfig{
+		ChannelID: id, PoolID: h.d.PoolID, ChannelType: channelType, Config: body.Config,
+		Status: "active", CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		return
+	}
+	h.audit(r, "channel.configure", channelType)
+	respond.JSON(w, http.StatusOK, map[string]string{"channel_id": id})
+}
+
+// ---- push jobs ----
+
+func (h *apiHandlers) adminListPushJobs(w http.ResponseWriter, r *http.Request) {
+	jobs, err := h.d.Store.PushJobs().ListByPool(r.Context(), h.d.PoolID, 100)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		return
+	}
+	respond.JSON(w, http.StatusOK, map[string]any{"jobs": jobs})
+}
+
+func (h *apiHandlers) adminCreatePushJob(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Title       string `json:"title"`
+		Content     string `json:"content"`
+		ChannelType string `json:"channel_type"`
+		Target      struct {
+			Tier        string `json:"tier"`
+			Topic       string `json:"topic"`
+			Entitlement string `json:"entitlement"`
+		} `json:"target"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Title == "" || body.ChannelType == "" {
+		respond.Error(w, http.StatusBadRequest, "invalid_request", "title and channel_type required")
+		return
+	}
+	u := adminFromCtx(r.Context())
+	id := crypto.RandomID()
+	if err := h.d.Store.PushJobs().Create(r.Context(), domain.PushJob{
+		JobID: id, PoolID: h.d.PoolID, Title: body.Title, Content: body.Content, ChannelType: body.ChannelType,
+		TargetTier: ptrIfSet(body.Target.Tier), TargetTopic: ptrIfSet(body.Target.Topic),
+		RequiredEntitlement: ptrIfSet(body.Target.Entitlement), Status: domain.PushScheduled,
+		CreatedBy: u.AdminID, CreatedAt: time.Now(),
+	}); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		return
+	}
+	h.audit(r, "push.create", id)
+	respond.JSON(w, http.StatusOK, map[string]string{"job_id": id, "status": string(domain.PushScheduled)})
+}
+
+// ---- oauth clients ----
+
+func (h *apiHandlers) adminListClients(w http.ResponseWriter, r *http.Request) {
+	clients, err := h.d.Store.OAuthClients().List(r.Context())
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		return
+	}
+	for i := range clients {
+		clients[i].ClientSecretHash = nil // never expose secret hashes
+	}
+	respond.JSON(w, http.StatusOK, map[string]any{"clients": clients})
+}
+
+func (h *apiHandlers) adminRegisterClient(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ClientID      string   `json:"client_id"`
+		Name          string   `json:"name"`
+		ClientType    string   `json:"client_type"`
+		Party         string   `json:"party"`
+		RedirectURIs  []string `json:"redirect_uris"`
+		Audiences     []string `json:"allowed_audiences"`
+		Scopes        []string `json:"allowed_scopes"`
+		PKCERequired  bool     `json:"pkce_required"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ClientID == "" {
+		respond.Error(w, http.StatusBadRequest, "invalid_request", "client_id required")
+		return
+	}
+	c := domain.OAuthClient{
+		ClientID: body.ClientID, Name: body.Name, ClientType: domain.ClientType(body.ClientType),
+		Party: domain.ClientParty(body.Party), RedirectURIs: body.RedirectURIs,
+		AllowedAudiences: body.Audiences, AllowedScopes: body.Scopes, PKCERequired: body.PKCERequired,
+		Status: "active", CreatedAt: time.Now(),
+	}
+	// Confidential clients get a one-time secret (returned once, stored hashed).
+	var plainSecret string
+	if c.ClientType == domain.ClientConfidential {
+		plainSecret = crypto.RandomToken(32)
+		hash := crypto.HashToken(plainSecret)
+		c.ClientSecretHash = &hash
+	}
+	if err := h.d.Store.OAuthClients().Upsert(r.Context(), c); err != nil {
+		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		return
+	}
+	h.audit(r, "oauth_client.register", body.ClientID)
+	resp := map[string]any{"client_id": body.ClientID}
+	if plainSecret != "" {
+		resp["client_secret"] = plainSecret // shown once
+	}
+	respond.JSON(w, http.StatusOK, resp)
+}
+
+// ---- signing keys (owner + step-up) ----
+
+func (h *apiHandlers) adminRotateKey(w http.ResponseWriter, r *http.Request) {
+	if h.d.Keys == nil {
+		notImplemented(w, r)
+		return
+	}
+	var body struct {
+		OwnerVkey       string `json:"owner_vkey"`
+		StepUpNonce     string `json:"step_up_nonce"`
+		StepUpSignature string `json:"step_up_signature"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if err := h.requireStepUp(r, struct{ OwnerVkey, Nonce, Signature string }{body.OwnerVkey, body.StepUpNonce, body.StepUpSignature}); err != nil {
+		writeAdminErr(w, err)
+		return
+	}
+	kid, err := h.d.Keys.Rotate(r.Context())
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		return
+	}
+	h.audit(r, "issuer_key.rotate", kid)
+	respond.JSON(w, http.StatusOK, map[string]any{"new_kid": kid, "status": "active", "jwks_updated": true})
+}
+
+// ---- audit ----
+
+func (h *apiHandlers) adminAudit(w http.ResponseWriter, r *http.Request) {
+	entries, err := h.d.Store.Audit().Recent(r.Context(), 200)
+	if err != nil {
+		respond.Error(w, http.StatusInternalServerError, "server_error", err.Error())
+		return
+	}
+	respond.JSON(w, http.StatusOK, map[string]any{"audit": entries})
+}
+
+// subFor derives the outward pseudonymous subject when a salt is configured,
+// else falls back to the raw credential hash (admin-only view).
+func (h *apiHandlers) subFor(stakeCredentialHash string) string {
+	if len(h.d.ServerSalt) == 0 {
+		return stakeCredentialHash
+	}
+	if raw, err := hex.DecodeString(stakeCredentialHash); err == nil {
+		return crypto.DeriveSub(h.d.ServerSalt, raw)
+	}
+	return stakeCredentialHash
+}
+
+func ptrIfSet(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+func ptrStr(s string) *string { return &s }
