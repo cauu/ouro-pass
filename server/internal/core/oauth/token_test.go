@@ -128,6 +128,66 @@ func TestToken_AuthCodePublicPKCE(t *testing.T) {
 	}
 }
 
+// TestToken_PublicDevicePoP covers p12-5: a malformed device key is rejected at
+// mint (no silent unbound token), and a device-bound public refresh must present
+// the matching device key (TC-17).
+func TestToken_PublicDevicePoP(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	h.st.OAuthClients().Upsert(ctx, domain.OAuthClient{
+		ClientID: "spa", Name: "SPA", ClientType: domain.ClientPublic, Party: domain.ThirdParty,
+		RedirectURIs: []string{"https://spa/cb"}, AllowedAudiences: []string{"app:ouro"},
+		AllowedScopes: []string{"read"}, PKCERequired: true, Status: "active", CreatedAt: time.Now(),
+	})
+	sch := hex.EncodeToString(crypto.Blake2b224(h.pub))
+	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakeLovelace: "5000000"})
+	verifier := "the-pkce-code-verifier-string"
+	sum := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
+	device := hex.EncodeToString([]byte("device-public-key-bytes-32-xxxxx")) // 32 bytes
+
+	mkCode := func() string {
+		nonce, _, _ := h.srv.cfg.Wallet.Challenge(ctx, domain.NonceIssue, h.vkey)
+		c, err := h.srv.Authorize(ctx, AuthorizeRequest{
+			ClientID: "spa", RedirectURI: "https://spa/cb", Aud: "app:ouro", Nonce: nonce,
+			StakeVkey: h.vkey, Signature: h.sign(t, nonce), CodeChallenge: challenge,
+		})
+		if err != nil {
+			t.Fatalf("authorize: %v", err)
+		}
+		return c
+	}
+
+	// Malformed device key at mint → invalid_request (not a silent unbound token).
+	if _, err := h.srv.Token(ctx, TokenRequest{
+		GrantType: "authorization_code", Code: mkCode(), ClientID: "spa",
+		CodeVerifier: verifier, RedirectURI: "https://spa/cb", DevicePubkey: "zz-not-hex",
+	}); err != ErrInvalidRequest {
+		t.Fatalf("malformed device: %v, want invalid_request", err)
+	}
+
+	// Valid device → token + refresh; then a device-bound refresh must match.
+	resp, err := h.srv.Token(ctx, TokenRequest{
+		GrantType: "authorization_code", Code: mkCode(), ClientID: "spa",
+		CodeVerifier: verifier, RedirectURI: "https://spa/cb", DevicePubkey: device,
+	})
+	if err != nil {
+		t.Fatalf("token: %v", err)
+	}
+	// Refresh without the device key → invalid_grant.
+	if _, err := h.srv.Token(ctx, TokenRequest{
+		GrantType: "refresh_token", RefreshToken: resp.RefreshToken, ClientID: "spa",
+	}); err != ErrInvalidGrant {
+		t.Fatalf("refresh missing device: %v, want invalid_grant", err)
+	}
+	// Refresh with the matching device key → success.
+	if _, err := h.srv.Token(ctx, TokenRequest{
+		GrantType: "refresh_token", RefreshToken: resp.RefreshToken, ClientID: "spa", DevicePubkey: device,
+	}); err != nil {
+		t.Fatalf("refresh with device: %v", err)
+	}
+}
+
 func TestToken_ReusedCodeRejected(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()

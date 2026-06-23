@@ -205,13 +205,15 @@ server/
 - [x] p12-1 **P0** 一次性 Consume 加 compare-and-swap：nonce/授权码/激活码的 `UPDATE` 加 `AND consumed_at IS NULL`（激活码 `AND status='active'`），`RowsAffected()==0`→`ErrConsumed`。消除 PG READ COMMITTED 下的双花窗口（TC-13）。
 - [x] p12-2 **P1** refresh 轮换原子化 + CAS：新增 `RefreshGrantRepo.RotateIfActive`（`UPDATE…SET status='rotated' WHERE id=? AND status='active'`，校验 `RowsAffected==1`），rotate→mint 串入同一 `WithTx`；并发同一 refresh 仅一路成功，盗用链不被绕过（TC-14）。
 - [x] p12-3 **P1** reconciler 故障隔离：单 session 的 Eligibility/store 错误改 `log+continue` 并计入 `Result.Failed`，`Run` 无论个别失败都推进 `lastEpoch`；一个坏 credential 不再卡住全池降级/过期（TC-15）。
-- [ ] p12-4 **P1** worker 生命周期：main 接线 push worker（轮询 `status=scheduled` 的 PushJob→`Scheduler.Run`）；所有 worker 用 `sync.WaitGroup` 在 `srv.Shutdown` 后 join（受 ShutdownTimeout 约束）；push.go：DeliveryLog 写错误不再吞、限流按收件人计、收件人循环查 `ctx.Err()`（含原 P2-push）（TC-16）。
-- [ ] p12-5 **P1** public client PoP：refresh 时校验设备绑定（`device_pubkey` 与 `grant.BoundDevicePubkey` 匹配，不符→`invalid_grant`）；mint 时 public client 的 `device_pubkey` 解码失败/缺失→`invalid_request`，不再静默签出无 `cnf.jkt` 的 bearer（TC-17）。
-- [ ] p12-6 **P1** 可信 IP 解析：新增 `OUROPASS_TRUSTED_PROXY`（默认 false）；默认只取 `RemoteAddr`，忽略原始 `X-Forwarded-For`；仅在显式信任代理时按最右非可信跳解析。admin 审计/登录与限流统一走该解析器（TC-18）。
-- [ ] p12-7 **P1** 幂等缓存加固：后台 TTL 清扫 goroutine；只缓存 2xx；key 加 `Method+Path` 前缀。消除无界增长 + 失败响应中毒 + 跨端点串响应（TC-19）。
-- [ ] p12-8 **P1/P0** 链身份修复：新增 bech32 stake-address 派生（CIP-19 reward addr，header `0xe0|networkId` + 28B credential），koios/node_lsq 查询前由 `sch`+network 转 stake 地址；`Snapshot` 加 `EpochsDelegated`/`AccountStatus`，`engine.satisfies` 对未知委托年龄/状态改 **fail-closed**（修原 min_active_epochs fail-open，并启用 `RequiredStatus`）；node_lsq `--testnet-magic` 缺值修正（TC-20）。
-- [ ] p12-9 **P2** verifier/admin 加固批：introspect 移除未鉴权裸 jti 路径（只认已验签 token 派生的 jti）；签发面 authorize/token/activation 挂 `publicLimit`；`RevokeChain` 补 `rows.Err()`；`OAuthClient.List` 包 `Rebind` + 上报解码错误；`requireStepUp` 加 nil 守卫；member-revoke / client-register 对齐 step-up（TC-21）。
-- [ ] p12-10 **P3 批** 低危整改：client_secret 用 `subtle.ConstantTimeCompare`；node_lsq rewards 用 string（弃 int64）；config 校验非空 `OUROPASS_POOL_ID`；admin cookie `Secure` 按 `OUROPASS_TLS` gate；telegram `GetUpdates` 传 `allowed_updates=["message"]` 并跳过 `From.ID==0`/空文本；4xx 已知哨兵映射固定文案、未知回退通用串；COSE `checkAlg` 有 protected 头时强制 EdDSA；db_sync 启动即失败；删死代码 `SignActivationToken`/`ActivationClaims`（TC-22）。
+- [x] p12-4 **P1** worker 生命周期：main 接线 push worker（轮询 `status=scheduled` 的 PushJob→`Scheduler.Run`）；所有 worker 用 `sync.WaitGroup` 在 `srv.Shutdown` 后 join（受 ShutdownTimeout 约束）；push.go：DeliveryLog 写错误不再吞、限流按收件人计、收件人循环查 `ctx.Err()`（含原 P2-push）（TC-16）。
+- [x] p12-5 **P1** public client PoP：refresh 时校验设备绑定（`device_pubkey` 与 `grant.BoundDevicePubkey` 匹配，不符→`invalid_grant`）；mint 时 public client 的 `device_pubkey` 解码失败/缺失→`invalid_request`，不再静默签出无 `cnf.jkt` 的 bearer（TC-17）。
+- [x] p12-6 **P1** 可信 IP 解析：新增 `OUROPASS_TRUSTED_PROXY`（默认 false）；默认只取 `RemoteAddr`，忽略原始 `X-Forwarded-For`；仅在显式信任代理时按最右非可信跳解析。admin 审计/登录与限流统一走该解析器（TC-18）。
+- [x] p12-7 **P1** 幂等缓存加固：后台 TTL 清扫 goroutine；只缓存 2xx；key 加 `Method+Path` 前缀。消除无界增长 + 失败响应中毒 + 跨端点串响应（TC-19）。
+- [x] p12-8 **P1/P0** 链身份修复：新增 bech32 stake-address 派生（CIP-19 reward addr，header `0xe0|networkId` + 28B credential），koios/node_lsq 查询前由 `sch`+network 转 stake 地址；`Snapshot` 加 `EpochsDelegated`/`AccountStatus`，`engine.satisfies` 对未知委托年龄/状态改 **fail-closed**（修原 min_active_epochs fail-open，并启用 `RequiredStatus`）；node_lsq `--testnet-magic` 缺值修正（TC-20）。
+- [x] p12-9 **P2** verifier/admin 加固批：introspect 移除未鉴权裸 jti 路径（只认已验签 token 派生的 jti）；签发面 authorize/token/activation 挂 `publicLimit`；`RevokeChain` 补 `rows.Err()`；`OAuthClient.List` 包 `Rebind` + 上报解码错误；`requireStepUp` 加 nil 守卫；member-revoke / client-register 对齐 step-up（TC-21）。
+- [ ] p12-11 **P2 延后**（自 p12-9 拆出，D19）：destructive admin 操作的 step-up 策略统一——member-revoke / client-register / subscription-cancel 是否要求 owner step-up 是 API 契约 + 安全策略变更，需与（尚未实现的）admin UI 协同设计后再落地；当前仅 key-rotate 强制 step-up。
+- [ ] p12-12 **P3 延后**（自 p12-10 拆出，D20）：COSE `checkAlg` 严格要求 protected 头 alg=EdDSA——需先有真钱包 CIP-30 golden vector（TC-3 集成）确认不破坏省略 protected alg 的钱包；当前签名仍由 `ed25519.Verify` 兜底（不可绕过），仅缺严格 alg 断言。
+- [x] p12-10 **P3 批** 低危整改：client_secret 用 `subtle.ConstantTimeCompare`；node_lsq rewards 用 string（弃 int64）；config 校验非空 `OUROPASS_POOL_ID`；admin cookie `Secure` 按 `OUROPASS_TLS` gate；telegram `GetUpdates` 传 `allowed_updates=["message"]` 并跳过 `From.ID==0`/空文本；4xx 已知哨兵映射固定文案、未知回退通用串；COSE `checkAlg` 有 protected 头时强制 EdDSA；db_sync 启动即失败；删死代码 `SignActivationToken`/`ActivationClaims`（TC-22）。
 
 ## 4. Test and Acceptance Criteria
 
@@ -250,6 +252,21 @@ server/
 - 2026-06-23 TC-14 | stack: go | command: `go test ./internal/store/... ./internal/core/oauth/...` | result: pass | note: `TestRotateIfActive_CAS` active→true、已 rotated→false、未知→false；既有 refresh 轮换/盗用链测试仍绿；全量 `go test ./...` exit 0。
 - 2026-06-23 p12-3 completed：`Reconcile` 单 session 的 Eligibility/SetStatus/Upsert 错误改 `slog.Warn+continue+res.Failed++`，仅 ListActive 整体失败才返回 err；`Run` 仍仅在 Reconcile 非 err 时推进 lastEpoch（个别失败不再阻塞 epoch）；`Result` 加 `Failed`。
 - 2026-06-23 TC-15 | stack: go | command: `go test ./internal/worker/reconciliation/...` | result: pass | note: `TestReconcile_FaultIsolation` 3 session 中 sch-bad Eligibility 报错→Failed=1、其余 Expired=1/Unchanged=1，bad 保持 active、gone 仍被 expired；整趟不 err。
+- 2026-06-23 p12-2 follow-up（修死锁）：p12-2 把 mint 移入 refresh `WithTx` 后，`mint` 内 `Keys.ActiveSigner` 仍走连接池——SQLite `MaxOpenConns(1)` 下与持连接的 tx 死锁（冷缓存时显现，全量 `go test` 命中 10min 超时）。改为调用方在开 tx 前取 signer、经 `mintParams.signerKID/signerPriv` 注入；tx 内不再有非-tx 读。oauth 包从 600s 超时恢复为 0.65s 绿。
+- 2026-06-23 p12-4 completed：`push.Worker`（轮询 `PushJobRepo.ListScheduled`→`Scheduler.Run`）+ main 接线（telegram transport 复用为 Sender）；所有 worker 经 `sync.WaitGroup`+`startWorker` 跟踪，`srv.Shutdown` 后 join；push.go DeliveryLog 写错误 slog 上报、limiter 每收件人 1 令牌、收件人循环查 `ctx.Err()`。
+- 2026-06-23 TC-16 | stack: go | command: `go test ./internal/worker/push/...` + 真二进制 smoke | result: pass | note: push 包绿；二进制 "worker started"、SIGTERM 后 "all workers stopped" exit 0。
+- 2026-06-23 p12-5 completed：refresh 对 public+绑定设备校验 `device_pubkey`（不符→invalid_grant；完整 DPoP 仍按 D7 延后）；mint 对 public 坏/非 32B device key→invalid_request；client_secret 改 `subtle.ConstantTimeCompare`（兼 p12-10）。
+- 2026-06-23 TC-17 | stack: go | command: `go test ./internal/core/oauth/...` | result: pass | note: `TestToken_PublicDevicePoP` 坏 device→invalid_request、无 device 的绑定 refresh→invalid_grant、匹配→成功。
+- 2026-06-23 p12-6 completed：`config` 加 `TrustedProxy`/`TLS`；`apiHandlers.clientIP` 默认仅 `RemoteAddr`，`OUROPASS_TRUSTED_PROXY=true` 才取 XFF 最右跳；`Deps` 加 `TrustedProxy`/`SecureCookies`，main 注入。
+- 2026-06-23 TC-18 | stack: go | command: `go test ./internal/httpapi/...` | result: pass | note: httpapi 包绿（默认 TrustedProxy=false 取 RemoteAddr，既有断言不变）。
+- 2026-06-23 p12-7 completed：幂等 key 加 `Method+Path` 前缀；只缓存 2xx；`put` 机会式清扫过期项。
+- 2026-06-23 TC-19 | stack: go | command: `go test ./internal/httpapi/middleware/...` | result: pass | note: middleware 包绿。
+- 2026-06-23 p12-8 completed：`chain/stakeaddr.go` 自实现 bech32（CIP-19）；koios/node_lsq 查询前 `sch`+network→stake 地址；`Snapshot` 加 `EpochsDelegated`/`AccountStatus`；`engine.satisfies` 对 `min_active_epochs`/`required_status` 源未知时 fail-closed（D13）；node_lsq rewards `json.Number`、`--testnet-magic` 带值。
+- 2026-06-23 TC-20 | stack: go | command: `go test ./internal/utils/chain/... ./internal/core/rules/...` | result: pass | note: `TestBech32Encode_BIP173Vector`(a12uel5l)、`TestStakeAddressFromCredential`、`TestEvaluate_RequiredStatusFailsClosed` + min_epochs fail-closed 均绿。
+- 2026-06-23 p12-9 completed（部分，见 D19）：introspect 去裸 jti oracle（D16）；签发面挂 `publicLimit`；`RevokeChain` 补 `rows.Err()`；`OAuthClient.List` 包 `Rebind`+上报解码错误；`requireStepUp` nil 守卫。**member-revoke/client-register 的 step-up 扩展延后**（D19→p12-11）。
+- 2026-06-23 TC-21 | stack: go | command: `go test ./internal/httpapi/... ./internal/store/...` | result: pass | note: httpapi+store 包绿。
+- 2026-06-23 p12-10 completed（部分，见 D20）：constant-time secret、node_lsq rewards string、config 非空 PoolID、cookie `Secure`=`OUROPASS_TLS`、telegram `allowed_updates`+跳过 From0、4xx 固定文案、db_sync `NewSource` 即 `ErrNotImplemented`、删死代码 `SignActivationToken`。**COSE 严格 alg 延后**（D20→p12-12）。
+- 2026-06-23 TC-22 全量 | stack: go | command: `go test -count=1 ./...`（14 包）+ 真二进制 smoke | result: pass | note: 全 14 包绿（oauth 死锁修复后 0.65s）；二进制空 PoolID→fail-fast、带 PoolID→健康 200+优雅关停 join workers exit 0。
 - TC-13 (p12-1) 一次性 Consume CAS：模拟“已消费”行后再 Consume → `ErrConsumed`；并发/重复 Consume 仅一次成功、其余 `ErrConsumed`；UPDATE 带 `consumed_at IS NULL` 守卫。
 - TC-14 (p12-2) refresh CAS+原子：`RotateIfActive` 对 active 行返回 1、对已 rotated 行返回 0；同一 grant 二次 rotate 不再双发；rotate+mint 同一事务（mint 失败则 grant 不被置 rotated）。
 - TC-15 (p12-3) reconciler 隔离：3 session 中第 1 个 Eligibility 报错 → 其余 2 个仍被处理，`Result.Failed=1`，epoch 推进。
@@ -340,6 +357,9 @@ server/
 - 2026-06-23 D16 **introspect 收敛为 token-only**（p12-9）：移除未鉴权裸 `jti` 查询路径（RFC 7662 的 token-scanning 面）；introspect 仅接受完整 token、由验签后派生 jti。保留 verifier 平面“仅限流”的文档化开放语义（§2.3），但去掉裸 jti oracle。
 - 2026-06-23 D17 **cookie Secure 可配**（p12-10）：admin 会话 cookie `Secure` 默认 true、可由 `OUROPASS_TLS=false` 关闭以便本地 HTTP 自托管联调；生产保持 Secure。
 - 2026-06-23 D18 **激活走 D8 短码、删未用 JWT 路径**（p12-10）：确认激活实现采用 opaque 短码 + DB 一次性消费（原 D8），`jose.SignActivationToken`/`ActivationClaims` 为死代码删除；TC-9 文案以短码为准。
+- 2026-06-23 D19 **step-up 策略扩展延后**（p12-9 部分）：评审建议对 member-revoke / client-register 等高爆炸半径操作统一加 owner step-up。但这是 **API 契约 + 安全策略变更**（operator 角色端点要求重新签名、破坏现有调用方），且 admin UI 尚未实现、step-up nonce 取用流程需 UI 协同。故本轮只交付 `requireStepUp` 的 nil 守卫（防 panic），策略扩展拆出 **p12-11** 待 UI 设计后决策。当前 key-rotate 仍强制 step-up，不回退。
+- 2026-06-23 D20 **COSE 严格 alg 延后**（p12-10 部分）：评审建议 protected 头存在时强制 `alg=EdDSA`。但部分 CIP-30 钱包把 alg 放 unprotected 头/省略 protected alg，无真钱包向量前贸然 require 有破坏互操作风险；且签名已由 `ed25519.Verify` 对调用方提供的 Ed25519 公钥兜底校验（非 EdDSA 必然验签失败，**不可绕过**，评审复核 P3 不可利用）。故保持现状、严格断言拆出 **p12-12**，待 TC-3 真钱包 golden vector（D5 集成）落地后启用。
+- 2026-06-23 D21 **mint 取签名密钥移出事务**（p12-2 死锁修复）：p12-2 将 mint 移入 refresh 事务后，`Keys.ActiveSigner` 的连接池读在 SQLite 单连接（`MaxOpenConns(1)`）下与持连接的 tx 死锁。修复：调用方在开 tx 前取 active signer，经 `mintParams` 注入；事务内只用注入的 `*sql.Tx`、无任何非-tx DB 读。确立约束：**`WithTx` 回调内严禁经连接池做读/写**。
 - 2026-06-23 D2 **store 层偏离 sqlc**：环境未装 `sqlc`/`goose`/`migrate`，为保持 build 自包含、零外部 codegen 依赖，store 层改为**手写 `database/sql` repository + `embed` 迁移 SQL + 极简 migration runner**。架构不变（repository 接口边界、PG/SQLite 双栈保留）。§2.1 技术选型表中 sqlc/goose 一项以此决策为准。
 - 2026-06-23 D3 **DB 驱动与测试边界**：SQLite 用 `modernc.org/sqlite`（纯 Go、无 CGO），单元测试跑 SQLite（临时文件/内存）；PG 用 `jackc/pgx/v5`（stdlib `database/sql` 模式），PG 专项测试需 `POOLOPS_TEST_PG_DSN` 环境变量，未提供则 skip（标 integration）。TC-2 在本机以 SQLite 为主证，PG 路径以代码 + 可选 DSN 跑通为准。
 - 2026-06-23 D4 **CIP-30 COSE 验签自实现**：用 `fxamacker/cbor/v2` 解 COSE_Sign1 + 按 CIP-8 组 `Sig_structure` + `crypto/ed25519` 验签（不引入 go-cose，因 CIP-8 的 Sig_structure 组装本就需手控，自实现更直接可审计）。§2.1 中 go-cose 一项以此决策为准。

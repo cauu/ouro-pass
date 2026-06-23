@@ -1,8 +1,11 @@
 package oauth
 
 import (
+	"bytes"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"crypto/subtle"
 	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
@@ -90,8 +93,19 @@ func (s *Server) tokenRefresh(ctx context.Context, req TokenRequest) (*TokenResp
 		if err != nil {
 			return nil, ErrInvalidClientCreds
 		}
-		if client.ClientSecretHash == nil || crypto.HashToken(req.ClientSecret) != *client.ClientSecretHash {
+		if client.ClientSecretHash == nil || subtle.ConstantTimeCompare([]byte(crypto.HashToken(req.ClientSecret)), []byte(*client.ClientSecretHash)) != 1 {
 			return nil, ErrInvalidClientCreds
+		}
+	}
+
+	// Public client: the refresh must carry the device public key the grant was
+	// bound to (cnf.jkt). This is an interim possession check — full DPoP proof
+	// of the device private key remains deferred (D7) — but it stops a stolen
+	// refresh token from being exchanged with the binding silently dropped (p12-5).
+	if grant.ClientType == domain.ClientPublic && len(grant.BoundDevicePubkey) > 0 {
+		reqDev, derr := hex.DecodeString(req.DevicePubkey)
+		if derr != nil || !bytes.Equal(reqDev, grant.BoundDevicePubkey) {
+			return nil, ErrInvalidGrant
 		}
 	}
 
@@ -108,6 +122,11 @@ func (s *Server) tokenRefresh(ctx context.Context, req TokenRequest) (*TokenResp
 	devHex := ""
 	if len(grant.BoundDevicePubkey) > 0 {
 		devHex = hex.EncodeToString(grant.BoundDevicePubkey)
+	}
+	// Read the signing key BEFORE the transaction (SQLite single-connection).
+	signer, err := s.cfg.Keys.ActiveSigner(ctx)
+	if err != nil {
+		return nil, err
 	}
 	// Rotate-then-mint must be one atomic step: a compare-and-swap to rotated
 	// (only one concurrent refresh of the same grant wins) and the new grant +
@@ -127,6 +146,7 @@ func (s *Server) tokenRefresh(ctx context.Context, req TokenRequest) (*TokenResp
 			sch: grant.StakeCredentialHash, aud: grant.Audience, clientType: grant.ClientType,
 			clientID: grant.ClientID, tier: decision.Tier, entitlements: decision.Entitlements,
 			devicePubkey: devHex, rotatedFrom: &grant.RefreshGrantID,
+			signerKID: signer.KID, signerPriv: signer.Priv,
 		})
 		if err != nil {
 			return err
@@ -166,10 +186,14 @@ func (s *Server) tokenAuthCode(ctx context.Context, req TokenRequest) (*TokenRes
 		return nil, ErrNotEligible
 	}
 
+	signer, err := s.cfg.Keys.ActiveSigner(ctx)
+	if err != nil {
+		return nil, err
+	}
 	return s.mint(ctx, nil, mintParams{
 		sch: code.StakeCredentialHash, aud: code.Aud, clientType: client.ClientType,
 		clientID: &client.ClientID, tier: decision.Tier, entitlements: decision.Entitlements,
-		devicePubkey: req.DevicePubkey,
+		devicePubkey: req.DevicePubkey, signerKID: signer.KID, signerPriv: signer.Priv,
 	})
 }
 
@@ -206,16 +230,17 @@ type mintParams struct {
 	entitlements []string
 	devicePubkey string
 	rotatedFrom  *string // set on refresh rotation
+	signerKID    string  // active signing key, fetched by the caller before any tx
+	signerPriv   ed25519.PrivateKey
 }
 
 // mint signs an access token, records the IssuedToken ledger row, and creates a
 // fresh refresh grant. Shared by the authorization_code and refresh_token paths.
 // q is the transaction to write within (nil → autocommit on the shared pool).
 func (s *Server) mint(ctx context.Context, q store.Querier, p mintParams) (*TokenResponse, error) {
-	signer, err := s.cfg.Keys.ActiveSigner(ctx)
-	if err != nil {
-		return nil, err
-	}
+	// The signing key is read by the caller BEFORE any transaction is opened: on
+	// SQLite (MaxOpenConns=1) reading it here, while q holds the only connection,
+	// would deadlock (p12-2 fix follow-up).
 	schBytes, err := hex.DecodeString(p.sch)
 	if err != nil {
 		return nil, err
@@ -233,21 +258,26 @@ func (s *Server) mint(ctx context.Context, q store.Querier, p mintParams) (*Toke
 	}
 	var boundDevice []byte
 	if p.clientType == domain.ClientPublic && p.devicePubkey != "" {
-		if dev, err := hex.DecodeString(p.devicePubkey); err == nil {
-			boundDevice = dev
-			thumb := sha256.Sum256(dev)
-			claims.Cnf = map[string]string{"jkt": base64.RawURLEncoding.EncodeToString(thumb[:])}
+		// A provided device key must be a well-formed 32-byte ed25519 public key;
+		// a malformed one is rejected rather than silently dropped (which would
+		// mint an unbound bearer token without cnf.jkt) (p12-5).
+		dev, err := hex.DecodeString(p.devicePubkey)
+		if err != nil || len(dev) != ed25519.PublicKeySize {
+			return nil, ErrInvalidRequest
 		}
+		boundDevice = dev
+		thumb := sha256.Sum256(dev)
+		claims.Cnf = map[string]string{"jkt": base64.RawURLEncoding.EncodeToString(thumb[:])}
 	}
 
-	accessToken, err := jose.SignAccessToken(signer.KID, signer.Priv, claims)
+	accessToken, err := jose.SignAccessToken(p.signerKID, p.signerPriv, claims)
 	if err != nil {
 		return nil, err
 	}
 
 	if err := s.issuedTokens.Create(ctx, q, domain.IssuedToken{
 		JTI: jti, StakeCredentialHash: p.sch, Kind: domain.TokenAccess, Audience: p.aud,
-		KID: signer.KID, ClientID: p.clientID, Status: domain.TokenActive, IssuedAt: now, ExpiresAt: exp,
+		KID: p.signerKID, ClientID: p.clientID, Status: domain.TokenActive, IssuedAt: now, ExpiresAt: exp,
 	}); err != nil {
 		return nil, err
 	}
