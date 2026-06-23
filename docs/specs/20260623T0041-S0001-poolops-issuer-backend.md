@@ -168,7 +168,7 @@ server/
 ### p4 — 钱包原语与签名密钥管理
 - [x] p4-1 `POST /api/auth/challenge`（AuthNonce）+ COSE 验签接入 `stake_credential_hash` 映射
 - [x] p4-2 issuer 签名密钥 生成/轮换（`core/keys`，JWKS overlap，owner step-up）
-- [ ] p4-3 Verifier 发布：`GET /.well-known/poolops/jwks.json`（仅签名公钥，无 CRL）
+- [x] p4-3 Verifier 发布：`GET /.well-known/poolops/jwks.json`（仅签名公钥，无 CRL）
 
 ### p5 — 签发与刷新（OAuth 授权服务器）
 - [ ] p5-1 `GET /connect`（Authorization Page 契约）+ `POST /api/connect/authorize`（验签→评估资格→AuthorizationCode）
@@ -225,6 +225,7 @@ server/
 - 2026-06-23 p3-2 completed：`core/rules`——`Evaluate(Input, ruleset, epoch) → Decision` **纯函数**（C10）：内部稳定排序(priority desc, rule_id asc)、big.Int 精确比较 min stake、min_active_epochs 净 grace、首个命中胜出；`InputFromSnapshot` 纯映射。无 IO/时钟/随机。证据见 §6（TC-5）。
 - 2026-06-23 p4-1 completed：`core/walletauth` Service（Challenge 发 nonce + Verify 验 COSE 签名并映射 stake_credential_hash=blake2b224(vkey)，clock 可注入）；接入 router `POST /api/auth/challenge`（public 限速）；main 改为开库+迁移+装配 Service。Verify 复用 p1-3 COSE 验签 + p2-3 AuthNonce 一次性消费。证据见 §6（p4-1）。
 - 2026-06-23 p4-2 completed：`core/keys` Service（有状态，非纯，符合 C10）——`Rotate`(bootstrap 兼轮换：新 active + 旧 active→rotating overlap)、`ActiveSigner`(解密私钥签名)、`PublicJWKSKeys`(active+rotating 集合)、`RetireRotating`、`Revoke`。私钥 AES-GCM 加密落盘(C5)。证据见 §6（TC-8 部分）。
+- 2026-06-23 p4-3 completed（phase p4 收尾）：`GET /.well-known/poolops/jwks.json` handler（Keys.PublicJWKSKeys → jose.BuildJWKS，Cache-Control 60s）；Deps 加 Keys，main 在 POOLOPS_FIELD_KEY 存在时装配 keys.Service，否则降级 501。证据见 §6（p4-3/TC-4 端点侧）。
 
 ## 6. Validation Evidence (append-only)
 
@@ -243,6 +244,7 @@ server/
 - 2026-06-23 TC-5 | stack: go | command: `go test ./internal/core/...` | result: pass | note: 资格评估覆盖 whale→gold/小额→silver/全不达标/委托他池/未委托/未知 stake；**纯函数验证**——50 次同输入 DeepEqual 一致、规则乱序仍 gold(prio 10) 胜出；min_active_epochs 净 grace（2 失败/3 通过/未知跳过）；disabled 规则忽略
 - 2026-06-23 p4-1 | stack: go | command: `go test ./internal/core/walletauth/... ./internal/httpapi/...` + 真二进制 curl | result: pass | note: Challenge→COSE 签名→Verify 返回正确 credential hash；重放 ErrConsumed、错绑定 key/篡改签名/错 purpose 均拒；handler 200+nonce、bogus purpose/坏 vkey/坏 JSON→400；真二进制开库迁移后 /api/auth/challenge 返回 nonce
 - 2026-06-23 p4-2(TC-8) | stack: go | command: `go test ./internal/core/keys/...` | result: pass | note: bootstrap→1 active；二次 Rotate→旧 rotating+新 active 两 kid overlap 发布；ActiveSigner 解密私钥签名经公钥验签通过(加解密往返)；RetireRotating 退役旧 kid 后 JWKS 剩 1
+- 2026-06-23 p4-3 | stack: go | command: `go test ./internal/httpapi/...` | result: pass | note: JWKS 端点空集 200；Rotate 后发布 1 个 OKP/Ed25519/status=active key，无 d/x5c/chain 泄漏；无 Keys 服务时 501
 
 ## 7. Change Requests (append-only)
 

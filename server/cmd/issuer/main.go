@@ -14,9 +14,11 @@ import (
 	"time"
 
 	"github.com/poolops/issuer/internal/config"
+	"github.com/poolops/issuer/internal/core/keys"
 	"github.com/poolops/issuer/internal/core/walletauth"
 	"github.com/poolops/issuer/internal/httpapi"
 	"github.com/poolops/issuer/internal/store"
+	"github.com/poolops/issuer/internal/utils/crypto"
 )
 
 // nonceTTL bounds wallet-signing nonce validity.
@@ -51,6 +53,17 @@ func run() error {
 
 	deps := httpapi.Deps{
 		Wallet: walletauth.New(st, nonceTTL),
+	}
+	// The signing-key service (and any 🔒-field handling) needs the field key.
+	// Without it the service still boots; key/JWKS routes degrade to 501.
+	if cfg.FieldKeyHex != "" {
+		cipher, err := crypto.NewFieldCipherHex(cfg.FieldKeyHex)
+		if err != nil {
+			return err
+		}
+		deps.Keys = keys.New(st, cipher)
+	} else {
+		slog.Warn("POOLOPS_FIELD_KEY not set; signing-key/JWKS routes disabled")
 	}
 
 	srv := &http.Server{

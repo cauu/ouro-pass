@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/poolops/issuer/internal/core/keys"
 	"github.com/poolops/issuer/internal/core/walletauth"
 	appmw "github.com/poolops/issuer/internal/httpapi/middleware"
 	"github.com/poolops/issuer/internal/httpapi/respond"
@@ -19,6 +20,7 @@ import (
 // routes to 501 so the server still boots during incremental wiring.
 type Deps struct {
 	Wallet *walletauth.Service
+	Keys   *keys.Service
 }
 
 type apiHandlers struct{ d Deps }
@@ -51,7 +53,7 @@ func NewRouter(d Deps) http.Handler {
 	// ---- Verifier plane (public, read-only, rate-limited) ----
 	r.Group(func(r chi.Router) {
 		r.Use(publicLimit)
-		r.Get("/.well-known/poolops/jwks.json", notImplemented)
+		r.Get("/.well-known/poolops/jwks.json", h.jwks)
 		r.Post("/api/oauth/introspect", notImplemented)
 		r.Post("/api/oauth/revoke", notImplemented)
 	})
