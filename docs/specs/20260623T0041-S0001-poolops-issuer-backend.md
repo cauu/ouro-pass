@@ -188,6 +188,10 @@ server/
 - [x] p8-1 Admin 鉴权：`/api/admin/auth/challenge` + `/verify`（owner-key 钱包签名 → httpOnly session）+ RBAC + step-up 中间件
 - [x] p8-2 Admin 资源端点：members / subscriptions / rules / channels / push / oauth-clients / keys / audit（按 §9.8 角色矩阵）
 
+### p9 — 重构（可读性：一实体一文件）
+- [x] p9-1 `domain/` 按实体拆分：一实体一文件（共享哨兵错误归 `errors.go`，跨实体枚举归其主属实体文件），文件树即实体清单。纯移动、零逻辑改动。
+- [ ] p9-2 `store/` 按实体拆分：每个 `XxxRepo`（含其专属 cols 常量/scan 函数）一文件；共享 `rowScanner` 移入 `scan.go`。纯移动、零逻辑改动。
+
 ## 4. Test and Acceptance Criteria
 
 - TC-1 服务启动：`go build ./...` 通过；二进制启动后健康检查 200，四平面路由可达（404/401 符合预期），SIGTERM 优雅退出。
@@ -207,6 +211,7 @@ server/
   - 2026-06-23 TC-12(p8-1) | stack: go | command: `go test ./internal/core/admin/... ./internal/httpapi/...` | result: pass | note: owner allowlist 命中自举 owner+发 session、Authenticate/Logout(登出后 ErrUnauthorized)；非 owner key 未种→ErrForbidden、种 operator 后登录得 operator；AtLeast RBAC；step-up 正确 key 通过/错 key→ErrForbidden；handler 全流程 httpOnly cookie：未登录 /me→401、登录后→200(role owner)、登出后→401
   - 2026-06-23 TC-12(p8-2) | stack: go | command: `go test ./internal/httpapi/... ./internal/store/...` | result: pass | note: RBAC 矩阵——viewer 读 members 200/写 rules 403/读 clients 403；operator upsert rule + create push 落库且写 audit；owner 注册 confidential client 发一次性 secret；key rotate 无 step-up→401/403、带正确 step-up 签名→200(new_kid) 且 issuer_key.rotate 入审计
 - 2026-06-23 全量 | stack: go | command: `go vet ./... && go test ./...`（14 包）+ 真二进制全配置 smoke | result: pass | note: 全部包测试绿；真二进制开库迁移+JWKS(OAuth on 空集)+reconciliation worker 启动+admin /me 401+challenge 200，SIGTERM 优雅退出 exit 0
+- 2026-06-23 p9-1 | stack: go | command: `go build ./... && go test ./...` | result: pass | note: domain 拆为一实体一文件（18 实体 + doc.go + errors.go）后全部包编译+测试绿；零逻辑改动
 - Pass/fail：每个 item 仅在其映射的 TC 全部 `pass` 且证据 append 后方可标 `[x]`。
 
 测试栈映射（验收证据用）：`stack: go`，命令以 `go test ./...`、`go build ./...` 为主，集成测试（真链/真 Telegram）单独打 build tag 标注。
@@ -242,6 +247,8 @@ server/
 - 2026-06-23 p8-1 completed：`core/admin` Service——Challenge/Verify(owner-key COSE 签名→owner allowlist D9 命中自举 owner / 否则查已种 operator/viewer→建 AdminSession)、Authenticate、Logout、VerifyStepUp(step_up nonce + 绑定 owner key)、RBAC `AtLeast`(owner>operator>viewer)；`store` 加 AdminUsers.GetByID；handler challenge/verify(httpOnly+Secure cookie)/logout/me + `requireSession`/`requireRole` 中间件；config 加 OwnerKeyHashes(POOLOPS_OWNER_KEYS)。证据见 §6（TC-12 部分）。
 - 2026-06-23 p8-2 completed（phase p8 收尾 / 全 25 项完成）：`mountAdminResources` 按 §9.8 角色矩阵挂全部资源端点——members(viewer+，sub 派生)/members revoke(operator+，写 Blacklist)/subscriptions(viewer+)/cancel(operator+)/rules GET+upsert(operator+)/channels configure(operator+)/push jobs list+create(operator+)/oauth-clients list+register(owner，confidential 发一次性 secret)/keys generate+rotate(owner+**step-up**)/audit(owner)；敏感操作写 AuditLog。`store` 加 PushJobs.ListByPool、OAuthClients.List；Deps 加 Store/ServerSalt/PoolID。证据见 §6（TC-12）。
 - 2026-06-23 **全部 25 个执行项（p1-1…p8-2）实现完成、逐项测试通过、逐项提交**。`go vet ./...` + `go test ./...`（14 包）全绿，真二进制全配置 smoke 通过。Spec 保持 **active 不关闭**，等待用户验收。
+- 2026-06-23 p9（重构）追加：应用户反馈「一眼看不出有哪些实体」，把 `domain/`、`store/` 从「按 § 分组」改为「一实体一文件」。
+- 2026-06-23 p9-1 completed：`domain/` 5 个分组文件 → 18 个实体文件 + `doc.go`(包注释) + `errors.go`(共享哨兵)。跨实体枚举 `ClientType` 归 `oauthclient.go`(RefreshGrant 同包引用)。纯移动，`go build`/`go test`(14 包)全绿。证据见 §6（p9-1）。
 
 ## 6. Validation Evidence (append-only)
 
