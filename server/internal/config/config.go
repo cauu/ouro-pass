@@ -31,6 +31,13 @@ type Config struct {
 	// Crypto material (hex/base64 from env; decoded by crypto pkg)
 	FieldKeyHex   string // 32-byte AES-256-GCM master key for 🔒 fields
 	ServerSaltHex string // HMAC salt for deriving the pseudonymous `sub`
+
+	// Staking Index Adapter
+	ChainKind    string // mock | node_lsq | db_sync | koios | blockfrost
+	KoiosBaseURL string
+	ChainAPIKey  string
+	NodeSocket   string
+	CardanoCLI   string
 }
 
 // Default values for non-secret knobs.
@@ -55,6 +62,11 @@ func Load() (*Config, error) {
 		DBDSN:           env("POOLOPS_DB_DSN", defaultDBDSN),
 		FieldKeyHex:     env("POOLOPS_FIELD_KEY", ""),
 		ServerSaltHex:   env("POOLOPS_SERVER_SALT", ""),
+		ChainKind:       env("POOLOPS_CHAIN_KIND", "mock"),
+		KoiosBaseURL:    env("POOLOPS_KOIOS_BASE_URL", ""),
+		ChainAPIKey:     env("POOLOPS_CHAIN_API_KEY", ""),
+		NodeSocket:      env("POOLOPS_NODE_SOCKET", ""),
+		CardanoCLI:      env("POOLOPS_CARDANO_CLI", ""),
 	}
 	c.Issuer = env("POOLOPS_ISSUER", "poolops:"+c.PoolID)
 

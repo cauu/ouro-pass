@@ -5,7 +5,9 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -15,14 +17,19 @@ import (
 
 	"github.com/poolops/issuer/internal/config"
 	"github.com/poolops/issuer/internal/core/keys"
+	"github.com/poolops/issuer/internal/core/oauth"
 	"github.com/poolops/issuer/internal/core/walletauth"
 	"github.com/poolops/issuer/internal/httpapi"
 	"github.com/poolops/issuer/internal/store"
+	"github.com/poolops/issuer/internal/utils/chain"
 	"github.com/poolops/issuer/internal/utils/crypto"
 )
 
-// nonceTTL bounds wallet-signing nonce validity.
-const nonceTTL = 5 * time.Minute
+const (
+	nonceTTL   = 5 * time.Minute
+	accessTTL  = 24 * time.Hour
+	refreshTTL = 30 * 24 * time.Hour
+)
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
@@ -64,6 +71,29 @@ func run() error {
 		deps.Keys = keys.New(st, cipher)
 	} else {
 		slog.Warn("POOLOPS_FIELD_KEY not set; signing-key/JWKS routes disabled")
+	}
+
+	// The OAuth authorization server needs the signing keys, the `sub` salt, and
+	// a staking source. Missing any → issuance routes degrade to 501.
+	chainSrc, err := chain.NewSource(chain.Config{
+		Kind: cfg.ChainKind, KoiosBaseURL: cfg.KoiosBaseURL, APIKey: cfg.ChainAPIKey,
+		NodeSocket: cfg.NodeSocket, CardanoCLI: cfg.CardanoCLI, Network: cfg.Network,
+	})
+	if err != nil {
+		return err
+	}
+	if deps.Keys != nil && cfg.ServerSaltHex != "" {
+		salt, err := hex.DecodeString(cfg.ServerSaltHex)
+		if err != nil {
+			return fmt.Errorf("POOLOPS_SERVER_SALT: %w", err)
+		}
+		deps.OAuth = oauth.New(oauth.Config{
+			Store: st, Wallet: deps.Wallet, Keys: deps.Keys, Chain: chainSrc,
+			PoolID: cfg.PoolID, Issuer: cfg.Issuer, ServerSalt: salt,
+			AccessTTL: accessTTL, RefreshTTL: refreshTTL,
+		})
+	} else {
+		slog.Warn("OAuth issuance disabled (need POOLOPS_FIELD_KEY + POOLOPS_SERVER_SALT)")
 	}
 
 	srv := &http.Server{

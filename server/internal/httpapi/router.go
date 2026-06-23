@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/poolops/issuer/internal/core/keys"
+	"github.com/poolops/issuer/internal/core/oauth"
 	"github.com/poolops/issuer/internal/core/walletauth"
 	appmw "github.com/poolops/issuer/internal/httpapi/middleware"
 	"github.com/poolops/issuer/internal/httpapi/respond"
@@ -21,6 +22,7 @@ import (
 type Deps struct {
 	Wallet *walletauth.Service
 	Keys   *keys.Service
+	OAuth  *oauth.Server
 }
 
 type apiHandlers struct{ d Deps }
@@ -43,8 +45,8 @@ func NewRouter(d Deps) http.Handler {
 	r.With(publicLimit).Post("/api/auth/challenge", h.authChallenge)
 
 	// ---- Issuance (OAuth) plane ----
-	r.Get("/connect", notImplemented)
-	r.Post("/api/connect/authorize", notImplemented)
+	r.Get("/connect", h.connect)
+	r.Post("/api/connect/authorize", h.connectAuthorize)
 	r.With(idem).Post("/api/oauth/token", notImplemented)
 
 	// ---- Channel activation plane ----
