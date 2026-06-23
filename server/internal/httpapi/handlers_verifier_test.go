@@ -38,7 +38,7 @@ func TestJWKS_Endpoint(t *testing.T) {
 	defer srv.Close()
 
 	get := func() (int, map[string]any) {
-		resp, err := http.Get(srv.URL + "/.well-known/poolops/jwks.json")
+		resp, err := http.Get(srv.URL + "/.well-known/ouropass/jwks.json")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -80,7 +80,7 @@ func TestJWKS_Endpoint(t *testing.T) {
 func TestJWKS_DisabledWhenNoKeyService(t *testing.T) {
 	srv := httptest.NewServer(NewRouter(Deps{}))
 	defer srv.Close()
-	resp, _ := http.Get(srv.URL + "/.well-known/poolops/jwks.json")
+	resp, _ := http.Get(srv.URL + "/.well-known/ouropass/jwks.json")
 	if resp.StatusCode != http.StatusNotImplemented {
 		t.Fatalf("status = %d, want 501", resp.StatusCode)
 	}

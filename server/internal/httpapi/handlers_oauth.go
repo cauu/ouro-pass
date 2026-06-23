@@ -33,7 +33,7 @@ func (h *apiHandlers) connect(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `<!doctype html><html><head><title>PoolOps Authorization</title></head>
+	fmt.Fprintf(w, `<!doctype html><html><head><title>Ouro Pass Authorization</title></head>
 <body><h1>Connect your wallet</h1>
 <p>client_id: %s</p><p>aud: %s</p>
 <p>This placeholder is replaced by the web/ Authorization Page; it posts the

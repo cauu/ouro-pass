@@ -22,7 +22,7 @@ type Config struct {
 	// Identity / network
 	PoolID  string // bech32 pool id this issuer serves
 	Network string // mainnet | preprod | preview
-	Issuer  string // token `iss`, e.g. "poolops:<pool_id>"
+	Issuer  string // token `iss`, e.g. "ouropass:<pool_id>"
 
 	// Persistence
 	DBDriver string // "sqlite" | "postgres"
@@ -53,7 +53,7 @@ const (
 	defaultShutdownTimeout = 15 * time.Second
 	defaultNetwork         = "preview"
 	defaultDBDriver        = "sqlite"
-	defaultDBDSN           = "file:poolops.db?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
+	defaultDBDSN           = "file:ouropass.db?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
 )
 
 // Load reads configuration from the environment, applies defaults, and
@@ -61,29 +61,29 @@ const (
 // caller controls the exit path.
 func Load() (*Config, error) {
 	c := &Config{
-		Addr:            env("POOLOPS_ADDR", defaultAddr),
+		Addr:            env("OUROPASS_ADDR", defaultAddr),
 		ShutdownTimeout: defaultShutdownTimeout,
-		PoolID:          env("POOLOPS_POOL_ID", ""),
-		Network:         env("POOLOPS_NETWORK", defaultNetwork),
-		DBDriver:        env("POOLOPS_DB_DRIVER", defaultDBDriver),
-		DBDSN:           env("POOLOPS_DB_DSN", defaultDBDSN),
-		FieldKeyHex:     env("POOLOPS_FIELD_KEY", ""),
-		ServerSaltHex:   env("POOLOPS_SERVER_SALT", ""),
-		ChainKind:       env("POOLOPS_CHAIN_KIND", "mock"),
-		KoiosBaseURL:    env("POOLOPS_KOIOS_BASE_URL", ""),
-		ChainAPIKey:     env("POOLOPS_CHAIN_API_KEY", ""),
-		NodeSocket:      env("POOLOPS_NODE_SOCKET", ""),
-		CardanoCLI:      env("POOLOPS_CARDANO_CLI", ""),
-		TelegramBot:     env("POOLOPS_TELEGRAM_BOT", ""),
-		TelegramToken:   env("POOLOPS_TELEGRAM_TOKEN", ""),
-		OwnerKeyHashes:  splitCSV(env("POOLOPS_OWNER_KEYS", "")),
+		PoolID:          env("OUROPASS_POOL_ID", ""),
+		Network:         env("OUROPASS_NETWORK", defaultNetwork),
+		DBDriver:        env("OUROPASS_DB_DRIVER", defaultDBDriver),
+		DBDSN:           env("OUROPASS_DB_DSN", defaultDBDSN),
+		FieldKeyHex:     env("OUROPASS_FIELD_KEY", ""),
+		ServerSaltHex:   env("OUROPASS_SERVER_SALT", ""),
+		ChainKind:       env("OUROPASS_CHAIN_KIND", "mock"),
+		KoiosBaseURL:    env("OUROPASS_KOIOS_BASE_URL", ""),
+		ChainAPIKey:     env("OUROPASS_CHAIN_API_KEY", ""),
+		NodeSocket:      env("OUROPASS_NODE_SOCKET", ""),
+		CardanoCLI:      env("OUROPASS_CARDANO_CLI", ""),
+		TelegramBot:     env("OUROPASS_TELEGRAM_BOT", ""),
+		TelegramToken:   env("OUROPASS_TELEGRAM_TOKEN", ""),
+		OwnerKeyHashes:  splitCSV(env("OUROPASS_OWNER_KEYS", "")),
 	}
-	c.Issuer = env("POOLOPS_ISSUER", "poolops:"+c.PoolID)
+	c.Issuer = env("OUROPASS_ISSUER", "ouropass:"+c.PoolID)
 
-	if d := env("POOLOPS_SHUTDOWN_TIMEOUT", ""); d != "" {
+	if d := env("OUROPASS_SHUTDOWN_TIMEOUT", ""); d != "" {
 		v, err := time.ParseDuration(d)
 		if err != nil {
-			return nil, fmt.Errorf("POOLOPS_SHUTDOWN_TIMEOUT: %w", err)
+			return nil, fmt.Errorf("OUROPASS_SHUTDOWN_TIMEOUT: %w", err)
 		}
 		c.ShutdownTimeout = v
 	}
@@ -98,15 +98,15 @@ func (c *Config) validate() error {
 	switch c.Network {
 	case "mainnet", "preprod", "preview":
 	default:
-		return fmt.Errorf("invalid POOLOPS_NETWORK %q (want mainnet|preprod|preview)", c.Network)
+		return fmt.Errorf("invalid OUROPASS_NETWORK %q (want mainnet|preprod|preview)", c.Network)
 	}
 	switch c.DBDriver {
 	case "sqlite", "postgres":
 	default:
-		return fmt.Errorf("invalid POOLOPS_DB_DRIVER %q (want sqlite|postgres)", c.DBDriver)
+		return fmt.Errorf("invalid OUROPASS_DB_DRIVER %q (want sqlite|postgres)", c.DBDriver)
 	}
 	if strings.TrimSpace(c.DBDSN) == "" {
-		return fmt.Errorf("POOLOPS_DB_DSN must not be empty")
+		return fmt.Errorf("OUROPASS_DB_DSN must not be empty")
 	}
 	return nil
 }

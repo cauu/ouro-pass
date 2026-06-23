@@ -10,7 +10,7 @@ import (
 	"ouro-pass/server/internal/httpapi/respond"
 )
 
-const sessionCookie = "poolops_admin_session"
+const sessionCookie = "ouropass_admin_session"
 
 type ctxKey int
 

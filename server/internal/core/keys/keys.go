@@ -44,7 +44,7 @@ func New(st *store.Store, cipher *crypto.FieldCipher) *Service {
 }
 
 func defaultKID(now time.Time) string {
-	return "pao-issuer-" + now.UTC().Format("2006-01") + "-" + crypto.RandomToken(3)
+	return "op-issuer-" + now.UTC().Format("2006-01") + "-" + crypto.RandomToken(3)
 }
 
 // Rotate generates a new active signing key and demotes any currently-active

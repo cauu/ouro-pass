@@ -1,4 +1,4 @@
-// Command issuer is the PoolOps Issuer Service entrypoint: it loads config,
+// Command issuer is the Ouro Pass Issuer Service entrypoint: it loads config,
 // opens and migrates the database, assembles the HTTP router with its services,
 // and serves until SIGINT/SIGTERM, then shuts down gracefully.
 package main
@@ -69,7 +69,7 @@ func run() error {
 	var serverSalt []byte
 	if cfg.ServerSaltHex != "" {
 		if serverSalt, err = hex.DecodeString(cfg.ServerSaltHex); err != nil {
-			return fmt.Errorf("POOLOPS_SERVER_SALT: %w", err)
+			return fmt.Errorf("OUROPASS_SERVER_SALT: %w", err)
 		}
 	}
 	deps := httpapi.Deps{
@@ -90,7 +90,7 @@ func run() error {
 		}
 		deps.Keys = keys.New(st, cipher)
 	} else {
-		slog.Warn("POOLOPS_FIELD_KEY not set; signing-key/JWKS routes disabled")
+		slog.Warn("OUROPASS_FIELD_KEY not set; signing-key/JWKS routes disabled")
 	}
 
 	// The OAuth authorization server needs the signing keys, the `sub` salt, and
@@ -109,7 +109,7 @@ func run() error {
 			AccessTTL: accessTTL, RefreshTTL: refreshTTL,
 		})
 	} else {
-		slog.Warn("OAuth issuance disabled (need POOLOPS_FIELD_KEY + POOLOPS_SERVER_SALT)")
+		slog.Warn("OAuth issuance disabled (need OUROPASS_FIELD_KEY + OUROPASS_SERVER_SALT)")
 	}
 
 	srv := &http.Server{

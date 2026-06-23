@@ -44,7 +44,7 @@ func oauthDeps(t *testing.T) (Deps, *chain.MockSource, ed25519.PrivateKey, strin
 	wallet := walletauth.New(st, time.Minute)
 	srv := oauth.New(oauth.Config{
 		Store: st, Wallet: wallet, Keys: ks, Chain: mock, PoolID: "pool1abc",
-		Issuer: "poolops:pool1abc", ServerSalt: []byte("salt"), AccessTTL: time.Hour, RefreshTTL: time.Hour,
+		Issuer: "ouropass:pool1abc", ServerSalt: []byte("salt"), AccessTTL: time.Hour, RefreshTTL: time.Hour,
 	})
 	st.OAuthClients().Upsert(ctx, domain.OAuthClient{
 		ClientID: "c1", Name: "App", ClientType: domain.ClientConfidential, Party: domain.FirstParty,

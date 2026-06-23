@@ -9,7 +9,7 @@ import (
 // jwks publishes the issuer's signing public keys as a JWKS — public keys and
 // per-key status only, no certificate chain (detailed §9.6, C9).
 //
-//	GET /.well-known/poolops/jwks.json
+//	GET /.well-known/ouropass/jwks.json
 func (h *apiHandlers) jwks(w http.ResponseWriter, r *http.Request) {
 	if h.d.Keys == nil {
 		notImplemented(w, r)

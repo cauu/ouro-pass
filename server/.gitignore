@@ -12,7 +12,8 @@
 # Output of `go build` placed in the package dir
 # Adjust the binary name(s) below to match your build output
 /server
-/poolops-issuer
+/ouropass-issuer
+/issuer
 
 # ---- Test / coverage ----
 *.test

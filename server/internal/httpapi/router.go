@@ -63,7 +63,7 @@ func NewRouter(d Deps) http.Handler {
 	// ---- Verifier plane (public, read-only, rate-limited) ----
 	r.Group(func(r chi.Router) {
 		r.Use(publicLimit)
-		r.Get("/.well-known/poolops/jwks.json", h.jwks)
+		r.Get("/.well-known/ouropass/jwks.json", h.jwks)
 		r.Post("/api/oauth/introspect", h.introspect)
 		r.Post("/api/oauth/revoke", h.revoke)
 	})

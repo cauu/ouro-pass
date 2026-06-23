@@ -10,7 +10,7 @@ import (
 )
 
 // FieldCipher encrypts 🔒 columns at rest with AES-256-GCM (spec C5). The master
-// key arrives from the environment (POOLOPS_FIELD_KEY); it never lives in the DB.
+// key arrives from the environment (OUROPASS_FIELD_KEY); it never lives in the DB.
 type FieldCipher struct {
 	aead cipher.AEAD
 }

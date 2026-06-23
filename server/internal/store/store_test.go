@@ -20,11 +20,11 @@ func testMigrations() fstest.MapFS {
 }
 
 // openTestStore returns a Store for the engine under test. SQLite uses a temp
-// file; Postgres is used only when POOLOPS_TEST_PG_DSN is set (decision D3).
+// file; Postgres is used only when OUROPASS_TEST_PG_DSN is set (decision D3).
 func openTestStore(t *testing.T) *Store {
 	t.Helper()
 	ctx := context.Background()
-	if dsn := os.Getenv("POOLOPS_TEST_PG_DSN"); dsn != "" {
+	if dsn := os.Getenv("OUROPASS_TEST_PG_DSN"); dsn != "" {
 		st, err := Open(ctx, Postgres, dsn)
 		if err != nil {
 			t.Fatalf("open postgres: %v", err)

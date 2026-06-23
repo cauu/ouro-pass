@@ -12,11 +12,11 @@ import (
 
 func TestSignAccessToken_VerifiableViaJWKS(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
-	const kid = "pao-issuer-2026-08"
+	const kid = "op-issuer-2026-08"
 	now := time.Now()
 
 	tokenStr, err := SignAccessToken(kid, priv, AccessClaims{
-		Issuer:       "poolops:pool1abc",
+		Issuer:       "ouropass:pool1abc",
 		Subject:      "sub-xyz",
 		Audience:     "app:ouro-ops",
 		IssuedAt:     now,
@@ -108,7 +108,7 @@ func TestBuildJWKS_OKPOnlyNoCertChain(t *testing.T) {
 func TestSignActivationToken(t *testing.T) {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	s, err := SignActivationToken("k1", priv, ActivationClaims{
-		Issuer: "poolops:pool1", Subject: "sub", ChannelType: "telegram",
+		Issuer: "ouropass:pool1", Subject: "sub", ChannelType: "telegram",
 		Tier: "gold", Entitlements: []string{"news"}, JTI: "a1",
 		Expiry: time.Now().Add(10 * time.Minute),
 	})

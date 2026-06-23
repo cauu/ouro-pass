@@ -27,7 +27,7 @@ func TestPoolConfigRepo_RoundTrip(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 
 	in := domain.PoolConfig{
-		PoolID: "pool1abc", Ticker: "PAO", Name: ptr("PoolOps"),
+		PoolID: "pool1abc", Ticker: "PAO", Name: ptr("Ouro Pass"),
 		Network: "preview", CreatedAt: now, UpdatedAt: now,
 	}
 	if err := st.PoolConfig().Upsert(ctx, in); err != nil {
@@ -37,7 +37,7 @@ func TestPoolConfigRepo_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if got.Ticker != "PAO" || got.Name == nil || *got.Name != "PoolOps" || got.Network != "preview" {
+	if got.Ticker != "PAO" || got.Name == nil || *got.Name != "Ouro Pass" || got.Network != "preview" {
 		t.Fatalf("mismatch: %+v", got)
 	}
 	if !got.CreatedAt.Equal(now.UTC()) {
@@ -66,7 +66,7 @@ func TestIssuerKeyRepo_LifecycleAndQueries(t *testing.T) {
 	now := time.Now().Truncate(time.Millisecond)
 
 	k := domain.IssuerKey{
-		KID: "pao-issuer-2026-08", PublicKey: []byte{1, 2, 3},
+		KID: "op-issuer-2026-08", PublicKey: []byte{1, 2, 3},
 		EncryptedPrivateKey: []byte{4, 5, 6}, Status: domain.KeyActive,
 		ValidFrom: ptr(now), CreatedAt: now,
 	}

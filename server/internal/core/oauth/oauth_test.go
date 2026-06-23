@@ -54,7 +54,7 @@ func newHarness(t *testing.T) *harness {
 	mock := chain.NewMockSource(480)
 	srv := New(Config{
 		Store: st, Wallet: walletauth.New(st, time.Minute), Keys: ks, Chain: mock,
-		PoolID: testPool, Issuer: "poolops:" + testPool, ServerSalt: []byte("salt"),
+		PoolID: testPool, Issuer: "ouropass:" + testPool, ServerSalt: []byte("salt"),
 		AccessTTL: time.Hour, RefreshTTL: 24 * time.Hour,
 	})
 
