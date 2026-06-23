@@ -1,0 +1,210 @@
+// Package telegram is the Telegram bot worker (detailed §9.7). It is a
+// long-running worker, not a REST handler: it pulls updates (long-poll) and
+// dispatches the command grammar (/start|/activate|/status|/unsubscribe|/help),
+// binding members to channel subscriptions. The Telegram transport is an
+// interface so the command logic is unit-tested without a live bot (D5).
+package telegram
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"log/slog"
+	"strings"
+	"time"
+
+	"github.com/poolops/issuer/internal/core/rules"
+	"github.com/poolops/issuer/internal/domain"
+	"github.com/poolops/issuer/internal/store"
+	"github.com/poolops/issuer/internal/utils/crypto"
+)
+
+// sessionTTL is how long a subscription stays valid before reconciliation must
+// re-verify it.
+const sessionTTL = 30 * 24 * time.Hour
+
+// Update is the subset of a Telegram update the bot acts on.
+type Update struct {
+	UpdateID int
+	UserID   string // message.from.id (Telegram-authenticated)
+	ChatID   string // message.chat.id (reply target)
+	Text     string
+}
+
+// Transport abstracts the Telegram Bot API (long-poll receive + send).
+type Transport interface {
+	GetUpdates(ctx context.Context, offset int) ([]Update, error)
+	SendMessage(ctx context.Context, chatID, text string) error
+}
+
+// Eligibilizer re-evaluates a credential's eligibility at bind time (D8).
+type Eligibilizer interface {
+	Eligibility(ctx context.Context, stakeCredentialHash string) (bool, rules.Decision, error)
+}
+
+// Processor handles the command grammar; it is transport-agnostic.
+type Processor struct {
+	poolID     string
+	activation *store.ActivationCodeRepo
+	subs       *store.SubscriptionRepo
+	elig       Eligibilizer
+	now        func() time.Time
+}
+
+// NewProcessor builds a command processor.
+func NewProcessor(st *store.Store, elig Eligibilizer, poolID string) *Processor {
+	return &Processor{
+		poolID:     poolID,
+		activation: st.ActivationCodes(),
+		subs:       st.Subscriptions(),
+		elig:       elig,
+		now:        time.Now,
+	}
+}
+
+// Handle processes one update and returns the reply text.
+func (p *Processor) Handle(ctx context.Context, up Update) string {
+	cmd, arg := parseCommand(up.Text)
+	switch cmd {
+	case "/start", "/activate":
+		return p.activate(ctx, up, arg)
+	case "/status":
+		return p.status(ctx, up)
+	case "/unsubscribe":
+		return p.unsubscribe(ctx, up)
+	case "/help", "":
+		return helpText
+	default:
+		return helpText
+	}
+}
+
+const helpText = "Commands:\n/start <code> — activate your membership\n/status — show your subscription\n/unsubscribe — stop receiving messages\n/help — this message"
+
+func (p *Processor) activate(ctx context.Context, up Update, code string) string {
+	if code == "" {
+		return "Please provide an activation code: /start <code>"
+	}
+	rec, err := p.activation.Consume(ctx, crypto.HashToken(code), "telegram", p.now())
+	if err != nil {
+		switch {
+		case errors.Is(err, domain.ErrConsumed):
+			return "This activation code has already been used."
+		case errors.Is(err, domain.ErrExpired):
+			return "This activation code has expired. Please generate a new one."
+		default:
+			return "Invalid activation code."
+		}
+	}
+	// Re-evaluate eligibility to populate the session tier/entitlements (D8).
+	eligible, decision, err := p.elig.Eligibility(ctx, rec.StakeCredentialHash)
+	if err != nil {
+		return "Could not verify membership right now. Please try again later."
+	}
+	if !eligible {
+		return "Your stake no longer meets the membership requirements."
+	}
+	now := p.now()
+	sess := domain.SubscriptionSession{
+		SessionID: crypto.RandomID(), PoolID: p.poolID, StakeCredentialHash: rec.StakeCredentialHash,
+		ChannelType: "telegram", ChannelUserID: up.UserID, Status: domain.SubActive, Tier: decision.Tier,
+		Topics: decision.Entitlements, Entitlements: decision.Entitlements,
+		CreatedAt: now, LastVerifiedAt: now, ExpiresAt: now.Add(sessionTTL),
+	}
+	if err := p.subs.Upsert(ctx, sess); err != nil {
+		return "Could not save your subscription. Please try again later."
+	}
+	return fmt.Sprintf("Subscribed! Tier: %s. You'll receive updates here. (zero on-chain lookup at delivery)", decision.Tier)
+}
+
+func (p *Processor) status(ctx context.Context, up Update) string {
+	sess, err := p.subs.GetByChannelUser(ctx, p.poolID, "telegram", up.UserID)
+	if err != nil {
+		return "You are not subscribed. Use /start <code> to activate."
+	}
+	return fmt.Sprintf("Tier: %s\nStatus: %s\nExpires: %s", sess.Tier, sess.Status, sess.ExpiresAt.Format("2006-01-02"))
+}
+
+func (p *Processor) unsubscribe(ctx context.Context, up Update) string {
+	sess, err := p.subs.GetByChannelUser(ctx, p.poolID, "telegram", up.UserID)
+	if err != nil {
+		return "You are not subscribed."
+	}
+	if err := p.subs.SetStatus(ctx, sess.SessionID, domain.SubCancelled); err != nil {
+		return "Could not unsubscribe. Please try again later."
+	}
+	return "You have been unsubscribed."
+}
+
+// parseCommand splits "/cmd arg..." into (command, argument).
+func parseCommand(text string) (cmd, arg string) {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return "", ""
+	}
+	parts := strings.SplitN(text, " ", 2)
+	cmd = strings.ToLower(parts[0])
+	// Strip a @botname suffix Telegram appends in groups.
+	if i := strings.IndexByte(cmd, '@'); i >= 0 {
+		cmd = cmd[:i]
+	}
+	if len(parts) == 2 {
+		arg = strings.TrimSpace(parts[1])
+	}
+	return cmd, arg
+}
+
+// Worker drives a Processor over a Transport via long polling.
+type Worker struct {
+	proc      *Processor
+	transport Transport
+	interval  time.Duration
+}
+
+// NewWorker builds a long-poll worker.
+func NewWorker(proc *Processor, transport Transport) *Worker {
+	return &Worker{proc: proc, transport: transport, interval: time.Second}
+}
+
+// Run polls for updates until ctx is cancelled, replying to each.
+func (w *Worker) Run(ctx context.Context) {
+	offset := 0
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		updates, err := w.transport.GetUpdates(ctx, offset)
+		if err != nil {
+			slog.Warn("telegram getUpdates failed", "err", err)
+			if !sleep(ctx, w.interval) {
+				return
+			}
+			continue
+		}
+		for _, up := range updates {
+			if up.UpdateID >= offset {
+				offset = up.UpdateID + 1
+			}
+			reply := w.proc.Handle(ctx, up)
+			if err := w.transport.SendMessage(ctx, up.ChatID, reply); err != nil {
+				slog.Warn("telegram sendMessage failed", "err", err)
+			}
+		}
+		if len(updates) == 0 && !sleep(ctx, w.interval) {
+			return
+		}
+	}
+}
+
+func sleep(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
+}

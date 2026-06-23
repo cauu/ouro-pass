@@ -178,7 +178,7 @@ server/
 
 ### p6 — 渠道激活与 Telegram bot worker
 - [x] p6-1 `POST /api/activation/create`（activation code + deep link，D8 短码方案）
-- [ ] p6-2 Telegram transport：long-poll worker（+ webhook 占位）+ 命令 `/start|/activate|/status|/unsubscribe|/help` → SubscriptionSession
+- [x] p6-2 Telegram transport：long-poll worker（+ webhook 占位）+ 命令 `/start|/activate|/status|/unsubscribe|/help` → SubscriptionSession
 
 ### p7 — 推送与调度 worker
 - [ ] p7-1 推送任务 CRUD（PushJob）+ Push Scheduler（限速 sendMessage + 退避重试 + DeliveryLog）
@@ -231,6 +231,7 @@ server/
 - 2026-06-23 p5-3 completed：`tokenRefresh`——active grant 验客户端(confidential client_secret)→重评资格(不合格 ErrNotEligible，低 tier 自然降级)→旧 grant 置 rotated + `mint`(rotated_from 链接)；**rotated grant 重放→RevokeChain 撤销整链**（盗用响应）；过期 grant→expired/invalid_grant。证据见 §6（TC-7）。
 - 2026-06-23 p5-4 completed（phase p5 收尾）：`Introspect`(token→JWKS 验签+ledger 交叉校验 / 裸 jti→ledger，失活/撤销/未知→inactive) + `Revoke`(JWS→jti 撤 IssuedToken / opaque→撤 RefreshGrant，RFC 7009 幂等)；`jose.JTIUnverified`(ParseInsecure 取 jti 供撤销)。handler `POST /api/oauth/{introspect,revoke}`(JSON/form 单次解析)。证据见 §6（TC-8 introspect 侧）。
 - 2026-06-23 p6-1 completed：`Server.CreateActivation`(验 activation nonce→评估资格→发短码存 ActivationCode 哈希行+Telegram deep link，D8)；`Server.Eligibility` 导出供 bot 重评；config 加 TelegramBot/Token，Deps 加 TelegramBot；handler `POST /api/activation/create`。证据见 §6（TC-9 部分）。
+- 2026-06-23 p6-2 completed（phase p6 收尾）：`worker/telegram`——`Processor`(命令文法 /start|/activate|/status|/unsubscribe|/help：消费 ActivationCode→重评资格→建 SubscriptionSession 绑 from.id)、`Worker.Run`(long-poll 循环 + 优雅退出)、`BotAPITransport`(Telegram getUpdates/sendMessage HTTP，真集成走 D5)。main 在 TelegramToken 存在时起 worker goroutine。Transport 接口化、命令逻辑用 mock 单测。证据见 §6（TC-9）。
 
 ## 6. Validation Evidence (append-only)
 
@@ -255,6 +256,7 @@ server/
 - 2026-06-23 TC-7 | stack: go | command: `go test ./internal/core/oauth/...` | result: pass | note: refresh 轮换发新 access+新 refresh、旧 grant→rotated/新 grant rotated_from；**重放旧 rotated grant→invalid_grant 且 RevokeChain 把后代 refresh2 也撤销、refresh2 随后不可用**；委托迁出→重评 not_eligible；错 client_secret→invalid_client、未知 grant→invalid_grant
 - 2026-06-23 TC-8(introspect/revoke,p5-4) | stack: go | command: `go test ./internal/core/oauth/...` | result: pass | note: Introspect active token→active+tier+sub+membership_status；revoke access 后→inactive；未知 jti/垃圾 token→inactive 无错；Revoke refresh→grant revoked 且不可再 mint；未知 token revoke 仍成功(RFC 7009)
 - 2026-06-23 TC-9(p6-1) | stack: go | command: `go test ./internal/core/oauth/...` | result: pass | note: CreateActivation 合格发短码(≤64 字符可作 deep link start)+deep_link https://t.me/PaoBot?start=…，存 ActivationCode 哈希行可一次性消费；不合格→ErrNotEligible；错 purpose nonce→ErrAccessDenied
+- 2026-06-23 TC-9(p6-2) | stack: go | command: `go test ./internal/worker/telegram/...` | result: pass | note: /start <code> 消费激活码+重评→建 active 订阅(tier=gold)、回放码→already used；invalid/缺参/不合格各自回复；/status 显 tier、/unsubscribe→cancelled；parseCommand 去 @botname 后缀；Worker.Run 经 mock transport 派发并回复 Subscribed
 
 ## 7. Change Requests (append-only)
 

@@ -23,6 +23,7 @@ import (
 	"github.com/poolops/issuer/internal/store"
 	"github.com/poolops/issuer/internal/utils/chain"
 	"github.com/poolops/issuer/internal/utils/crypto"
+	"github.com/poolops/issuer/internal/worker/telegram"
 )
 
 const (
@@ -104,6 +105,14 @@ func run() error {
 
 	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+
+	// Telegram bot worker (long polling) when a token is configured.
+	if cfg.TelegramToken != "" && deps.OAuth != nil {
+		proc := telegram.NewProcessor(st, deps.OAuth, cfg.PoolID)
+		worker := telegram.NewWorker(proc, telegram.NewBotAPITransport(cfg.TelegramToken))
+		go worker.Run(sigCtx)
+		slog.Info("telegram worker started")
+	}
 
 	errCh := make(chan error, 1)
 	go func() {
