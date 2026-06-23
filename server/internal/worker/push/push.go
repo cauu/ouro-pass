@@ -7,6 +7,7 @@ package push
 
 import (
 	"context"
+	"log/slog"
 	"slices"
 	"time"
 
@@ -84,6 +85,9 @@ func (s *Scheduler) Run(ctx context.Context, job domain.PushJob) (Result, error)
 
 	var res Result
 	for _, sess := range candidates {
+		if ctx.Err() != nil {
+			break // shutting down: stop sending promptly
+		}
 		if !matches(job, sess) {
 			continue
 		}
@@ -98,11 +102,15 @@ func (s *Scheduler) Run(ctx context.Context, job domain.PushJob) (Result, error)
 		} else {
 			res.Sent++
 		}
-		_ = s.deliveries.Append(ctx, domain.DeliveryLog{
+		// The DeliveryLog is the audit record (TC-10); a write failure must be
+		// surfaced, not silently dropped (p12-4).
+		if err := s.deliveries.Append(ctx, domain.DeliveryLog{
 			DeliveryID: crypto.RandomID(), JobID: job.JobID, SessionID: sess.SessionID,
 			ChannelType: job.ChannelType, ChannelUserID: sess.ChannelUserID, Status: status,
 			RetryCount: attempts - 1, ErrorMessage: errMsg, SentAt: ptrTime(s.now()),
-		})
+		}); err != nil {
+			slog.Warn("push: delivery-log write failed", "job", job.JobID, "session", sess.SessionID, "err", err)
+		}
 	}
 
 	final := domain.PushDone
@@ -116,12 +124,14 @@ func (s *Scheduler) Run(ctx context.Context, job domain.PushJob) (Result, error)
 }
 
 // deliver sends with rate limiting + bounded backoff retry; returns attempts.
+// One rate-limit token is spent per recipient (not per retry), so a flaky
+// recipient can't drain the shared send budget for everyone else (p12-4).
 func (s *Scheduler) deliver(ctx context.Context, chatID, text string) (int, error) {
+	if err := s.limiter.Wait(ctx); err != nil {
+		return 0, err
+	}
 	var lastErr error
 	for attempt := 1; attempt <= s.maxAttempts; attempt++ {
-		if err := s.limiter.Wait(ctx); err != nil {
-			return attempt, err
-		}
 		if lastErr = s.sender.SendMessage(ctx, chatID, text); lastErr == nil {
 			return attempt, nil
 		}

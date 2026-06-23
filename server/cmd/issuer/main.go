@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -24,12 +25,16 @@ import (
 	"ouro-pass/server/internal/store"
 	"ouro-pass/server/internal/utils/chain"
 	"ouro-pass/server/internal/utils/crypto"
+	"ouro-pass/server/internal/worker/push"
 	"ouro-pass/server/internal/worker/reconciliation"
 	"ouro-pass/server/internal/worker/telegram"
 )
 
 // epochPollInterval is how often the reconciler checks for an epoch change.
 const epochPollInterval = 5 * time.Minute
+
+// pushPollInterval is how often the push worker drains due scheduled jobs.
+const pushPollInterval = 15 * time.Second
 
 const (
 	nonceTTL        = 5 * time.Minute
@@ -73,10 +78,12 @@ func run() error {
 		}
 	}
 	deps := httpapi.Deps{
-		Wallet:      walletSvc,
-		Store:       st,
-		PoolID:      cfg.PoolID,
-		TelegramBot: cfg.TelegramBot,
+		Wallet:        walletSvc,
+		Store:         st,
+		PoolID:        cfg.PoolID,
+		TelegramBot:   cfg.TelegramBot,
+		TrustedProxy:  cfg.TrustedProxy,
+		SecureCookies: cfg.TLS,
 		Admin: admin.New(admin.Config{
 			Wallet: walletSvc, Store: st, OwnerKeyHash: cfg.OwnerKeyHashes, PoolID: cfg.PoolID,
 		}),
@@ -120,21 +127,35 @@ func run() error {
 	sigCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// All background workers are tracked so shutdown can join them (p12-4).
+	var workers sync.WaitGroup
+	startWorker := func(name string, fn func()) {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			fn()
+		}()
+		slog.Info("worker started", "worker", name)
+	}
+
 	// Periodic GC of expired wallet-signing nonces (short TTL → short interval,
 	// not tied to epoch).
-	go runNonceGC(sigCtx, walletSvc)
+	startWorker("nonce-gc", func() { runNonceGC(sigCtx, walletSvc) })
 
 	// Background workers run while issuance is enabled (they need eligibility).
 	if deps.OAuth != nil {
 		if cfg.TelegramToken != "" {
+			transport := telegram.NewBotAPITransport(cfg.TelegramToken)
 			proc := telegram.NewProcessor(st, deps.OAuth, cfg.PoolID)
-			worker := telegram.NewWorker(proc, telegram.NewBotAPITransport(cfg.TelegramToken))
-			go worker.Run(sigCtx)
-			slog.Info("telegram worker started")
+			tgWorker := telegram.NewWorker(proc, transport)
+			startWorker("telegram", func() { tgWorker.Run(sigCtx) })
+			// The push worker delivers admin-created PushJobs over the same
+			// Telegram transport (the missing runtime driver, p12-4).
+			pushWorker := push.NewWorker(st, transport, pushPollInterval, push.Options{})
+			startWorker("push", func() { pushWorker.Run(sigCtx) })
 		}
 		recon := reconciliation.New(st, deps.OAuth, chainSrc, cfg.PoolID)
-		go recon.Run(sigCtx, epochPollInterval)
-		slog.Info("reconciliation worker started")
+		startWorker("reconciliation", func() { recon.Run(sigCtx, epochPollInterval) })
 	}
 
 	errCh := make(chan error, 1)
@@ -154,7 +175,22 @@ func run() error {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 	defer cancel()
-	return srv.Shutdown(shutdownCtx)
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		return err
+	}
+
+	// Join the workers (they observe sigCtx cancellation) so in-flight work
+	// finishes before exit, bounded by ShutdownTimeout (p12-4).
+	stop() // ensure sigCtx is cancelled so workers wind down
+	done := make(chan struct{})
+	go func() { workers.Wait(); close(done) }()
+	select {
+	case <-done:
+		slog.Info("all workers stopped")
+	case <-shutdownCtx.Done():
+		slog.Warn("workers did not stop within shutdown timeout")
+	}
+	return nil
 }
 
 // runNonceGC periodically purges expired wallet-signing nonces until ctx ends.

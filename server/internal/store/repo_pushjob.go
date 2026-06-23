@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"ouro-pass/server/internal/domain"
 )
@@ -55,6 +56,39 @@ func (r *PushJobRepo) ListByPool(ctx context.Context, poolID string, limit int) 
 	rows, err := r.s.DB.QueryContext(ctx, r.s.Rebind(`
 		SELECT job_id, pool_id, title, content, channel_type, target_topic, required_entitlement, target_tier, status, scheduled_at, created_by, created_at
 		FROM PushJob WHERE pool_id = ? ORDER BY created_at DESC LIMIT ?`), poolID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.PushJob
+	for rows.Next() {
+		var j domain.PushJob
+		var status, created string
+		var topic, ent, tier, scheduled sql.NullString
+		if err := rows.Scan(&j.JobID, &j.PoolID, &j.Title, &j.Content, &j.ChannelType, &topic, &ent, &tier, &status, &scheduled, &j.CreatedBy, &created); err != nil {
+			return nil, err
+		}
+		j.TargetTopic, j.RequiredEntitlement, j.TargetTier = strPtr(topic), strPtr(ent), strPtr(tier)
+		j.Status = domain.PushJobStatus(status)
+		if j.ScheduledAt, err = scanTS(scheduled); err != nil {
+			return nil, err
+		}
+		if j.CreatedAt, err = parseTS(created); err != nil {
+			return nil, err
+		}
+		out = append(out, j)
+	}
+	return out, rows.Err()
+}
+
+// ListScheduled returns due scheduled jobs (status='scheduled' and either no
+// scheduled_at or scheduled_at <= now), oldest first, for the push worker to
+// pick up (p12-4).
+func (r *PushJobRepo) ListScheduled(ctx context.Context, now time.Time, limit int) ([]domain.PushJob, error) {
+	rows, err := r.s.DB.QueryContext(ctx, r.s.Rebind(`
+		SELECT job_id, pool_id, title, content, channel_type, target_topic, required_entitlement, target_tier, status, scheduled_at, created_by, created_at
+		FROM PushJob WHERE status = ? AND (scheduled_at IS NULL OR scheduled_at <= ?)
+		ORDER BY created_at LIMIT ?`), string(domain.PushScheduled), ts(now), limit)
 	if err != nil {
 		return nil, err
 	}
