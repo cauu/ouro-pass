@@ -111,7 +111,7 @@ interface WalletAdapter {
 
 ## 3. Execution Plan
 - [x] p0-1 **[blocking 前置]** 完成 S0003（walletauth 契约 + 授权/绑定页）——admin 登录/step-up 依赖其新契约。（S0003 已 delivered/closed）
-- [ ] p1-1 脚手架：Vite + React + TS(strict) + Tailwind + shadcn init；`src/{wallet,api,ui,features,app}`；lint/format/CI 占位（TC-7）。
+- [x] p1-1 脚手架：Vite + React + TS(strict) + Tailwind + shadcn init；`src/{wallet,api,ui,features,app}`；lint/format/CI 占位（TC-7）。
 - [ ] p1-2 `WalletAdapter`（连钱包/enable/getRewardAddresses/signData/转发 + network guard）+ mock `window.cardano` 单测（TC-1）。
 - [ ] p1-3 `api` client：fetch + 错误信封 + 429 + 类型（TC-7 部分）。
 - [ ] p2-1 登录/会话/RBAC/step-up + 布局/导航（TC-2）。
@@ -129,8 +129,11 @@ interface WalletAdapter {
 ## 5. Execution Log (append-only)
 - 2026-06-24 S0002 草案创建（draft）：技术选型落定（React+Vite SPA / shadcn / thin CIP-30 + WalletAdapter）。
 - 2026-06-24 S0002 修订（draft）：授权页/绑定页 + walletauth 契约移到 S0003；本 spec 收敛为纯 Admin SPA；`WalletAdapter` 简化为"连接+sign+转发、浏览器零 CBOR"；新增 p0-1 依赖 S0003。尚未执行。
+- 2026-06-24 S0002 激活（active）：S0003 已 delivered，p0-1 标 [x]。
+- 2026-06-25 p1-1 完成：`web/` 脚手架——React 18 + Vite 6 + TS(strict) + Tailwind v4(`@tailwindcss/vite`) + 自写 shadcn 风格 UI 基元（不跑交互式 CLI，copy-in 更可控）。pnpm（lockfile 入库），`src/{lib,wallet,api,auth,ui,app,features,test}` 目录，eslint flat + prettier，vitest(jsdom)，vite dev 代理 `/api`+`/.well-known`→issuer(:8080)。**决策**：① Tailwind v4（CSS 变量主题，免 tailwind.config）；② pnpm `overrides.vite ^6` 去重（vitest 拉 vite5 致类型冲突）+ `onlyBuiltDependencies:[esbuild]`；③ 生产同源（相对 API 路径），dev 用代理。
 
 ## 6. Validation Evidence (append-only)
+- 2026-06-25 TC-7（部分）| stack: ui | command: `pnpm install` + `pnpm build`（`tsc -b && vite build`） | result: pass | note: 工具链就绪，类型检查 + 生产打包绿（27 模块、JS 144KB/gzip 46KB、CSS 5.3KB）。
 
 ## 7. Change Requests (append-only)
 - 2026-06-24 选型：框架 React+Vite 纯 SPA（用户确认）；组件库 shadcn/ui（用户确认）；钱包 thin `window.cardano` 封装（用户质疑 Weld 成熟度：~550 下载/月、pre-1.0；且 CBOR 解码改放后端后前端只需转发，thin-wrapper 最契合，库藏 `WalletAdapter` 后可换）。
