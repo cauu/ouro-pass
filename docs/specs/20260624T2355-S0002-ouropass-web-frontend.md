@@ -117,7 +117,7 @@ interface WalletAdapter {
 - [x] p2-0 **后端 enabler**：新增 `POST /api/admin/auth/step-up/challenge`（requireSession 内，wire `admin.ChallengeStepUp`，旧仅 test 用）——前端 step-up 需要它取 nonce。
 - [x] p2-1 登录/会话/RBAC/step-up + 布局/导航（TC-2）。
 - [x] p3-1 业务页一批：Dashboard、名册+撤销(step-up)、订阅+取消、规则编辑器、渠道+telegram 测试、推送+日志、客户端注册(一次性 secret)、密钥轮换(step-up)+JWKS、审计、初始化向导（TC-3）。
-- [ ] p4-1 构建/部署：静态产物、可 embed/静态托管、env(issuer base URL/network)、CI 增 web job（TC-7/TC-8）。
+- [x] p4-1 构建/部署：静态产物、可 embed/静态托管、env(issuer base URL/network)、CI 增 web job（TC-7/TC-8）。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 `WalletAdapter`：mock `window.cardano` 覆盖探测/enable/getRewardAddresses/signData；`signNonce` 返回 `{coseKeyHex, signatureHex}` 且**不在浏览器解 CBOR**；network guard 不匹配报错。
@@ -143,6 +143,8 @@ interface WalletAdapter {
 
 - 2026-06-25 p3-1 完成：10 个业务页（features/*）——Dashboard（会员/订阅/JWKS 统计卡）、Members（列表 + 撤销 step-up，operator）、Subscriptions（列表 + 取消，operator）、Rules（列表 + RHF/zod 编辑器，JSON rule_config 校验，operator）、Channels（telegram bot token 配置，operator）、Push（列表 + 新建定向推送，operator）、Clients（列表 + 注册 step-up + **一次性 secret** 弹窗，owner）、Keys（JWKS 状态 + rotate/generate step-up，owner）、Audit（列表，owner）、Setup（就绪 checklist，owner）。共享 `PageHeader/QueryState/Field`、TanStack Query 拉取/失效、`StepUpDialog` 接敏感操作、错误 toast。路由替换 Placeholder 为实页（RBAC gate 不变）。**决策**：Channels 仅做 configure（后端无 telegram 测试路由）；secret 一次性展示 + 复制按钮。
 
+- 2026-06-25 p4-1 完成：构建/嵌入/部署。Vite `base:/admin/` + Router `basename:/admin`（SPA 在 /admin 下）。新增 `server/internal/httpapi/adminui` 包：`//go:embed all:dist` 嵌入构建产物，`Handler()` serve 静态 + history fallback（hashed 资源 immutable 长缓存），未构建时（仅 `dist/.gitkeep`）降级占位页。router 挂 `/admin`(301→/admin/) + `/admin/*`(StripPrefix)。`make web`（构建 ../web + 拷进 embed 目录）/`make web-clean`。`web/.env.example`（`VITE_ISSUER_NETWORK`，TC-8）。CI 增 `web` job（pnpm install/lint/typecheck/test/build）+ paths 加 `web/**`。**决策**：① SPA 挂 `/admin`（与 `/api/admin` 共存、不抢 `/connect` 等根路由）；② 构建产物**不入库**（`dist/*` gitignore，留 `.gitkeep`），发布时 `make web && make build` 嵌入——dev 用 `pnpm dev`(vite :5173/admin/ 代理后端) 热更或 `make web` 后看 /admin。
+
 ## 6. Validation Evidence (append-only)
 - 2026-06-25 TC-7（部分）| stack: ui | command: `pnpm install` + `pnpm build`（`tsc -b && vite build`） | result: pass | note: 工具链就绪，类型检查 + 生产打包绿（27 模块、JS 144KB/gzip 46KB、CSS 5.3KB）。
 
@@ -155,6 +157,8 @@ interface WalletAdapter {
 - 2026-06-25 TC-2 | stack: ui | command: `pnpm test`（vitest）+ `pnpm build` | result: pass | note: `RequireRole` RBAC 单测 3 例（足/不足/相等）+ wallet 8 例共 11 绿；生产打包绿（1660 模块、JS 317KB/gzip 103KB）。登录得 cookie / step-up 401 属集成（后端联调/手测）。
 
 - 2026-06-25 TC-3 | stack: ui | command: `pnpm build`（tsc+vite）+ `pnpm lint`（0 error）+ `pnpm typecheck` + `pnpm test` | result: pass | note: 10 页全量类型检查 + 打包绿（1745 模块、JS 463KB/gzip 145KB、CSS 17KB）；lint 0 error（2 个 react-refresh warning，hook 与 provider 同文件，无害）；11 单测绿。各页消费契约：members 按 sch、rules rule_config(JSON)、push target 过滤、client 一次性 secret、keys step-up、audit 只读。
+
+- 2026-06-25 TC-7/TC-8 | stack: ui+go | command: `make web`+`go build`+二进制 smoke / `pnpm {lint,typecheck,test,build}` / `go build vet test ./...` / CI `yaml.safe_load` | result: pass | note: `make web` 出静态产物并 stage，issuer 二进制 `/admin/` 返回真 index.html（引 `/admin/assets`）、hashed JS 200+immutable、`/admin/dashboard` SPA fallback 200、`/admin`→301；未构建时占位 200。web 全绿(lint 0 error/typecheck/11 测/打包)；后端 build+vet+全测 0 FAIL；CI 3 job(test/integration/web) yaml 合法。network 经 `VITE_ISSUER_NETWORK` env 注入。
 
 ## 7. Change Requests (append-only)
 - 2026-06-24 选型：框架 React+Vite 纯 SPA（用户确认）；组件库 shadcn/ui（用户确认）；钱包 thin `window.cardano` 封装（用户质疑 Weld 成熟度：~550 下载/月、pre-1.0；且 CBOR 解码改放后端后前端只需转发，thin-wrapper 最契合，库藏 `WalletAdapter` 后可换）。

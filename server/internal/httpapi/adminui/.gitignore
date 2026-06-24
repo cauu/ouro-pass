@@ -1,0 +1,3 @@
+# Built SPA is staged by `make web`; only keep the dir tracked.
+dist/*
+!dist/.gitkeep

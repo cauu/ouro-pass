@@ -19,7 +19,11 @@ DEV_TELEGRAM_BOT ?= ouro_dev_bot
 DEV_DB           ?= file:.dev/ouro.db
 DEV_REDIRECT     ?= http://localhost:9999/cb
 
-.PHONY: build vet fmt tidy test test-e2e cover test-integration test-all clean dev dev-stop dev-seed-client
+# ---- Admin SPA (../web) embedded into the issuer binary ----
+WEB_DIR      ?= ../web
+ADMINUI_DIST ?= internal/httpapi/adminui/dist
+
+.PHONY: build vet fmt tidy test test-e2e cover test-integration test-all clean dev dev-stop dev-seed-client web web-clean
 
 ## build: compile all packages
 build:
@@ -89,6 +93,21 @@ dev-seed-client:
 	@echo ""
 	@echo "Seeded client 'testcli'. Authorization URL:"
 	@echo "  http://localhost$(DEV_ADDR)/connect?response_type=code&client_id=testcli&redirect_uri=$(DEV_REDIRECT)&aud=app:test&state=xyz"
+
+## web: build the Admin SPA (../web) and stage it into the issuer embed dir, so a
+## subsequent `go build`/`make build` bakes the UI into the binary (served at /admin).
+web:
+	cd $(WEB_DIR) && pnpm install --frozen-lockfile && pnpm build
+	rm -rf $(ADMINUI_DIST)
+	mkdir -p $(ADMINUI_DIST)
+	cp -R $(WEB_DIR)/dist/. $(ADMINUI_DIST)/
+	@echo "staged Admin SPA -> $(ADMINUI_DIST); run 'make build' to embed it"
+
+## web-clean: drop the staged SPA (back to the placeholder)
+web-clean:
+	rm -rf $(ADMINUI_DIST)
+	mkdir -p $(ADMINUI_DIST)
+	touch $(ADMINUI_DIST)/.gitkeep
 
 clean:
 	rm -f coverage.out

@@ -8,6 +8,8 @@ import tailwindcss from "@tailwindcss/vite";
 const ISSUER = process.env.VITE_ISSUER_ORIGIN || "http://localhost:8080";
 
 export default defineConfig({
+  // Served under /admin by the issuer (embedded) or any static host at that path.
+  base: "/admin/",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: { "@": resolve(import.meta.dirname, "src") },

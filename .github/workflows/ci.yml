@@ -1,10 +1,10 @@
-name: server-ci
+name: ci
 
 on:
   push:
-    paths: ["server/**", ".github/workflows/ci.yml"]
+    paths: ["server/**", "web/**", ".github/workflows/ci.yml"]
   pull_request:
-    paths: ["server/**", ".github/workflows/ci.yml"]
+    paths: ["server/**", "web/**", ".github/workflows/ci.yml"]
 
 defaults:
   run:
@@ -54,3 +54,25 @@ jobs:
       - run: make test-integration
         env:
           OUROPASS_TEST_PG_DSN: postgres://ouro:ouro@localhost:5432/ouro?sslmode=disable
+
+  # Admin SPA (web/): lint + typecheck + unit tests + production build.
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build

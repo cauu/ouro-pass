@@ -16,6 +16,7 @@ import (
 	"ouro-pass/server/internal/core/oauth"
 	"ouro-pass/server/internal/core/walletauth"
 	"ouro-pass/server/internal/domain"
+	"ouro-pass/server/internal/httpapi/adminui"
 	"ouro-pass/server/internal/httpapi/authpage"
 	appmw "ouro-pass/server/internal/httpapi/middleware"
 	"ouro-pass/server/internal/httpapi/respond"
@@ -90,6 +91,10 @@ func NewRouter(d Deps) http.Handler {
 			h.mountAdminResources(r) // p8-2 resource endpoints
 		})
 	})
+
+	// ---- Admin SPA (embedded static, served under /admin; S0002) ----
+	r.Handle("/admin", http.RedirectHandler("/admin/", http.StatusMovedPermanently))
+	r.Handle("/admin/*", http.StripPrefix("/admin", adminui.Handler()))
 
 	return r
 }
