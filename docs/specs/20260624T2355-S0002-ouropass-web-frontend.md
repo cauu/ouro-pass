@@ -116,7 +116,7 @@ interface WalletAdapter {
 - [x] p1-3 `api` client：fetch + 错误信封 + 429 + 类型（TC-7 部分）。
 - [x] p2-0 **后端 enabler**：新增 `POST /api/admin/auth/step-up/challenge`（requireSession 内，wire `admin.ChallengeStepUp`，旧仅 test 用）——前端 step-up 需要它取 nonce。
 - [x] p2-1 登录/会话/RBAC/step-up + 布局/导航（TC-2）。
-- [ ] p3-1 业务页一批：Dashboard、名册+撤销(step-up)、订阅+取消、规则编辑器、渠道+telegram 测试、推送+日志、客户端注册(一次性 secret)、密钥轮换(step-up)+JWKS、审计、初始化向导（TC-3）。
+- [x] p3-1 业务页一批：Dashboard、名册+撤销(step-up)、订阅+取消、规则编辑器、渠道+telegram 测试、推送+日志、客户端注册(一次性 secret)、密钥轮换(step-up)+JWKS、审计、初始化向导（TC-3）。
 - [ ] p4-1 构建/部署：静态产物、可 embed/静态托管、env(issuer base URL/network)、CI 增 web job（TC-7/TC-8）。
 
 ## 4. Test and Acceptance Criteria
@@ -141,6 +141,8 @@ interface WalletAdapter {
 
 - 2026-06-25 p2-1 完成：UI 基元（button/input/textarea/label/card/badge/table/select/dialog(Radix)/toast/spinner，自写 shadcn 风格）+ 认证层。`AuthContext`（TanStack Query 拉 `/me`，401→null）+ `login(walletKey)`（connectWallet→challenge(reward 地址)→signData→verify，cookie 由后端下发）+ `logout`。`useStepUp` + `StepUpDialog`（敏感操作钱包重签→`{cose_key,step_up_nonce,step_up_signature}`）。`useWallets`（轮询 + load/cardano#initialized，沿用 S0003 经验）+ `WalletPicker` + `LoginPage`。`Layout`（侧栏导航按角色过滤 + 角色徽章 + 登出）、`RequireAuth`/`RequireRole`（rank: viewer<operator<owner）、`PageHeader`/`QueryState` 共享件。React Router(createBrowserRouter) + providers（QueryClient>Toast>Auth>Router）。其余业务路由暂用 `Placeholder`（p3-1 替换）。**决策**：钱包 network guard 取 `VITE_ISSUER_NETWORK`（可空→跳过，后端 owner-key 校验为真闸，TC-8）。
 
+- 2026-06-25 p3-1 完成：10 个业务页（features/*）——Dashboard（会员/订阅/JWKS 统计卡）、Members（列表 + 撤销 step-up，operator）、Subscriptions（列表 + 取消，operator）、Rules（列表 + RHF/zod 编辑器，JSON rule_config 校验，operator）、Channels（telegram bot token 配置，operator）、Push（列表 + 新建定向推送，operator）、Clients（列表 + 注册 step-up + **一次性 secret** 弹窗，owner）、Keys（JWKS 状态 + rotate/generate step-up，owner）、Audit（列表，owner）、Setup（就绪 checklist，owner）。共享 `PageHeader/QueryState/Field`、TanStack Query 拉取/失效、`StepUpDialog` 接敏感操作、错误 toast。路由替换 Placeholder 为实页（RBAC gate 不变）。**决策**：Channels 仅做 configure（后端无 telegram 测试路由）；secret 一次性展示 + 复制按钮。
+
 ## 6. Validation Evidence (append-only)
 - 2026-06-25 TC-7（部分）| stack: ui | command: `pnpm install` + `pnpm build`（`tsc -b && vite build`） | result: pass | note: 工具链就绪，类型检查 + 生产打包绿（27 模块、JS 144KB/gzip 46KB、CSS 5.3KB）。
 
@@ -151,6 +153,8 @@ interface WalletAdapter {
 - 2026-06-25 p2-0 | stack: go | command: `go build ./...` + `go test ./internal/httpapi/` | result: pass | note: 新 step-up challenge 路由编译 + httpapi 全包测试绿（含新路由测试）。
 
 - 2026-06-25 TC-2 | stack: ui | command: `pnpm test`（vitest）+ `pnpm build` | result: pass | note: `RequireRole` RBAC 单测 3 例（足/不足/相等）+ wallet 8 例共 11 绿；生产打包绿（1660 模块、JS 317KB/gzip 103KB）。登录得 cookie / step-up 401 属集成（后端联调/手测）。
+
+- 2026-06-25 TC-3 | stack: ui | command: `pnpm build`（tsc+vite）+ `pnpm lint`（0 error）+ `pnpm typecheck` + `pnpm test` | result: pass | note: 10 页全量类型检查 + 打包绿（1745 模块、JS 463KB/gzip 145KB、CSS 17KB）；lint 0 error（2 个 react-refresh warning，hook 与 provider 同文件，无害）；11 单测绿。各页消费契约：members 按 sch、rules rule_config(JSON)、push target 过滤、client 一次性 secret、keys step-up、audit 只读。
 
 ## 7. Change Requests (append-only)
 - 2026-06-24 选型：框架 React+Vite 纯 SPA（用户确认）；组件库 shadcn/ui（用户确认）；钱包 thin `window.cardano` 封装（用户质疑 Weld 成熟度：~550 下载/月、pre-1.0；且 CBOR 解码改放后端后前端只需转发，thin-wrapper 最契合，库藏 `WalletAdapter` 后可换）。

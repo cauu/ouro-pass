@@ -1,8 +1,17 @@
 import { createBrowserRouter, Navigate, RouterProvider } from "react-router-dom";
 import { RequireAuth, RequireRole } from "./app/guards";
 import { Layout } from "./app/Layout";
-import { Placeholder } from "./app/Placeholder";
+import { AuditPage } from "./features/audit/AuditPage";
 import { LoginPage } from "./features/auth/LoginPage";
+import { ChannelsPage } from "./features/channels/ChannelsPage";
+import { ClientsPage } from "./features/clients/ClientsPage";
+import { DashboardPage } from "./features/dashboard/DashboardPage";
+import { KeysPage } from "./features/keys/KeysPage";
+import { MembersPage } from "./features/members/MembersPage";
+import { PushPage } from "./features/push/PushPage";
+import { RulesPage } from "./features/rules/RulesPage";
+import { SetupPage } from "./features/setup/SetupPage";
+import { SubscriptionsPage } from "./features/subscriptions/SubscriptionsPage";
 
 const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -15,14 +24,14 @@ const router = createBrowserRouter([
     ),
     children: [
       { index: true, element: <Navigate to="/dashboard" replace /> },
-      { path: "dashboard", element: <Placeholder name="Dashboard" /> },
-      { path: "members", element: <Placeholder name="Members" /> },
-      { path: "subscriptions", element: <Placeholder name="Subscriptions" /> },
+      { path: "dashboard", element: <DashboardPage /> },
+      { path: "members", element: <MembersPage /> },
+      { path: "subscriptions", element: <SubscriptionsPage /> },
       {
         path: "rules",
         element: (
           <RequireRole min="operator">
-            <Placeholder name="Rules" />
+            <RulesPage />
           </RequireRole>
         ),
       },
@@ -30,7 +39,7 @@ const router = createBrowserRouter([
         path: "channels",
         element: (
           <RequireRole min="operator">
-            <Placeholder name="Channels" />
+            <ChannelsPage />
           </RequireRole>
         ),
       },
@@ -38,7 +47,7 @@ const router = createBrowserRouter([
         path: "push",
         element: (
           <RequireRole min="operator">
-            <Placeholder name="Push" />
+            <PushPage />
           </RequireRole>
         ),
       },
@@ -46,7 +55,7 @@ const router = createBrowserRouter([
         path: "clients",
         element: (
           <RequireRole min="owner">
-            <Placeholder name="OAuth Clients" />
+            <ClientsPage />
           </RequireRole>
         ),
       },
@@ -54,7 +63,7 @@ const router = createBrowserRouter([
         path: "keys",
         element: (
           <RequireRole min="owner">
-            <Placeholder name="Signing Keys" />
+            <KeysPage />
           </RequireRole>
         ),
       },
@@ -62,7 +71,7 @@ const router = createBrowserRouter([
         path: "audit",
         element: (
           <RequireRole min="owner">
-            <Placeholder name="Audit" />
+            <AuditPage />
           </RequireRole>
         ),
       },
@@ -70,7 +79,7 @@ const router = createBrowserRouter([
         path: "setup",
         element: (
           <RequireRole min="owner">
-            <Placeholder name="Setup" />
+            <SetupPage />
           </RequireRole>
         ),
       },
