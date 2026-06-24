@@ -18,12 +18,13 @@ DEV_SERVER_SALT  ?= 00000000000000000000000000000007
 DEV_TELEGRAM_BOT ?= ouro_dev_bot
 DEV_DB           ?= file:.dev/ouro.db
 DEV_REDIRECT     ?= http://localhost:9999/cb
+DEV_OWNER_KEYS   ?=               # comma-sep owner stake-key hashes; set to log in to /admin as owner
 
 # ---- Admin SPA (../web) embedded into the issuer binary ----
 WEB_DIR      ?= ../web
 ADMINUI_DIST ?= internal/httpapi/adminui/dist
 
-.PHONY: build vet fmt tidy test test-e2e cover test-integration test-all clean dev dev-stop dev-seed-client web web-clean
+.PHONY: build vet fmt tidy test test-e2e cover test-integration test-all clean dev dev-stop dev-seed-client web web-clean stake-hash
 
 ## build: compile all packages
 build:
@@ -76,6 +77,7 @@ dev:
 	OUROPASS_FIELD_KEY=$(DEV_FIELD_KEY) \
 	OUROPASS_SERVER_SALT=$(DEV_SERVER_SALT) \
 	OUROPASS_TELEGRAM_BOT=$(DEV_TELEGRAM_BOT) \
+	OUROPASS_OWNER_KEYS=$(DEV_OWNER_KEYS) \
 	OUROPASS_DB_DSN="$(DEV_DB)" \
 	exec .dev/issuer
 
@@ -102,6 +104,11 @@ web:
 	mkdir -p $(ADMINUI_DIST)
 	cp -R $(WEB_DIR)/dist/. $(ADMINUI_DIST)/
 	@echo "staged Admin SPA -> $(ADMINUI_DIST); run 'make build' to embed it"
+
+## stake-hash: print the owner stake-key hash for a wallet's stake address, e.g.
+##   make stake-hash ADDR=stake1...   ->   then: make dev DEV_OWNER_KEYS=<hash>
+stake-hash:
+	@$(GO) run ./cmd/stakehash "$(ADDR)"
 
 ## web-clean: drop the staged SPA (back to the placeholder)
 web-clean:

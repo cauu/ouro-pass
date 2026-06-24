@@ -145,6 +145,8 @@ interface WalletAdapter {
 
 - 2026-06-25 p4-1 完成：构建/嵌入/部署。Vite `base:/admin/` + Router `basename:/admin`（SPA 在 /admin 下）。新增 `server/internal/httpapi/adminui` 包：`//go:embed all:dist` 嵌入构建产物，`Handler()` serve 静态 + history fallback（hashed 资源 immutable 长缓存），未构建时（仅 `dist/.gitkeep`）降级占位页。router 挂 `/admin`(301→/admin/) + `/admin/*`(StripPrefix)。`make web`（构建 ../web + 拷进 embed 目录）/`make web-clean`。`web/.env.example`（`VITE_ISSUER_NETWORK`，TC-8）。CI 增 `web` job（pnpm install/lint/typecheck/test/build）+ paths 加 `web/**`。**决策**：① SPA 挂 `/admin`（与 `/api/admin` 共存、不抢 `/connect` 等根路由）；② 构建产物**不入库**（`dist/*` gitignore，留 `.gitkeep`），发布时 `make web && make build` 嵌入——dev 用 `pnpm dev`(vite :5173/admin/ 代理后端) 热更或 `make web` 后看 /admin。
 
+- 2026-06-25 验收支持工具：`make dev` 增 `DEV_OWNER_KEYS` 透传 `OUROPASS_OWNER_KEYS`（设置后可用该 owner 钱包登录 /admin）；新增 `cmd/stakehash` + `make stake-hash ADDR=stake1...` 从钱包 stake 地址算出 owner key hash（复用 `chain.StakeHashFromRewardAddress`）。验收登录链路：钱包复制 stake 地址 → `make stake-hash` → `make web` → `make dev DEV_OWNER_KEYS=<hash>` → 开 `http://localhost:8080/admin/` 用同一钱包登录。
+
 ## 6. Validation Evidence (append-only)
 - 2026-06-25 TC-7（部分）| stack: ui | command: `pnpm install` + `pnpm build`（`tsc -b && vite build`） | result: pass | note: 工具链就绪，类型检查 + 生产打包绿（27 模块、JS 144KB/gzip 46KB、CSS 5.3KB）。
 
