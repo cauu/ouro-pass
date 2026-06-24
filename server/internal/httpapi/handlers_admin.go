@@ -85,6 +85,35 @@ func (h *apiHandlers) adminMe(w http.ResponseWriter, r *http.Request) {
 	respond.JSON(w, http.StatusOK, map[string]string{"admin_id": u.AdminID, "role": string(u.Role)})
 }
 
+// adminStepUpChallenge issues a step-up nonce for the logged-in admin to re-sign
+// a sensitive operation (member revoke, client register, key rotate; §9.8). It is
+// behind requireSession; the nonce binds to the owner stake credential and is
+// later checked against the session admin's owner key by VerifyStepUp (S0002 p2-0).
+//
+//	POST /api/admin/auth/step-up/challenge  {owner_stake_address} → {nonce}
+func (h *apiHandlers) adminStepUpChallenge(w http.ResponseWriter, r *http.Request) {
+	if h.d.Admin == nil {
+		notImplemented(w, r)
+		return
+	}
+	var req struct {
+		OwnerStakeAddress string `json:"owner_stake_address"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.OwnerStakeAddress == "" {
+		respond.Error(w, http.StatusBadRequest, "invalid_request", "owner_stake_address required")
+		return
+	}
+	nonce, exp, err := h.d.Admin.ChallengeStepUp(r.Context(), req.OwnerStakeAddress)
+	if err != nil {
+		respond.Error(w, http.StatusBadRequest, "invalid_request", "could not issue step-up challenge")
+		return
+	}
+	respond.JSON(w, http.StatusOK, map[string]any{
+		"nonce":      nonce,
+		"expires_at": exp.UTC().Format("2006-01-02T15:04:05Z07:00"),
+	})
+}
+
 // requireSession authenticates the admin session cookie and stores the user in
 // the request context (401 otherwise).
 func (h *apiHandlers) requireSession(next http.Handler) http.Handler {

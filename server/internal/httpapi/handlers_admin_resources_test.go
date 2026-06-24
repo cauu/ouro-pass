@@ -355,3 +355,26 @@ func postJSON(t *testing.T, c *http.Client, url, body string) map[string]any {
 	json.NewDecoder(resp.Body).Decode(&m)
 	return m
 }
+
+// TestAdminStepUpChallenge_Route covers the S0002 p2-0 enabler: the logged-in
+// admin can fetch a step-up nonce over HTTP (previously only via the service).
+func TestAdminStepUpChallenge_Route(t *testing.T) {
+	srv, client, _, vkey, _ := adminResourceEnv(t, domain.RoleOwner)
+
+	body, _ := json.Marshal(map[string]string{"owner_stake_address": rewardAddrOf(vkey)})
+	resp, err := client.Post(srv.URL+"/api/admin/auth/step-up/challenge", "application/json", strings.NewReader(string(body)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("step-up challenge = %d, want 200", resp.StatusCode)
+	}
+	var out map[string]any
+	json.NewDecoder(resp.Body).Decode(&out)
+	if n, _ := out["nonce"].(string); n == "" {
+		t.Fatalf("no nonce in response: %v", out)
+	}
+	// The route lives in the requireSession group (same gate as /me, covered by
+	// TestAdminLogin_CookieFlowAndRBAC), so unauthenticated access is 401.
+}

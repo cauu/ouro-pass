@@ -114,6 +114,7 @@ interface WalletAdapter {
 - [x] p1-1 脚手架：Vite + React + TS(strict) + Tailwind + shadcn init；`src/{wallet,api,ui,features,app}`；lint/format/CI 占位（TC-7）。
 - [x] p1-2 `WalletAdapter`（连钱包/enable/getRewardAddresses/signData/转发 + network guard）+ mock `window.cardano` 单测（TC-1）。
 - [x] p1-3 `api` client：fetch + 错误信封 + 429 + 类型（TC-7 部分）。
+- [x] p2-0 **后端 enabler**：新增 `POST /api/admin/auth/step-up/challenge`（requireSession 内，wire `admin.ChallengeStepUp`，旧仅 test 用）——前端 step-up 需要它取 nonce。
 - [ ] p2-1 登录/会话/RBAC/step-up + 布局/导航（TC-2）。
 - [ ] p3-1 业务页一批：Dashboard、名册+撤销(step-up)、订阅+取消、规则编辑器、渠道+telegram 测试、推送+日志、客户端注册(一次性 secret)、密钥轮换(step-up)+JWKS、审计、初始化向导（TC-3）。
 - [ ] p4-1 构建/部署：静态产物、可 embed/静态托管、env(issuer base URL/network)、CI 增 web job（TC-7/TC-8）。
@@ -136,12 +137,16 @@ interface WalletAdapter {
 
 - 2026-06-25 p1-3 完成：`src/api/client.ts`（同源 fetch、`credentials:include` 带 cookie、错误信封 `{error,error_description}`→`ApiError{status,code}` + `isUnauthorized/isForbidden/isRateLimited`）+ `src/api/admin.ts`（全部 admin 端点 typed 封装：auth/me/step-up、members/revoke、subscriptions/cancel、rules、channels、push、clients/register、keys rotate/generate、audit、JWKS）+ `src/lib/types.ts`（wire 类型，匹配后端实发 JSON）。**决策**：后端 domain 结构体无 json tag→list 端点发 Go PascalCase（如 `SessionID`），前端 wire 类型照实匹配（后端日后加 snake_case json tag 可再跟随）。
 
+- 2026-06-25 p2-0 完成（后端 enabler，决策落盘）：S0001/S0003 里 `admin.ChallengeStepUp` 没有 HTTP 路由（只被测试直接调），导致前端拿不到 step-up nonce、无法完成撤销/注册 client/轮换密钥。新增 `POST /api/admin/auth/step-up/challenge {owner_stake_address}→{nonce}`（置于 `requireSession` 组内，与 `/me`/`logout` 同闸）。加 `TestAdminStepUpChallenge_Route`（登录后 200+nonce）。**决策**：此后端小改属 S0002 范围内的前置 enabler（S0003 已 close 不重开），跨 `server/`。
+
 ## 6. Validation Evidence (append-only)
 - 2026-06-25 TC-7（部分）| stack: ui | command: `pnpm install` + `pnpm build`（`tsc -b && vite build`） | result: pass | note: 工具链就绪，类型检查 + 生产打包绿（27 模块、JS 144KB/gzip 46KB、CSS 5.3KB）。
 
 - 2026-06-25 TC-1 | stack: ui | command: `pnpm test`（vitest, jsdom, mock window.cardano） | result: pass | note: 8 用例绿——探测/跳过非钱包键/空、signNonce 转发 key+signature 且 payload=hex(utf8(nonce))、错网络拒、无 reward 拒、未知钱包拒、networkName 映射。
 
 - 2026-06-25 TC-7（部分）| stack: ui | command: `pnpm typecheck`（tsc -b） | result: pass | note: api client + 类型全量类型检查绿。
+
+- 2026-06-25 p2-0 | stack: go | command: `go build ./...` + `go test ./internal/httpapi/` | result: pass | note: 新 step-up challenge 路由编译 + httpapi 全包测试绿（含新路由测试）。
 
 ## 7. Change Requests (append-only)
 - 2026-06-24 选型：框架 React+Vite 纯 SPA（用户确认）；组件库 shadcn/ui（用户确认）；钱包 thin `window.cardano` 封装（用户质疑 Weld 成熟度：~550 下载/月、pre-1.0；且 CBOR 解码改放后端后前端只需转发，thin-wrapper 最契合，库藏 `WalletAdapter` 后可换）。

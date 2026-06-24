@@ -85,6 +85,7 @@ func NewRouter(d Deps) http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(h.requireSession)
 			r.Post("/auth/logout", h.adminLogout)
+			r.Post("/auth/step-up/challenge", h.adminStepUpChallenge)
 			r.With(h.requireRole(domain.RoleViewer)).Get("/me", h.adminMe)
 			h.mountAdminResources(r) // p8-2 resource endpoints
 		})
