@@ -3,11 +3,19 @@
 // CIP-30 signData (COSE) responses, mapping a stake verification key to its
 // stake credential hash (the durable identity key, C8). The clock is injected
 // for deterministic tests.
+//
+// CIP-30 reality (S0003): a wallet exposes the bare stake vkey only inside the
+// COSE_Key returned by signData — never before signing. So Challenge binds the
+// nonce to the stake credential hash derived from the reward address (available
+// pre-signing), and Verify recovers the vkey from the COSE_Key at submit time and
+// proves it both ways: the COSE_Sign1 signature must verify under it AND
+// blake2b224(vkey) must equal the bound hash. The bound hash alone is only a
+// claim — the stake vkey is public once it has witnessed an on-chain certificate,
+// so the signature is the real authentication.
 package walletauth
 
 import (
 	"context"
-	"crypto/ed25519"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -15,6 +23,7 @@ import (
 
 	"ouro-pass/server/internal/domain"
 	"ouro-pass/server/internal/store"
+	"ouro-pass/server/internal/utils/chain"
 	"ouro-pass/server/internal/utils/crypto"
 )
 
@@ -23,9 +32,9 @@ const nonceBytes = 32
 
 // Service issues and verifies wallet-signing nonces.
 type Service struct {
-	nonces   *store.AuthNonceRepo
-	ttl      time.Duration
-	now      func() time.Time
+	nonces    *store.AuthNonceRepo
+	ttl       time.Duration
+	now       func() time.Time
 	randToken func(int) string
 }
 
@@ -39,14 +48,15 @@ func New(st *store.Store, ttl time.Duration) *Service {
 	}
 }
 
-// Challenge issues a nonce bound to the given stake vkey and purpose. The
-// returned nonce is signed by the wallet and submitted back to Verify.
-func (s *Service) Challenge(ctx context.Context, purpose domain.NoncePurpose, stakeVkeyHex string) (nonce string, expiresAt time.Time, err error) {
-	pub, err := decodeVkey(stakeVkeyHex)
+// Challenge issues a nonce bound to the stake credential behind the given reward
+// (stake) address and purpose. The address is what a CIP-30 wallet can supply
+// before signing (getRewardAddresses); the nonce is then signed via signData and
+// submitted back to Verify.
+func (s *Service) Challenge(ctx context.Context, purpose domain.NoncePurpose, stakeAddress string) (nonce string, expiresAt time.Time, err error) {
+	keyHash, err := chain.StakeHashFromRewardAddress(stakeAddress)
 	if err != nil {
-		return "", time.Time{}, err
+		return "", time.Time{}, fmt.Errorf("walletauth: %w", err)
 	}
-	keyHash := hex.EncodeToString(crypto.Blake2b224(pub))
 	now := s.now()
 	nonce = s.randToken(nonceBytes)
 	expiresAt = now.Add(s.ttl)
@@ -60,11 +70,13 @@ func (s *Service) Challenge(ctx context.Context, purpose domain.NoncePurpose, st
 	return nonce, expiresAt, nil
 }
 
-// Verify consumes the nonce (single-use, unexpired, matching purpose), checks
-// the COSE_Sign1 signature over the nonce by stakeVkey, enforces the nonce↔key
-// binding, and returns the signer's stake credential hash.
-func (s *Service) Verify(ctx context.Context, purpose domain.NoncePurpose, stakeVkeyHex, nonce, signatureHex string) (stakeCredentialHash string, err error) {
-	pub, err := decodeVkey(stakeVkeyHex)
+// Verify consumes the nonce (single-use, unexpired, matching purpose), recovers
+// the stake vkey from the CIP-30 COSE_Key, checks the COSE_Sign1 signature over
+// the nonce by that vkey, enforces the nonce↔key binding (blake2b224(vkey) ==
+// bound hash), and returns the signer's stake credential hash. The payload signed
+// by the wallet MUST be the nonce bytes (hex(utf8(nonce)) on the wire).
+func (s *Service) Verify(ctx context.Context, purpose domain.NoncePurpose, coseKeyHex, nonce, signatureHex string) (stakeCredentialHash string, err error) {
+	pub, err := crypto.StakeVkeyFromCOSEKey(coseKeyHex)
 	if err != nil {
 		return "", err
 	}
@@ -96,16 +108,4 @@ func (s *Service) Verify(ctx context.Context, purpose domain.NoncePurpose, stake
 // the number removed. Safe to call periodically from a maintenance ticker.
 func (s *Service) PurgeExpiredNonces(ctx context.Context) (int64, error) {
 	return s.nonces.DeleteExpired(ctx, s.now())
-}
-
-// decodeVkey parses a hex-encoded 32-byte Ed25519 stake verification key.
-func decodeVkey(hexStr string) (ed25519.PublicKey, error) {
-	raw, err := hex.DecodeString(hexStr)
-	if err != nil {
-		return nil, fmt.Errorf("walletauth: decode stake_vkey: %w", err)
-	}
-	if len(raw) != ed25519.PublicKeySize {
-		return nil, fmt.Errorf("walletauth: stake_vkey must be %d bytes, got %d", ed25519.PublicKeySize, len(raw))
-	}
-	return ed25519.PublicKey(raw), nil
 }
