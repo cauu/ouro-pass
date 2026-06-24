@@ -1,9 +1,9 @@
 # Ouro Pass 授权流后端改造 — walletauth 契约（COSE_Key/hash）+ issuer 服务的授权/绑定页
 
 Spec-ID: S0003
-Status: draft
+Status: active
 Created Time: 2026-06-24T02:10:00+08:00
-Start Time:
+Start Time: 2026-06-24T02:30:00+08:00
 Completion Time:
 Previous Spec-ID: (none)
 Closure Reason:
