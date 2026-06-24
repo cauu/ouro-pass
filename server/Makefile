@@ -7,7 +7,19 @@ GO ?= go
 OUROPASS_TEST_PG_DSN ?=
 export OUROPASS_TEST_PG_DSN
 
-.PHONY: build vet fmt tidy test test-e2e cover test-integration test-all clean
+# ---- Local dev / manual browser-wallet testing (override on the command line) ----
+# These FIELD_KEY/SERVER_SALT values are fixed and INSECURE — dev only, so the
+# persistent .dev/ouro.db keeps working across runs. Never use them in production.
+DEV_ADDR         ?= :8080
+DEV_POOL_ID      ?= pool1abc
+DEV_NETWORK      ?=               # wallet network the page expects; blank → issuer default (a testnet) → use a testnet wallet, or set =mainnet
+DEV_FIELD_KEY    ?= 0000000000000000000000000000000000000000000000000000000000000001
+DEV_SERVER_SALT  ?= 00000000000000000000000000000007
+DEV_TELEGRAM_BOT ?= ouro_dev_bot
+DEV_DB           ?= file:.dev/ouro.db
+DEV_REDIRECT     ?= http://localhost:9999/cb
+
+.PHONY: build vet fmt tidy test test-e2e cover test-integration test-all clean dev dev-seed-client
 
 ## build: compile all packages
 build:
@@ -45,6 +57,33 @@ test-integration:
 
 ## test-all: everything (unit + e2e + integration)
 test-all: test test-integration
+
+## dev: run the issuer locally for manual/browser-wallet testing (OAuth on, mock chain).
+## Open http://localhost:8080/bind in a browser with a Cardano wallet — a real
+## wallet signature returns not_eligible (403), which proves the S0003 signature
+## path. Override e.g.: make dev DEV_NETWORK=preprod DEV_ADDR=:9000
+dev:
+	@mkdir -p .dev
+	OUROPASS_ADDR=$(DEV_ADDR) \
+	OUROPASS_POOL_ID=$(DEV_POOL_ID) \
+	OUROPASS_NETWORK=$(DEV_NETWORK) \
+	OUROPASS_CHAIN_KIND=mock \
+	OUROPASS_FIELD_KEY=$(DEV_FIELD_KEY) \
+	OUROPASS_SERVER_SALT=$(DEV_SERVER_SALT) \
+	OUROPASS_TELEGRAM_BOT=$(DEV_TELEGRAM_BOT) \
+	OUROPASS_DB_DSN="$(DEV_DB)" \
+	$(GO) run ./cmd/issuer
+
+## dev-seed-client: insert a test OAuth client into the dev DB so /connect works,
+## then print the authorization URL. Needs sqlite3 and a prior `make dev` (to
+## create/migrate .dev/ouro.db). Run `make dev` once, stop it, then this, then `make dev` again.
+dev-seed-client:
+	@command -v sqlite3 >/dev/null || { echo "sqlite3 not found"; exit 1; }
+	@test -f .dev/ouro.db || { echo "run 'make dev' once first to create .dev/ouro.db"; exit 1; }
+	sqlite3 .dev/ouro.db "INSERT OR REPLACE INTO OAuthClient (client_id,name,client_type,client_secret_hash,party,redirect_uris,allowed_audiences,allowed_scopes,pkce_required,status,created_at) VALUES ('testcli','Test','confidential',NULL,'first_party','[\"$(DEV_REDIRECT)\"]','[\"app:test\"]','[\"read\"]',0,'active','2026-01-01T00:00:00Z');"
+	@echo ""
+	@echo "Seeded client 'testcli'. Authorization URL:"
+	@echo "  http://localhost$(DEV_ADDR)/connect?response_type=code&client_id=testcli&redirect_uri=$(DEV_REDIRECT)&aud=app:test&state=xyz"
 
 clean:
 	rm -f coverage.out
