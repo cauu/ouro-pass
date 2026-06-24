@@ -73,8 +73,8 @@ CIP-30 钱包**只能在 `signData` 之后**经返回的 `DataSignature.key`(COS
 - [x] p1-1 `crypto.StakeVkeyFromCOSEKey`（解 COSE_Key 取 label -2 + 校验 kty/crv/len/上限）+ reward 地址→28B hash（复用 stakeaddr，兼容 raw/CBOR/bech32）；单测含 go-cose 产出的 COSE_Key 向量（TC-1）。
 - [x] p1-2 `walletauth.Challenge/Verify` 改造（绑 hash / 抽 vkey + 双校验）+ 单测：合法、坏 COSE_Key、hash 不匹配、签名不符、payload 编码（TC-2）。
 - [x] p1-3 四条流 handler 契约同步（connect/authorize、activation/create、admin challenge+verify、step-up）+ handler/e2e 测试更新（S0001 既有用 `stake_vkey` 的测试改为 COSE_Key/地址）（TC-3）。
-- [ ] p2-1 授权页：`GET /connect` 渲染完整 HTML 模板 + 内嵌 vanilla JS（连钱包/sign/转发）+ `embed`；replace 占位（TC-4）。
-- [ ] p2-2 渠道绑定页 HTML + vanilla JS（activation）+ deep link/二维码（TC-5）。
+- [x] p2-1 授权页：`GET /connect` 渲染完整 HTML 模板 + 内嵌 vanilla JS（连钱包/sign/转发）+ `embed`；replace 占位（TC-4）。
+- [x] p2-2 渠道绑定页 HTML + vanilla JS（activation）+ deep link/二维码（TC-5）。
 - [ ] p3-1 全量 `go test ./...` + 二进制 smoke + 真钱包手测矩阵（R1 标注；向量入自动化测试）（TC-6）。
 
 ## 4. Test and Acceptance Criteria
@@ -92,11 +92,15 @@ CIP-30 钱包**只能在 `signData` 之后**经返回的 `DataSignature.key`(COS
 - 2026-06-24 p1-1 完成：新增 `crypto/cosekey.go`（`StakeVkeyFromCOSEKey`：map 解 COSE_Key、强制 kty=OKP/crv=Ed25519、x len==32、输入上限 512B）+ `chain/rewardaddr.go`（`StakeHashFromRewardAddress` + `bech32Decode` + 无依赖 `unwrapCBORBytes`，兼容 bech32/raw-hex/CBOR-bstr 三形态）。测试 `cosekey_test.go`/`rewardaddr_test.go`：go-cose 独立产出的 COSE_Key 被正确抽取、label 乱序+额外 kid 容忍、坏 kty/crv/len/截断/非 map 全拒；三形态地址→同一 28B hash、坏校验和/混合大小写/错 header/错长度全拒。`cosekey.go` 生产代码不引 go-cose（仅测试引用）。
 - 2026-06-24 p1-2 完成：`walletauth.Challenge(stakeAddress)`（解 reward 地址→hash 绑 nonce）+ `Verify(coseKeyHex,…)`（抽 vkey + 双校验：`cose.Verify` + `blake2b224(vkey)==绑定 hash`），删除旧 `decodeVkey`。`walletauth_test.go` 重写为新契约 + 新增 payload 不符（`ErrCOSEPayload`）、坏 COSE_Key、坏 reward 地址三用例，7 用例全绿。说明（exception）：本契约改动跨 p1-2/p1-3 lockstep —— 本提交仅含 `walletauth` 包（自洽、单测绿），handlers/core 各调用方在 p1-3 同步后全仓 `go build ./...` 恢复绿。
 - 2026-06-24 p1-3 完成：四条流契约同步。线上字段：`/api/auth/challenge` `stake_vkey`→`stake_address`；`/connect/authorize`、`/activation/create`、admin `auth/verify`、step-up `owner_vkey`/`stake_vkey`→`cose_key`；admin `auth/challenge` `owner_vkey`→`owner_stake_address`。core 调用方 `oauth.AuthorizeRequest.CoseKey`、`oauth.CreateActivation(coseKey)`、`admin.Challenge/Verify/VerifyStepUp/ChallengeStepUp` 全部改名同步。测试侧（oauth/token/activation/admin core + httpapi admin/wallet/oauth + e2e）统一引入 `rewardAddrOf`/`coseKeyOf`（或 harness/wallet 字段）派生 reward 地址 + COSE_Key。全仓 `go build ./...`、`go vet ./...`、`go test ./...`（含 e2e）恢复绿（0 FAIL），lockstep 闭合。
+- 2026-06-24 p2-1+p2-2 完成：新增 `internal/httpapi/authpage` 包（`go:embed` 模板 + 单一同源 JS 资源）：`templates/connect.html`（授权页，`data-mode=authorize`）、`templates/bind.html`（绑定页，`data-mode=activate`）、`assets/ouropass-auth.js`（CIP-30 探测/enable/getRewardAddresses/signData，**浏览器零 CBOR**，只转发 `cose_key`+`signature`）。`GET /connect` 改为渲染完整页（校验 client 后），新增 `GET /bind` + `GET /assets/ouropass-auth.js`。OAuth 参数经 `data-*` 属性注入（html/template 自动转义，非内联脚本）→ CSP `script-src 'self'` 无需 `unsafe-inline`；授权页用隐藏表单 POST 让浏览器原生跟随 302（`connectAuthorize` 增 form-urlencoded 解析分支，JSON 路径不变）；`Deps.Network`(来自 `cfg.Network`)开启可选钱包 network guard。p2-1/p2-2 为同一 `authpage` 包的内聚交付（共享 JS/模板/测试），合并为一个提交（immutable-spec 内聚 deliverable 例外）。
 
 ## 6. Validation Evidence (append-only)
 - 2026-06-24 TC-1 | stack: go | command: `go test -count=1 -v -run 'StakeVkeyFromCOSEKey\|StakeHashFromRewardAddress' ./internal/utils/crypto/ ./internal/utils/chain/` | result: pass | note: 5 用例全绿——COSE_Key go-cose 互操作抽取、乱序+extras、拒坏输入；reward 地址 5 形态（bech32/raw/CBOR-bstr/大写/空白）→同一 hash、6 类坏输入全拒。
 - 2026-06-24 TC-2 | stack: go | command: `go test -count=1 -v ./internal/core/walletauth/` | result: pass | note: 7 用例全绿——往返+credential hash、replay→ErrConsumed、错 key（hash 不匹配）、篡改签名、payload 不符→ErrCOSEPayload、坏 COSE_Key、坏 reward 地址、错 purpose→ErrPurpose、过期 GC。
 - 2026-06-24 TC-3 | stack: go | command: `go build ./...` + `go vet ./...` + `go test -count=1 ./...`（含 e2e、无 DSN） | result: pass | note: 四条流契约同步后全仓 0 FAIL；core/oauth、core/admin、httpapi、e2e 各包绿，覆盖 authorize/activation/admin-login/step-up 新契约 + 既有否定用例（不合格、越权、错 key、错 purpose、篡改）。
+- 2026-06-24 TC-4 | stack: go | command: `go test -count=1 -run 'ConnectPage\|AuthAsset\|ConnectAuthorize_FormPost' ./internal/httpapi/` | result: pass | note: `GET /connect` 返回完整 HTML（含 `data-mode=authorize`/`data-client-id`/`/assets/ouropass-auth.js` + CSP），非占位；坏 client→非 200、错 response_type→400；JS 资源 200+`application/javascript` 且含 signData/getRewardAddresses/stake_address/cose_key；form-urlencoded `/connect/authorize`→302 带 code/state。
+- 2026-06-24 TC-5 | stack: go | command: `go test -count=1 -run 'BindPage' ./internal/httpapi/` | result: pass | note: `GET /bind` 200 + `data-mode=activate`/`data-channel-type=telegram` + 同源 JS 引用。
+- 2026-06-24 binary smoke | stack: go | command: `go build -o /tmp/issuer ./cmd/issuer` + 启动 | result: pass | note: `/assets/ouropass-auth.js` 200；OAuth 未配置时 `/connect`、`/bind` 按设计降级 501（`h.d.OAuth==nil`）；优雅关停 exit 0。真钱包浏览器手测矩阵（R1）留待 p3-1/用户。
 
 ## 7. Change Requests (append-only)
 - 2026-06-24 决策：把 COSE_Key→vkey 的 CBOR 解码 + reward 地址解析**全部放后端**（消除浏览器手搓 CBOR 的"粗糙"），授权页/绑定页改为 **issuer 服务的 HTML 模板 + vanilla JS（零前端构建）**；walletauth 契约从"裸 vkey"改为"challenge 绑 hash + verify 收 COSE_Key"，四条流一致。安全不变量：抽 vkey 后必须验签名 + 比 hash（vkey 非秘密）。

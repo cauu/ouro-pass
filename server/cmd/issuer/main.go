@@ -168,6 +168,7 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, chain.Sou
 		Store:         st,
 		PoolID:        cfg.PoolID,
 		TelegramBot:   cfg.TelegramBot,
+		Network:       cfg.Network,
 		TrustedProxy:  cfg.TrustedProxy,
 		SecureCookies: cfg.TLS,
 		Admin: admin.New(admin.Config{

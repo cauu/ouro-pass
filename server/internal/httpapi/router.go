@@ -16,23 +16,25 @@ import (
 	"ouro-pass/server/internal/core/oauth"
 	"ouro-pass/server/internal/core/walletauth"
 	"ouro-pass/server/internal/domain"
-	"ouro-pass/server/internal/store"
+	"ouro-pass/server/internal/httpapi/authpage"
 	appmw "ouro-pass/server/internal/httpapi/middleware"
 	"ouro-pass/server/internal/httpapi/respond"
+	"ouro-pass/server/internal/store"
 )
 
 // Deps carries the collaborators the handlers need; nil services degrade their
 // routes to 501 so the server still boots during incremental wiring.
 type Deps struct {
-	Wallet      *walletauth.Service
-	Keys        *keys.Service
-	OAuth       *oauth.Server
-	Admin       *admin.Service
-	Store       *store.Store // admin resource handlers use repos directly
-	PoolID      string
-	TelegramBot string // bot username for activation deep links
-	TrustedProxy  bool // trust X-Forwarded-For for client IP (only behind a known proxy, D15)
-	SecureCookies bool // set Secure on admin session cookies (off for local HTTP, D17)
+	Wallet        *walletauth.Service
+	Keys          *keys.Service
+	OAuth         *oauth.Server
+	Admin         *admin.Service
+	Store         *store.Store // admin resource handlers use repos directly
+	PoolID        string
+	TelegramBot   string // bot username for activation deep links
+	Network       string // "mainnet"|"testnet"; when set, the auth page enforces a wallet network guard
+	TrustedProxy  bool   // trust X-Forwarded-For for client IP (only behind a known proxy, D15)
+	SecureCookies bool   // set Secure on admin session cookies (off for local HTTP, D17)
 }
 
 type apiHandlers struct{ d Deps }
@@ -62,7 +64,11 @@ func NewRouter(d Deps) http.Handler {
 	r.With(publicLimit, idem).Post("/api/oauth/token", h.oauthToken)
 
 	// ---- Channel activation plane ----
+	r.With(publicLimit).Get("/bind", h.bind)
 	r.With(publicLimit, idem).Post("/api/activation/create", h.activationCreate)
+
+	// Issuer-served Authorization/binding page asset (same-origin script).
+	r.Get("/assets/ouropass-auth.js", authpage.Asset().ServeHTTP)
 
 	// ---- Verifier plane (public, read-only, rate-limited) ----
 	r.Group(func(r chi.Router) {

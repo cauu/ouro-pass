@@ -3,20 +3,21 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"ouro-pass/server/internal/core/oauth"
+	"ouro-pass/server/internal/httpapi/authpage"
 	"ouro-pass/server/internal/httpapi/respond"
 )
 
-// connect serves the Authorization Page contract (detailed §9.4). The rich page
-// lives in web/; this backend validates the OAuth query parameters and returns
-// a minimal placeholder so an unconfigured/invalid client fails fast.
+// connect serves the issuer-rendered Authorization Page (detailed §9.4, S0003).
+// It validates the OAuth query parameters (failing fast for an unknown/invalid
+// client) and returns the full HTML page; the embedded JS drives the CIP-30
+// flow and posts the signed nonce to /api/connect/authorize.
 //
-//	GET /connect?client_id&redirect_uri&state&aud&response_type=code&scope?&code_challenge?
+//	GET /connect?client_id&redirect_uri&state&aud&response_type=code&scope?&code_challenge?&device_pubkey?
 func (h *apiHandlers) connect(w http.ResponseWriter, r *http.Request) {
 	if h.d.OAuth == nil {
 		notImplemented(w, r)
@@ -31,14 +32,32 @@ func (h *apiHandlers) connect(w http.ResponseWriter, r *http.Request) {
 		writeOAuthErr(w, err)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `<!doctype html><html><head><title>Ouro Pass Authorization</title></head>
-<body><h1>Connect your wallet</h1>
-<p>client_id: %s</p><p>aud: %s</p>
-<p>This placeholder is replaced by the web/ Authorization Page; it posts the
-signed nonce to /api/connect/authorize.</p></body></html>`,
-		htmlEscape(q.Get("client_id")), htmlEscape(q.Get("aud")))
+	if err := authpage.RenderConnect(w, authpage.ConnectData{
+		ClientID: q.Get("client_id"), RedirectURI: q.Get("redirect_uri"), State: q.Get("state"),
+		Aud: q.Get("aud"), Scope: q.Get("scope"), CodeChallenge: q.Get("code_challenge"),
+		DevicePubkey: q.Get("device_pubkey"), Network: h.d.Network,
+	}); err != nil {
+		serverError(w, r, err)
+	}
+}
+
+// bind serves the issuer-rendered channel binding page (detailed §9.5, S0003):
+// connect wallet → activation → Telegram deep link. Public; the server enforces
+// eligibility when the activation is created.
+//
+//	GET /bind?channel_type=telegram
+func (h *apiHandlers) bind(w http.ResponseWriter, r *http.Request) {
+	if h.d.OAuth == nil {
+		notImplemented(w, r)
+		return
+	}
+	ct := r.URL.Query().Get("channel_type")
+	if ct == "" {
+		ct = "telegram"
+	}
+	if err := authpage.RenderBind(w, authpage.BindData{ChannelType: ct, Network: h.d.Network}); err != nil {
+		serverError(w, r, err)
+	}
 }
 
 // connectAuthorize handles the signed authorization submission (detailed §9.4).
@@ -61,7 +80,24 @@ func (h *apiHandlers) connectAuthorize(w http.ResponseWriter, r *http.Request) {
 		CodeChallenge string   `json:"code_challenge"`
 		DevicePubkey  string   `json:"device_pubkey"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	// The issuer-served Authorization Page submits a hidden form (so the browser
+	// follows the 302 to redirect_uri natively); programmatic clients post JSON.
+	if ct := r.Header.Get("Content-Type"); strings.HasPrefix(ct, "application/x-www-form-urlencoded") {
+		if err := r.ParseForm(); err != nil {
+			respond.Error(w, http.StatusBadRequest, "invalid_request", "malformed form body")
+			return
+		}
+		req.ClientID = r.PostForm.Get("client_id")
+		req.RedirectURI = r.PostForm.Get("redirect_uri")
+		req.State = r.PostForm.Get("state")
+		req.Aud = r.PostForm.Get("aud")
+		req.Scope = strings.Fields(r.PostForm.Get("scope"))
+		req.Nonce = r.PostForm.Get("nonce")
+		req.CoseKey = r.PostForm.Get("cose_key")
+		req.Signature = r.PostForm.Get("signature")
+		req.CodeChallenge = r.PostForm.Get("code_challenge")
+		req.DevicePubkey = r.PostForm.Get("device_pubkey")
+	} else if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "invalid_request", "malformed JSON body")
 		return
 	}
