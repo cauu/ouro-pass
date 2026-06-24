@@ -1,12 +1,12 @@
 # Ouro Pass 授权流后端改造 — walletauth 契约（COSE_Key/hash）+ issuer 服务的授权/绑定页
 
 Spec-ID: S0003
-Status: active
+Status: completed
 Created Time: 2026-06-24T02:10:00+08:00
 Start Time: 2026-06-24T02:30:00+08:00
-Completion Time:
+Completion Time: 2026-06-24T23:50:00+08:00
 Previous Spec-ID: (none)
-Closure Reason:
+Closure Reason: delivered
 
 ## 1. Requirement Details
 
@@ -75,7 +75,7 @@ CIP-30 钱包**只能在 `signData` 之后**经返回的 `DataSignature.key`(COS
 - [x] p1-3 四条流 handler 契约同步（connect/authorize、activation/create、admin challenge+verify、step-up）+ handler/e2e 测试更新（S0001 既有用 `stake_vkey` 的测试改为 COSE_Key/地址）（TC-3）。
 - [x] p2-1 授权页：`GET /connect` 渲染完整 HTML 模板 + 内嵌 vanilla JS（连钱包/sign/转发）+ `embed`；replace 占位（TC-4）。
 - [x] p2-2 渠道绑定页 HTML + vanilla JS（activation）+ deep link/二维码（TC-5）。
-- [~] p3-1 全量 `go test ./...` + 二进制 smoke + 真钱包手测矩阵（R1 标注；向量入自动化测试）（TC-6）。自动化部分全绿；真钱包浏览器手测需用户在装有 Cardano 钱包扩展的浏览器执行（Claude 无法驱动），见 §6。
+- [x] p3-1 全量 `go test ./...` + 二进制 smoke + 真钱包手测矩阵（R1 标注；向量入自动化测试）（TC-6）。自动化全绿 + 真钱包矩阵 2/2 通过（Vespr 测试网 + Lace 主网，两套实现），见 §6。
 - [x] p2-3 **fix**（手测发现）：钱包探测改为「轮询 + `load`/`cardano#initialized` 事件 + 宽松判定」，解决 Vespr 等**延迟注入** `window.cardano` 导致的 "No Cardano wallet detected"（TC-4 复用 + 用户复测）。
 - [x] p3-1-fix1 **fix**（真钱包手测发现，关键）：`cose.go` `checkAlg` 把 protected header 解成 `map[int]`，而真钱包（Vespr）按 CIP-8 在 protected header 里放**字符串 label `"address"`**（签名地址）→ 混合 int/string 键 → 解码失败被误判为 "unexpected algorithm" → 所有真钱包签名 `access_denied`。改为 `map[any]` 解码 + `cborKeyInt` 取 label 1，严格 alg 校验不变。新增**真钱包 golden vector** 回归测试（TC-3 复用 + 兑现 D25）。
 
@@ -112,6 +112,8 @@ CIP-30 钱包**只能在 `signData` 之后**经返回的 `DataSignature.key`(COS
 - 2026-06-24 p3-1-fix1 | stack: go | command: `go test -count=1 -v ./internal/utils/crypto/` + 全量 `go test ./...` | result: pass | note: 真钱包 Vespr vector（cose_key/signature/nonce）现 `Verify err=<nil>`、`blake2b224(vkey)==地址凭证`、篡改 payload 被拒；严格 alg 测试（ES256/缺 alg→ErrCOSEAlg）仍绿；全仓 0 FAIL。**根因即 D25 担心的真钱包 golden vector 盲区被兑现**：合成/go-cose 向量只用 `{1:alg}`，真钱包 protected header 还带 `"address"` 字符串键。
 - 2026-06-24 手测进展（用户）：Vespr 在 `/bind` 实测——修复前 `access_denied`（暴露 p3-1-fix1）；修复后用户复测返回 **`not_eligible`(403)** = ✅ 签名路径全通（COSE_Key 抽 vkey + COSE_Sign1 验签 + hash 绑定全过；仅 mock 链无该凭证质押数据故不合格，符合预期）。真钱包矩阵已过 1 个（Vespr）；fix 为通用（容忍任意混合键 header）+ 已锁 golden vector。第 2 个钱包为可选增信（用户拟用 mainnet Lace，`make dev DEV_NETWORK=mainnet`）。
 - 2026-06-24 dev 工具修正：`make dev` 由 `go run` 改为 `build -o .dev/issuer` + `exec`（`go run` Ctrl-C 不转发给子进程→端口残留 "address already in use"）；新增 `make dev-stop` 清残留。验证：新目标启动 `/bind` 200、进程名 `.dev/issuer` 可被 `dev-stop` 干净停止。
+- 2026-06-24 TC-6 完成（真钱包矩阵 2/2）| stack: manual+go | command: `make dev`(testnet)→Vespr `/bind` + `make dev DEV_NETWORK=mainnet`→Lace `/bind` | result: pass | note: 两套不同钱包实现（Vespr 测试网 / Lace 主网）签名后 `/api/activation/create` 均回 `not_eligible`(403) = 签名路径全通（COSE_Key+验签+hash 绑定）；仅 mock 链无质押数据故不合格，符合预期。p3-1-fix1 的真钱包 golden vector 已入自动化回归。R1（钱包互操作）由此关闭。
+- 2026-06-24 S0003 关闭：用户确认两钱包手测通过、spec 完成。p1-1..p3-1 全部 `[x]`（p2-3、p3-1-fix1 为手测发现的修复）；全仓 `go build/vet/test ./...` 0 FAIL（17 包）+ PG 集成绿 + 二进制 smoke + 真钱包 2/2。Status→completed、Closure Reason→delivered、移入 `completed/`。
 
 ## 7. Change Requests (append-only)
 - 2026-06-24 决策：把 COSE_Key→vkey 的 CBOR 解码 + reward 地址解析**全部放后端**（消除浏览器手搓 CBOR 的"粗糙"），授权页/绑定页改为 **issuer 服务的 HTML 模板 + vanilla JS（零前端构建）**；walletauth 契约从"裸 vkey"改为"challenge 绑 hash + verify 收 COSE_Key"，四条流一致。安全不变量：抽 vkey 后必须验签名 + 比 hash（vkey 非秘密）。
