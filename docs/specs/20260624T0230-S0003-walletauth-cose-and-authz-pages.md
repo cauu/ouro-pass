@@ -70,7 +70,7 @@ CIP-30 钱包**只能在 `signData` 之后**经返回的 `DataSignature.key`(COS
 - server/internal/core/walletauth/walletauth.go、utils/crypto/cose.go、utils/chain/stakeaddr.go、httpapi/handlers_{oauth,wallet,activation,admin}.go
 
 ## 3. Execution Plan
-- [ ] p1-1 `crypto.StakeVkeyFromCOSEKey`（解 COSE_Key 取 label -2 + 校验 kty/crv/len/上限）+ reward 地址→28B hash（复用 stakeaddr，兼容 raw/CBOR/bech32）；单测含 go-cose 产出的 COSE_Key 向量（TC-1）。
+- [x] p1-1 `crypto.StakeVkeyFromCOSEKey`（解 COSE_Key 取 label -2 + 校验 kty/crv/len/上限）+ reward 地址→28B hash（复用 stakeaddr，兼容 raw/CBOR/bech32）；单测含 go-cose 产出的 COSE_Key 向量（TC-1）。
 - [ ] p1-2 `walletauth.Challenge/Verify` 改造（绑 hash / 抽 vkey + 双校验）+ 单测：合法、坏 COSE_Key、hash 不匹配、签名不符、payload 编码（TC-2）。
 - [ ] p1-3 四条流 handler 契约同步（connect/authorize、activation/create、admin challenge+verify、step-up）+ handler/e2e 测试更新（S0001 既有用 `stake_vkey` 的测试改为 COSE_Key/地址）（TC-3）。
 - [ ] p2-1 授权页：`GET /connect` 渲染完整 HTML 模板 + 内嵌 vanilla JS（连钱包/sign/转发）+ `embed`；replace 占位（TC-4）。
@@ -88,8 +88,11 @@ CIP-30 钱包**只能在 `signData` 之后**经返回的 `DataSignature.key`(COS
 
 ## 5. Execution Log (append-only)
 - 2026-06-24 S0003 草案创建（draft）：源于 S0002 评审——授权页应是 issuer 服务的 HTML（设计文档 §9.4 证实），且 CIP-30 流程冲突需改 walletauth（challenge 绑 hash / verify 收 COSE_Key 抽 vkey）。尚未执行。
+- 2026-06-24 S0003 激活（active）：draft→active，Start Time 记录，重命名加执行时间戳前缀。
+- 2026-06-24 p1-1 完成：新增 `crypto/cosekey.go`（`StakeVkeyFromCOSEKey`：map 解 COSE_Key、强制 kty=OKP/crv=Ed25519、x len==32、输入上限 512B）+ `chain/rewardaddr.go`（`StakeHashFromRewardAddress` + `bech32Decode` + 无依赖 `unwrapCBORBytes`，兼容 bech32/raw-hex/CBOR-bstr 三形态）。测试 `cosekey_test.go`/`rewardaddr_test.go`：go-cose 独立产出的 COSE_Key 被正确抽取、label 乱序+额外 kid 容忍、坏 kty/crv/len/截断/非 map 全拒；三形态地址→同一 28B hash、坏校验和/混合大小写/错 header/错长度全拒。`cosekey.go` 生产代码不引 go-cose（仅测试引用）。
 
 ## 6. Validation Evidence (append-only)
+- 2026-06-24 TC-1 | stack: go | command: `go test -count=1 -v -run 'StakeVkeyFromCOSEKey\|StakeHashFromRewardAddress' ./internal/utils/crypto/ ./internal/utils/chain/` | result: pass | note: 5 用例全绿——COSE_Key go-cose 互操作抽取、乱序+extras、拒坏输入；reward 地址 5 形态（bech32/raw/CBOR-bstr/大写/空白）→同一 hash、6 类坏输入全拒。
 
 ## 7. Change Requests (append-only)
 - 2026-06-24 决策：把 COSE_Key→vkey 的 CBOR 解码 + reward 地址解析**全部放后端**（消除浏览器手搓 CBOR 的"粗糙"），授权页/绑定页改为 **issuer 服务的 HTML 模板 + vanilla JS（零前端构建）**；walletauth 契约从"裸 vkey"改为"challenge 绑 hash + verify 收 COSE_Key"，四条流一致。安全不变量：抽 vkey 后必须验签名 + 比 hash（vkey 非秘密）。
