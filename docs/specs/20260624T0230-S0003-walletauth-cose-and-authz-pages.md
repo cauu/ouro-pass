@@ -75,7 +75,7 @@ CIP-30 钱包**只能在 `signData` 之后**经返回的 `DataSignature.key`(COS
 - [x] p1-3 四条流 handler 契约同步（connect/authorize、activation/create、admin challenge+verify、step-up）+ handler/e2e 测试更新（S0001 既有用 `stake_vkey` 的测试改为 COSE_Key/地址）（TC-3）。
 - [x] p2-1 授权页：`GET /connect` 渲染完整 HTML 模板 + 内嵌 vanilla JS（连钱包/sign/转发）+ `embed`；replace 占位（TC-4）。
 - [x] p2-2 渠道绑定页 HTML + vanilla JS（activation）+ deep link/二维码（TC-5）。
-- [ ] p3-1 全量 `go test ./...` + 二进制 smoke + 真钱包手测矩阵（R1 标注；向量入自动化测试）（TC-6）。
+- [~] p3-1 全量 `go test ./...` + 二进制 smoke + 真钱包手测矩阵（R1 标注；向量入自动化测试）（TC-6）。自动化部分全绿；真钱包浏览器手测需用户在装有 Cardano 钱包扩展的浏览器执行（Claude 无法驱动），见 §6。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 `StakeVkeyFromCOSEKey`：go-cose 产出的 COSE_Key 抽出正确 32B vkey；坏 kty/crv/len/截断 CBOR → error；reward 地址(raw/CBOR/bech32 三形态)→ 同一 28B hash。
@@ -101,6 +101,9 @@ CIP-30 钱包**只能在 `signData` 之后**经返回的 `DataSignature.key`(COS
 - 2026-06-24 TC-4 | stack: go | command: `go test -count=1 -run 'ConnectPage\|AuthAsset\|ConnectAuthorize_FormPost' ./internal/httpapi/` | result: pass | note: `GET /connect` 返回完整 HTML（含 `data-mode=authorize`/`data-client-id`/`/assets/ouropass-auth.js` + CSP），非占位；坏 client→非 200、错 response_type→400；JS 资源 200+`application/javascript` 且含 signData/getRewardAddresses/stake_address/cose_key；form-urlencoded `/connect/authorize`→302 带 code/state。
 - 2026-06-24 TC-5 | stack: go | command: `go test -count=1 -run 'BindPage' ./internal/httpapi/` | result: pass | note: `GET /bind` 200 + `data-mode=activate`/`data-channel-type=telegram` + 同源 JS 引用。
 - 2026-06-24 binary smoke | stack: go | command: `go build -o /tmp/issuer ./cmd/issuer` + 启动 | result: pass | note: `/assets/ouropass-auth.js` 200；OAuth 未配置时 `/connect`、`/bind` 按设计降级 501（`h.d.OAuth==nil`）；优雅关停 exit 0。真钱包浏览器手测矩阵（R1）留待 p3-1/用户。
+
+- 2026-06-24 TC-6（自动化部分）| stack: go | command: `go test -count=1 ./...`（17 包）+ `OUROPASS_TEST_PG_DSN=… go test -tags integration ./internal/inttest/` + 二进制 smoke（OAuth 启用） | result: pass | note: 全 17 包 0 FAIL；用户本地 PG 集成绿（walletauth 无 schema 变更，DB 零影响印证）；二进制 `/bind`→200+CSP+activate、`/connect` 坏 client→401（快速失败、非占位）、`/assets/ouropass-auth.js`→200、优雅关停 exit 0。COSE 互操作由 go-cose 双向覆盖（COSE_Sign1 p14-7 + COSE_Key p1-1/TC-1）。
+- 2026-06-24 p3-1 残留（manual，需用户）：真钱包浏览器手测矩阵（Nami/Eternl/Lace 任二）—— 连钱包→`signData`→拿 code 回跳 / 出 Telegram deep link。Claude 无法驱动浏览器钱包扩展；这是 R1 的最终互操作确认，建议用户执行后回填，或在评估 go-cose 互操作已足够时显式豁免再 close。
 
 ## 7. Change Requests (append-only)
 - 2026-06-24 决策：把 COSE_Key→vkey 的 CBOR 解码 + reward 地址解析**全部放后端**（消除浏览器手搓 CBOR 的"粗糙"），授权页/绑定页改为 **issuer 服务的 HTML 模板 + vanilla JS（零前端构建）**；walletauth 契约从"裸 vkey"改为"challenge 绑 hash + verify 收 COSE_Key"，四条流一致。安全不变量：抽 vkey 后必须验签名 + 比 hash（vkey 非秘密）。
