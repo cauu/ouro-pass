@@ -63,16 +63,18 @@ func New(cfg Config) *Service {
 	}
 }
 
-// Challenge issues an admin-login nonce bound to the owner key.
-func (s *Service) Challenge(ctx context.Context, ownerVkeyHex string) (string, time.Time, error) {
-	return s.wallet.Challenge(ctx, domain.NonceAdminLogin, ownerVkeyHex)
+// Challenge issues an admin-login nonce bound to the owner stake credential
+// (derived from the owner's reward/stake address).
+func (s *Service) Challenge(ctx context.Context, ownerStakeAddress string) (string, time.Time, error) {
+	return s.wallet.Challenge(ctx, domain.NonceAdminLogin, ownerStakeAddress)
 }
 
-// Verify validates the signed login nonce, resolves the admin (owner role for a
-// configured on-chain owner key; otherwise an existing operator/viewer), and
-// creates a session. Returns the plaintext session token (set as a cookie).
-func (s *Service) Verify(ctx context.Context, ownerVkeyHex, nonce, signature, ip string) (token string, role domain.AdminRole, err error) {
-	keyHash, err := s.wallet.Verify(ctx, domain.NonceAdminLogin, ownerVkeyHex, nonce, signature)
+// Verify validates the signed login nonce (the COSE_Key recovers the owner
+// vkey), resolves the admin (owner role for a configured on-chain owner key;
+// otherwise an existing operator/viewer), and creates a session. Returns the
+// plaintext session token (set as a cookie).
+func (s *Service) Verify(ctx context.Context, coseKeyHex, nonce, signature, ip string) (token string, role domain.AdminRole, err error) {
+	keyHash, err := s.wallet.Verify(ctx, domain.NonceAdminLogin, coseKeyHex, nonce, signature)
 	if err != nil {
 		return "", "", ErrUnauthorized
 	}
@@ -135,8 +137,8 @@ func (s *Service) Logout(ctx context.Context, sessionToken string) error {
 
 // VerifyStepUp re-checks a fresh owner signature for a sensitive operation
 // (detailed §9.8). The step-up key must match the session admin's owner key.
-func (s *Service) VerifyStepUp(ctx context.Context, ownerVkeyHex, nonce, signature, expectedKeyHash string) error {
-	keyHash, err := s.wallet.Verify(ctx, domain.NonceStepUp, ownerVkeyHex, nonce, signature)
+func (s *Service) VerifyStepUp(ctx context.Context, coseKeyHex, nonce, signature, expectedKeyHash string) error {
+	keyHash, err := s.wallet.Verify(ctx, domain.NonceStepUp, coseKeyHex, nonce, signature)
 	if err != nil {
 		return ErrUnauthorized
 	}
@@ -146,9 +148,10 @@ func (s *Service) VerifyStepUp(ctx context.Context, ownerVkeyHex, nonce, signatu
 	return nil
 }
 
-// ChallengeStepUp issues a step-up nonce bound to the owner key.
-func (s *Service) ChallengeStepUp(ctx context.Context, ownerVkeyHex string) (string, time.Time, error) {
-	return s.wallet.Challenge(ctx, domain.NonceStepUp, ownerVkeyHex)
+// ChallengeStepUp issues a step-up nonce bound to the owner stake credential
+// (derived from the owner's reward/stake address).
+func (s *Service) ChallengeStepUp(ctx context.Context, ownerStakeAddress string) (string, time.Time, error) {
+	return s.wallet.Challenge(ctx, domain.NonceStepUp, ownerStakeAddress)
 }
 
 // RoleRank orders roles for RBAC comparisons (owner > operator > viewer).

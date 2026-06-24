@@ -97,14 +97,21 @@ func newEnv(t *testing.T) *env {
 // --- wallet + helpers ------------------------------------------------------
 
 type wallet struct {
-	priv ed25519.PrivateKey
-	vkey string
-	sch  string
+	priv       ed25519.PrivateKey
+	vkey       string
+	sch        string
+	rewardAddr string // CIP-30 reward address (challenge input)
+	coseKey    string // CIP-30 signData `key` carrying the vkey (verify input)
 }
 
 func newWallet(t *testing.T) wallet {
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
-	return wallet{priv: priv, vkey: hex.EncodeToString(pub), sch: hex.EncodeToString(crypto.Blake2b224(pub))}
+	cred := crypto.Blake2b224(pub)
+	ck, _ := cbor.Marshal(map[int]any{1: 1, -1: 6, -2: []byte(pub), 3: -8})
+	return wallet{
+		priv: priv, vkey: hex.EncodeToString(pub), sch: hex.EncodeToString(cred),
+		rewardAddr: hex.EncodeToString(append([]byte{0xe1}, cred...)), coseKey: hex.EncodeToString(ck),
+	}
 }
 
 // cose builds a CIP-8 COSE_Sign1 over the nonce, as a CIP-30 wallet's signData.
@@ -142,7 +149,7 @@ func (e *env) post(path, body string) (int, map[string]any) {
 func (e *env) authorize(w wallet, clientID, redirect, aud, codeChallenge, devicePubkey string) (int, string) {
 	e.t.Helper()
 	// 1. challenge
-	st, body := e.post("/api/auth/challenge", `{"purpose":"issue","stake_vkey":"`+w.vkey+`"}`)
+	st, body := e.post("/api/auth/challenge", `{"purpose":"issue","stake_address":"`+w.rewardAddr+`"}`)
 	if st != 200 {
 		e.t.Fatalf("challenge = %d", st)
 	}
@@ -150,7 +157,7 @@ func (e *env) authorize(w wallet, clientID, redirect, aud, codeChallenge, device
 	// 2. authorize (returns 302 with ?code= or ?error=)
 	req, _ := http.NewRequest(http.MethodPost, e.srv.URL+"/api/connect/authorize", strings.NewReader(
 		`{"client_id":"`+clientID+`","redirect_uri":"`+redirect+`","aud":"`+aud+`","nonce":"`+nonce+
-			`","stake_vkey":"`+w.vkey+`","signature":"`+cose(w.priv, nonce)+`","code_challenge":"`+codeChallenge+
+			`","cose_key":"`+w.coseKey+`","signature":"`+cose(w.priv, nonce)+`","code_challenge":"`+codeChallenge+
 			`","device_pubkey":"`+devicePubkey+`"}`))
 	req.Header.Set("Content-Type", "application/json")
 	// Capture the redirect rather than following it.
@@ -329,8 +336,8 @@ func TestE2E_IneligibleAndAdminRevoke(t *testing.T) {
 
 	// Admin logs in (owner) and revokes the member with step-up.
 	e.adminLogin(owner)
-	suNonce, _, _ := e.admin.ChallengeStepUp(context.Background(), owner.vkey)
-	revokeBody := `{"owner_vkey":"` + owner.vkey + `","step_up_nonce":"` + suNonce + `","step_up_signature":"` + cose(owner.priv, suNonce) + `"}`
+	suNonce, _, _ := e.admin.ChallengeStepUp(context.Background(), owner.rewardAddr)
+	revokeBody := `{"cose_key":"` + owner.coseKey + `","step_up_nonce":"` + suNonce + `","step_up_signature":"` + cose(owner.priv, suNonce) + `"}`
 	if st, _ := e.post("/api/admin/members/"+member.sch+"/revoke", revokeBody); st != 200 {
 		t.Fatalf("admin revoke = %d", st)
 	}
@@ -358,13 +365,13 @@ func TestE2E_ActivationToTelegramSubscription(t *testing.T) {
 	e.eligible(w)
 
 	// Get an activation nonce + sign it, then create the activation code (HTTP).
-	st, body := e.post("/api/auth/challenge", `{"purpose":"activation","stake_vkey":"`+w.vkey+`"}`)
+	st, body := e.post("/api/auth/challenge", `{"purpose":"activation","stake_address":"`+w.rewardAddr+`"}`)
 	if st != 200 {
 		t.Fatalf("activation challenge = %d", st)
 	}
 	nonce, _ := body["nonce"].(string)
 	st, act := e.post("/api/activation/create",
-		`{"channel_type":"telegram","nonce":"`+nonce+`","stake_vkey":"`+w.vkey+`","signature":"`+cose(w.priv, nonce)+`"}`)
+		`{"channel_type":"telegram","nonce":"`+nonce+`","cose_key":"`+w.coseKey+`","signature":"`+cose(w.priv, nonce)+`"}`)
 	if st != 200 {
 		t.Fatalf("activation create = %d (%v)", st, act)
 	}
@@ -427,8 +434,8 @@ func TestE2E_KeyRotationJWKSOverlap(t *testing.T) {
 		t.Fatalf("initial jwks keys = %d, want 1", len(before))
 	}
 
-	suNonce, _, _ := e.admin.ChallengeStepUp(context.Background(), owner.vkey)
-	body := `{"owner_vkey":"` + owner.vkey + `","step_up_nonce":"` + suNonce + `","step_up_signature":"` + cose(owner.priv, suNonce) + `"}`
+	suNonce, _, _ := e.admin.ChallengeStepUp(context.Background(), owner.rewardAddr)
+	body := `{"cose_key":"` + owner.coseKey + `","step_up_nonce":"` + suNonce + `","step_up_signature":"` + cose(owner.priv, suNonce) + `"}`
 	if st, r := e.post("/api/admin/keys/issuer/rotate", body); st != 200 || r["new_kid"] == nil {
 		t.Fatalf("rotate = %d (%v)", st, r)
 	}
@@ -539,13 +546,13 @@ func pkceS256(verifier string) string {
 
 func (e *env) adminLogin(owner wallet) {
 	e.t.Helper()
-	st, body := e.post("/api/admin/auth/challenge", `{"owner_vkey":"`+owner.vkey+`"}`)
+	st, body := e.post("/api/admin/auth/challenge", `{"owner_stake_address":"`+owner.rewardAddr+`"}`)
 	if st != 200 {
 		e.t.Fatalf("admin challenge = %d", st)
 	}
 	nonce, _ := body["nonce"].(string)
 	if st, _ := e.post("/api/admin/auth/verify",
-		`{"owner_vkey":"`+owner.vkey+`","nonce":"`+nonce+`","signature":"`+cose(owner.priv, nonce)+`"}`); st != 200 {
+		`{"cose_key":"`+owner.coseKey+`","nonce":"`+nonce+`","signature":"`+cose(owner.priv, nonce)+`"}`); st != 200 {
 		e.t.Fatalf("admin verify = %d", st)
 	}
 }

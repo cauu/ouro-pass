@@ -12,7 +12,7 @@ import (
 // activationCreate issues a one-time channel activation code + deep link
 // (detailed §9.5). The bot username for deep links comes from Deps.
 //
-//	POST /api/activation/create  {channel_type, nonce, stake_vkey, signature}
+//	POST /api/activation/create  {channel_type, nonce, cose_key, signature}
 func (h *apiHandlers) activationCreate(w http.ResponseWriter, r *http.Request) {
 	if h.d.OAuth == nil {
 		notImplemented(w, r)
@@ -21,14 +21,14 @@ func (h *apiHandlers) activationCreate(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ChannelType string `json:"channel_type"`
 		Nonce       string `json:"nonce"`
-		StakeVkey   string `json:"stake_vkey"`
+		CoseKey     string `json:"cose_key"`
 		Signature   string `json:"signature"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "invalid_request", "malformed JSON body")
 		return
 	}
-	res, err := h.d.OAuth.CreateActivation(r.Context(), req.ChannelType, req.Nonce, req.StakeVkey, req.Signature, h.d.TelegramBot)
+	res, err := h.d.OAuth.CreateActivation(r.Context(), req.ChannelType, req.Nonce, req.CoseKey, req.Signature, h.d.TelegramBot)
 	if err != nil {
 		status := http.StatusBadRequest
 		if errors.Is(err, oauth.ErrNotEligible) {

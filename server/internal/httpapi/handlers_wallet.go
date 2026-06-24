@@ -10,15 +10,15 @@ import (
 
 // authChallenge issues a wallet-signing nonce (detailed §9.3).
 //
-//	POST /api/auth/challenge  {purpose:"issue|activation", stake_vkey} → {nonce, expires_at}
+//	POST /api/auth/challenge  {purpose:"issue|activation", stake_address} → {nonce, expires_at}
 func (h *apiHandlers) authChallenge(w http.ResponseWriter, r *http.Request) {
 	if h.d.Wallet == nil {
 		notImplemented(w, r)
 		return
 	}
 	var req struct {
-		Purpose   string `json:"purpose"`
-		StakeVkey string `json:"stake_vkey"`
+		Purpose      string `json:"purpose"`
+		StakeAddress string `json:"stake_address"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "invalid_request", "malformed JSON body")
@@ -29,11 +29,11 @@ func (h *apiHandlers) authChallenge(w http.ResponseWriter, r *http.Request) {
 		respond.Error(w, http.StatusBadRequest, "invalid_request", "purpose must be issue or activation")
 		return
 	}
-	if req.StakeVkey == "" {
-		respond.Error(w, http.StatusBadRequest, "invalid_request", "stake_vkey required")
+	if req.StakeAddress == "" {
+		respond.Error(w, http.StatusBadRequest, "invalid_request", "stake_address required")
 		return
 	}
-	nonce, expiresAt, err := h.d.Wallet.Challenge(r.Context(), purpose, req.StakeVkey)
+	nonce, expiresAt, err := h.d.Wallet.Challenge(r.Context(), purpose, req.StakeAddress)
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return

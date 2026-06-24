@@ -61,7 +61,7 @@ func adminResourceEnv(t *testing.T, role domain.AdminRole) (*httptest.Server, *h
 
 	// Login.
 	nonce := adminChallengeReq(t, client, srv.URL, vkey)
-	body, _ := json.Marshal(map[string]string{"owner_vkey": vkey, "nonce": nonce, "signature": signNonce(t, priv, nonce)})
+	body, _ := json.Marshal(map[string]string{"cose_key": coseKeyOf(vkey), "nonce": nonce, "signature": signNonce(t, priv, nonce)})
 	resp, _ := client.Post(srv.URL+"/api/admin/auth/verify", "application/json", strings.NewReader(string(body)))
 	if resp.StatusCode != 200 {
 		t.Fatalf("login as %s = %d", role, resp.StatusCode)
@@ -110,7 +110,7 @@ func TestAdminRevokeMember_BlacklistAndCascade(t *testing.T) {
 	}
 	// With a fresh step-up signature → success.
 	suNonce := stepUpNonce(t, st, vkey)
-	revokeBody, _ := json.Marshal(map[string]string{"owner_vkey": vkey, "step_up_nonce": suNonce, "step_up_signature": signNonce(t, priv, suNonce)})
+	revokeBody, _ := json.Marshal(map[string]string{"cose_key": coseKeyOf(vkey), "step_up_nonce": suNonce, "step_up_signature": signNonce(t, priv, suNonce)})
 	if code := postCode(t, client, srv.URL+"/api/admin/members/"+sch+"/revoke", string(revokeBody)); code != 200 {
 		t.Fatalf("revoke with step-up = %d, want 200", code)
 	}
@@ -206,7 +206,7 @@ func TestAdminOwner_RegisterClientAndRotateKey(t *testing.T) {
 	}
 	// With a fresh step-up signature → confidential client + one-time secret.
 	regNonce := stepUpNonce(t, st, vkey)
-	regBody := `{` + regFields + `,"owner_vkey":"` + vkey + `","step_up_nonce":"` + regNonce + `","step_up_signature":"` + signNonce(t, priv, regNonce) + `"}`
+	regBody := `{` + regFields + `,"cose_key":"` + coseKeyOf(vkey) + `","step_up_nonce":"` + regNonce + `","step_up_signature":"` + signNonce(t, priv, regNonce) + `"}`
 	resp := postJSON(t, client, srv.URL+"/api/admin/oauth-clients", regBody)
 	if resp["client_secret"] == "" || resp["client_secret"] == nil {
 		t.Fatalf("expected one-time client_secret: %v", resp)
@@ -219,7 +219,7 @@ func TestAdminOwner_RegisterClientAndRotateKey(t *testing.T) {
 
 	// Rotate WITH a valid step-up signature → success.
 	suNonce := stepUpNonce(t, st, vkey)
-	body, _ := json.Marshal(map[string]string{"owner_vkey": vkey, "step_up_nonce": suNonce, "step_up_signature": signNonce(t, priv, suNonce)})
+	body, _ := json.Marshal(map[string]string{"cose_key": coseKeyOf(vkey), "step_up_nonce": suNonce, "step_up_signature": signNonce(t, priv, suNonce)})
 	r, _ := client.Post(srv.URL+"/api/admin/keys/issuer/rotate", "application/json", strings.NewReader(string(body)))
 	if r.StatusCode != 200 {
 		t.Fatalf("rotate with step-up = %d, want 200", r.StatusCode)
@@ -248,7 +248,7 @@ func TestAdminOwner_RegisterClientAndRotateKey(t *testing.T) {
 func stepUpNonce(t *testing.T, st *store.Store, vkey string) string {
 	t.Helper()
 	svc := admin.New(admin.Config{Wallet: walletauth.New(st, time.Minute), Store: st, PoolID: "pool1"})
-	nonce, _, err := svc.ChallengeStepUp(context.Background(), vkey)
+	nonce, _, err := svc.ChallengeStepUp(context.Background(), rewardAddrOf(vkey))
 	if err != nil {
 		t.Fatal(err)
 	}

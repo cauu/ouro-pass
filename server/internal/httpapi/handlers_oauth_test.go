@@ -60,6 +60,20 @@ func oauthDeps(t *testing.T) (Deps, *chain.MockSource, ed25519.PrivateKey, strin
 	return Deps{Wallet: wallet, Keys: ks, OAuth: srv}, mock, priv, hex.EncodeToString(pub)
 }
 
+// rewardAddrOf / coseKeyOf derive the S0003 wallet-signature wire forms from a
+// vkey hex: the reward (stake) address for /challenge and the COSE_Key (signData
+// `key`) for verify/authorize/activation. Shared by the httpapi handler tests.
+func rewardAddrOf(vkeyHex string) string {
+	pub, _ := hex.DecodeString(vkeyHex)
+	return hex.EncodeToString(append([]byte{0xe1}, crypto.Blake2b224(pub)...))
+}
+
+func coseKeyOf(vkeyHex string) string {
+	pub, _ := hex.DecodeString(vkeyHex)
+	b, _ := cbor.Marshal(map[int]any{1: 1, -1: 6, -2: pub, 3: -8})
+	return hex.EncodeToString(b)
+}
+
 func signNonce(t *testing.T, priv ed25519.PrivateKey, nonce string) string {
 	protected, _ := cbor.Marshal(map[int]int{1: -8})
 	toSign, _ := cbor.Marshal(struct {
@@ -107,10 +121,10 @@ func TestConnectAuthorize_RedirectsWithCode(t *testing.T) {
 	srv := httptest.NewServer(NewRouter(deps))
 	defer srv.Close()
 
-	nonce, _, _ := deps.Wallet.Challenge(ctx, domain.NonceIssue, vkey)
+	nonce, _, _ := deps.Wallet.Challenge(ctx, domain.NonceIssue, rewardAddrOf(vkey))
 	body, _ := json.Marshal(map[string]any{
 		"client_id": "c1", "redirect_uri": "https://app/cb", "state": "xyz", "aud": "app:ouro",
-		"nonce": nonce, "stake_vkey": vkey, "signature": signNonce(t, priv, nonce),
+		"nonce": nonce, "cose_key": coseKeyOf(vkey), "signature": signNonce(t, priv, nonce),
 	})
 	resp, err := client.Post(srv.URL+"/api/connect/authorize", "application/json", strings.NewReader(string(body)))
 	if err != nil {
@@ -126,10 +140,10 @@ func TestConnectAuthorize_RedirectsWithCode(t *testing.T) {
 
 	// Ineligible (delegates elsewhere) → redirect with error=not_eligible.
 	mock.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: "other", ActiveStakeLovelace: "5000000"})
-	nonce2, _, _ := deps.Wallet.Challenge(ctx, domain.NonceIssue, vkey)
+	nonce2, _, _ := deps.Wallet.Challenge(ctx, domain.NonceIssue, rewardAddrOf(vkey))
 	body2, _ := json.Marshal(map[string]any{
 		"client_id": "c1", "redirect_uri": "https://app/cb", "state": "s2", "aud": "app:ouro",
-		"nonce": nonce2, "stake_vkey": vkey, "signature": signNonce(t, priv, nonce2),
+		"nonce": nonce2, "cose_key": coseKeyOf(vkey), "signature": signNonce(t, priv, nonce2),
 	})
 	resp2, _ := client.Post(srv.URL+"/api/connect/authorize", "application/json", strings.NewReader(string(body2)))
 	loc2, _ := url.Parse(resp2.Header.Get("Location"))

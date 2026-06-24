@@ -91,10 +91,10 @@ func TestToken_AuthCodePublicPKCE(t *testing.T) {
 	sum := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
 
-	nonce, _, _ := h.srv.cfg.Wallet.Challenge(ctx, domain.NonceIssue, h.vkey)
+	nonce, _, _ := h.srv.cfg.Wallet.Challenge(ctx, domain.NonceIssue, h.rewardAddr)
 	code, err := h.srv.Authorize(ctx, AuthorizeRequest{
 		ClientID: "spa", RedirectURI: "https://spa/cb", Aud: "app:ouro", Nonce: nonce,
-		StakeVkey: h.vkey, Signature: h.sign(t, nonce), CodeChallenge: challenge,
+		CoseKey: h.coseKey, Signature: h.sign(t, nonce), CodeChallenge: challenge,
 	})
 	if err != nil {
 		t.Fatalf("authorize: %v", err)
@@ -118,10 +118,10 @@ func TestToken_AuthCodePublicPKCE(t *testing.T) {
 	}
 
 	// Wrong verifier → invalid_grant.
-	nonce2, _, _ := h.srv.cfg.Wallet.Challenge(ctx, domain.NonceIssue, h.vkey)
+	nonce2, _, _ := h.srv.cfg.Wallet.Challenge(ctx, domain.NonceIssue, h.rewardAddr)
 	code2, _ := h.srv.Authorize(ctx, AuthorizeRequest{
 		ClientID: "spa", RedirectURI: "https://spa/cb", Aud: "app:ouro", Nonce: nonce2,
-		StakeVkey: h.vkey, Signature: h.sign(t, nonce2), CodeChallenge: challenge,
+		CoseKey: h.coseKey, Signature: h.sign(t, nonce2), CodeChallenge: challenge,
 	})
 	if _, err := h.srv.Token(ctx, TokenRequest{GrantType: "authorization_code", Code: code2, ClientID: "spa", CodeVerifier: "wrong", RedirectURI: "https://spa/cb"}); err != ErrInvalidGrant {
 		t.Errorf("wrong PKCE verifier: %v, want invalid_grant", err)
@@ -147,10 +147,10 @@ func TestToken_PublicDevicePoP(t *testing.T) {
 	device := hex.EncodeToString([]byte("device-public-key-bytes-32-xxxxx")) // 32 bytes
 
 	mkCode := func() string {
-		nonce, _, _ := h.srv.cfg.Wallet.Challenge(ctx, domain.NonceIssue, h.vkey)
+		nonce, _, _ := h.srv.cfg.Wallet.Challenge(ctx, domain.NonceIssue, h.rewardAddr)
 		c, err := h.srv.Authorize(ctx, AuthorizeRequest{
 			ClientID: "spa", RedirectURI: "https://spa/cb", Aud: "app:ouro", Nonce: nonce,
-			StakeVkey: h.vkey, Signature: h.sign(t, nonce), CodeChallenge: challenge,
+			CoseKey: h.coseKey, Signature: h.sign(t, nonce), CodeChallenge: challenge,
 		})
 		if err != nil {
 			t.Fatalf("authorize: %v", err)

@@ -45,24 +45,27 @@ func sign(t *testing.T, priv ed25519.PrivateKey, nonce string) string {
 	return hex.EncodeToString(msg)
 }
 
-func newKey() (ed25519.PublicKey, ed25519.PrivateKey, string, string) {
-	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
-	vkey := hex.EncodeToString(pub)
-	keyHash := hex.EncodeToString(crypto.Blake2b224(pub))
-	return pub, priv, vkey, keyHash
+// newKey returns a fresh keypair plus the wallet-signature wire forms: the
+// reward (stake) address for Challenge and the COSE_Key for Verify (S0003).
+func newKey() (priv ed25519.PrivateKey, rewardAddr, coseKey, keyHash string) {
+	pub, p, _ := ed25519.GenerateKey(rand.Reader)
+	cred := crypto.Blake2b224(pub)
+	rewardAddr = hex.EncodeToString(append([]byte{0xe1}, cred...))
+	ck, _ := cbor.Marshal(map[int]any{1: 1, -1: 6, -2: []byte(pub), 3: -8})
+	return p, rewardAddr, hex.EncodeToString(ck), hex.EncodeToString(cred)
 }
 
 func TestVerify_OwnerSelfBootstraps(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	_, priv, vkey, keyHash := newKey()
+	priv, rewardAddr, coseKey, keyHash := newKey()
 	svc := New(Config{Wallet: walletauth.New(st, time.Minute), Store: st, OwnerKeyHash: []string{keyHash}, PoolID: "pool1"})
 
-	nonce, _, err := svc.Challenge(ctx, vkey)
+	nonce, _, err := svc.Challenge(ctx, rewardAddr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	token, role, err := svc.Verify(ctx, vkey, nonce, sign(t, priv, nonce), "1.2.3.4")
+	token, role, err := svc.Verify(ctx, coseKey, nonce, sign(t, priv, nonce), "1.2.3.4")
 	if err != nil || role != domain.RoleOwner || token == "" {
 		t.Fatalf("owner verify: %v role=%s", err, role)
 	}
@@ -83,19 +86,19 @@ func TestVerify_OwnerSelfBootstraps(t *testing.T) {
 func TestVerify_NonOwnerNeedsSeededRecord(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	_, priv, vkey, keyHash := newKey()
+	priv, rewardAddr, coseKey, keyHash := newKey()
 	// keyHash NOT in owner allowlist.
 	svc := New(Config{Wallet: walletauth.New(st, time.Minute), Store: st, OwnerKeyHash: nil, PoolID: "pool1"})
 
-	nonce, _, _ := svc.Challenge(ctx, vkey)
-	if _, _, err := svc.Verify(ctx, vkey, nonce, sign(t, priv, nonce), ""); err != ErrForbidden {
+	nonce, _, _ := svc.Challenge(ctx, rewardAddr)
+	if _, _, err := svc.Verify(ctx, coseKey, nonce, sign(t, priv, nonce), ""); err != ErrForbidden {
 		t.Fatalf("unknown key: %v, want ErrForbidden", err)
 	}
 
 	// Owner seeds an operator with this key hash → login now works as operator.
 	st.AdminUsers().Upsert(ctx, domain.AdminUser{AdminID: crypto.RandomID(), PoolID: "pool1", OwnerKeyHash: keyHash, Role: domain.RoleOperator, CreatedAt: time.Now()})
-	nonce2, _, _ := svc.Challenge(ctx, vkey)
-	_, role, err := svc.Verify(ctx, vkey, nonce2, sign(t, priv, nonce2), "")
+	nonce2, _, _ := svc.Challenge(ctx, rewardAddr)
+	_, role, err := svc.Verify(ctx, coseKey, nonce2, sign(t, priv, nonce2), "")
 	if err != nil || role != domain.RoleOperator {
 		t.Fatalf("seeded operator: %v role=%s", err, role)
 	}
@@ -113,16 +116,16 @@ func TestRBAC_AtLeast(t *testing.T) {
 func TestStepUp(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	_, priv, vkey, keyHash := newKey()
+	priv, rewardAddr, coseKey, keyHash := newKey()
 	svc := New(Config{Wallet: walletauth.New(st, time.Minute), Store: st, OwnerKeyHash: []string{keyHash}, PoolID: "pool1"})
 
-	nonce, _, _ := svc.ChallengeStepUp(ctx, vkey)
-	if err := svc.VerifyStepUp(ctx, vkey, nonce, sign(t, priv, nonce), keyHash); err != nil {
+	nonce, _, _ := svc.ChallengeStepUp(ctx, rewardAddr)
+	if err := svc.VerifyStepUp(ctx, coseKey, nonce, sign(t, priv, nonce), keyHash); err != nil {
 		t.Fatalf("step-up: %v", err)
 	}
 	// Step-up by a different key hash than the session owner → forbidden.
-	nonce2, _, _ := svc.ChallengeStepUp(ctx, vkey)
-	if err := svc.VerifyStepUp(ctx, vkey, nonce2, sign(t, priv, nonce2), "other-hash"); err != ErrForbidden {
+	nonce2, _, _ := svc.ChallengeStepUp(ctx, rewardAddr)
+	if err := svc.VerifyStepUp(ctx, coseKey, nonce2, sign(t, priv, nonce2), "other-hash"); err != ErrForbidden {
 		t.Fatalf("step-up wrong key: %v, want ErrForbidden", err)
 	}
 }

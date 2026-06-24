@@ -47,15 +47,15 @@ func TestAuthChallenge_Handler(t *testing.T) {
 		return resp.StatusCode, m
 	}
 
-	code, m := post(`{"purpose":"issue","stake_vkey":"` + hex.EncodeToString(pub) + `"}`)
+	code, m := post(`{"purpose":"issue","stake_address":"` + rewardAddrOf(hex.EncodeToString(pub)) + `"}`)
 	if code != 200 || m["nonce"] == "" || m["nonce"] == nil {
 		t.Fatalf("valid challenge: %d %v", code, m)
 	}
-	if code, m := post(`{"purpose":"bogus","stake_vkey":"ab"}`); code != 400 || m["error"] != "invalid_request" {
+	if code, m := post(`{"purpose":"bogus","stake_address":"ab"}`); code != 400 || m["error"] != "invalid_request" {
 		t.Fatalf("bad purpose: %d %v", code, m)
 	}
-	if code, _ := post(`{"purpose":"issue","stake_vkey":"zz"}`); code != 400 {
-		t.Fatalf("bad vkey hex: %d", code)
+	if code, _ := post(`{"purpose":"issue","stake_address":"zz"}`); code != 400 {
+		t.Fatalf("bad reward address: %d", code)
 	}
 	if code, _ := post(`not json`); code != 400 {
 		t.Fatalf("malformed: %d", code)

@@ -80,7 +80,7 @@ type AuthorizeRequest struct {
 	Aud           string
 	Scope         []string
 	Nonce         string
-	StakeVkey     string
+	CoseKey       string // CIP-30 signData `key` (COSE_Key); issuer recovers the vkey
 	Signature     string
 	CodeChallenge string
 	DevicePubkey  string
@@ -120,7 +120,7 @@ func (s *Server) Authorize(ctx context.Context, req AuthorizeRequest) (code stri
 		return "", ErrInvalidRequest
 	}
 
-	sch, err := s.cfg.Wallet.Verify(ctx, domain.NonceIssue, req.StakeVkey, req.Nonce, req.Signature)
+	sch, err := s.cfg.Wallet.Verify(ctx, domain.NonceIssue, req.CoseKey, req.Nonce, req.Signature)
 	if err != nil {
 		return "", ErrAccessDenied
 	}

@@ -23,12 +23,13 @@ const testPool = "pool1abc"
 
 // harness wires a Server over a fresh store with a mock chain and one client.
 type harness struct {
-	srv   *Server
-	st    *store.Store
-	chain *chain.MockSource
-	pub   ed25519.PublicKey
-	priv  ed25519.PrivateKey
-	vkey  string
+	srv        *Server
+	st         *store.Store
+	chain      *chain.MockSource
+	pub        ed25519.PublicKey
+	priv       ed25519.PrivateKey
+	rewardAddr string // CIP-30 reward address (Challenge input)
+	coseKey    string // CIP-30 signData `key` carrying pub (Verify input)
 }
 
 func newHarness(t *testing.T) *harness {
@@ -75,7 +76,13 @@ func newHarness(t *testing.T) *harness {
 	}
 
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
-	return &harness{srv: srv, st: st, chain: mock, pub: pub, priv: priv, vkey: hex.EncodeToString(pub)}
+	cred := crypto.Blake2b224(pub)
+	rewardAddr := hex.EncodeToString(append([]byte{0xe1}, cred...)) // mainnet reward header
+	coseKeyBytes, _ := cbor.Marshal(map[int]any{1: 1, -1: 6, -2: []byte(pub), 3: -8})
+	return &harness{
+		srv: srv, st: st, chain: mock, pub: pub, priv: priv,
+		rewardAddr: rewardAddr, coseKey: hex.EncodeToString(coseKeyBytes),
+	}
 }
 
 func (h *harness) sign(t *testing.T, nonce string) string {
@@ -96,13 +103,13 @@ func (h *harness) sign(t *testing.T, nonce string) string {
 // authorizeAs runs challenge → sign → Authorize and returns (code, err).
 func (h *harness) authorizeAs(t *testing.T, sch string) (string, error) {
 	ctx := context.Background()
-	nonce, _, err := h.srv.cfg.Wallet.Challenge(ctx, domain.NonceIssue, h.vkey)
+	nonce, _, err := h.srv.cfg.Wallet.Challenge(ctx, domain.NonceIssue, h.rewardAddr)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return h.srv.Authorize(ctx, AuthorizeRequest{
 		ClientID: "c1", RedirectURI: "https://app/cb", State: "xyz", Aud: "app:ouro",
-		Scope: []string{"read"}, Nonce: nonce, StakeVkey: h.vkey, Signature: h.sign(t, nonce),
+		Scope: []string{"read"}, Nonce: nonce, CoseKey: h.coseKey, Signature: h.sign(t, nonce),
 	})
 }
 
@@ -147,10 +154,10 @@ func TestAuthorize_BlacklistedRejected(t *testing.T) {
 func TestAuthorize_ClientValidation(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
-	nonce, _, _ := h.srv.cfg.Wallet.Challenge(ctx, domain.NonceIssue, h.vkey)
+	nonce, _, _ := h.srv.cfg.Wallet.Challenge(ctx, domain.NonceIssue, h.rewardAddr)
 	base := AuthorizeRequest{
 		ClientID: "c1", RedirectURI: "https://app/cb", Aud: "app:ouro",
-		Nonce: nonce, StakeVkey: h.vkey, Signature: h.sign(t, nonce),
+		Nonce: nonce, CoseKey: h.coseKey, Signature: h.sign(t, nonce),
 	}
 	// Unknown client.
 	bad := base

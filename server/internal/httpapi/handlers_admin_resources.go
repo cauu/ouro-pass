@@ -36,13 +36,13 @@ func (h *apiHandlers) mountAdminResources(r chi.Router) {
 }
 
 // requireStepUp re-verifies a fresh owner signature for sensitive ops (§9.8).
-// The body must carry {owner_vkey, step_up_nonce, step_up_signature}.
-func (h *apiHandlers) requireStepUp(r *http.Request, stepUp struct{ OwnerVkey, Nonce, Signature string }) error {
+// The body must carry {cose_key, step_up_nonce, step_up_signature}.
+func (h *apiHandlers) requireStepUp(r *http.Request, stepUp struct{ CoseKey, Nonce, Signature string }) error {
 	u := adminFromCtx(r.Context())
 	if u == nil { // defensive: requireSession should always populate this
 		return admin.ErrUnauthorized
 	}
-	return h.d.Admin.VerifyStepUp(r.Context(), stepUp.OwnerVkey, stepUp.Nonce, stepUp.Signature, u.OwnerKeyHash)
+	return h.d.Admin.VerifyStepUp(r.Context(), stepUp.CoseKey, stepUp.Nonce, stepUp.Signature, u.OwnerKeyHash)
 }
 
 func (h *apiHandlers) audit(r *http.Request, action, target string) {
@@ -88,12 +88,12 @@ func (h *apiHandlers) adminRevokeMember(w http.ResponseWriter, r *http.Request) 
 	// Member revoke cascades token/grant/session revocation — a high blast-radius
 	// op, so it requires a fresh step-up signature like key rotation (p12-11/D19).
 	var su struct {
-		OwnerVkey       string `json:"owner_vkey"`
+		CoseKey         string `json:"cose_key"`
 		StepUpNonce     string `json:"step_up_nonce"`
 		StepUpSignature string `json:"step_up_signature"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&su)
-	if err := h.requireStepUp(r, struct{ OwnerVkey, Nonce, Signature string }{su.OwnerVkey, su.StepUpNonce, su.StepUpSignature}); err != nil {
+	if err := h.requireStepUp(r, struct{ CoseKey, Nonce, Signature string }{su.CoseKey, su.StepUpNonce, su.StepUpSignature}); err != nil {
 		writeAdminErr(w, err)
 		return
 	}
@@ -289,7 +289,7 @@ func (h *apiHandlers) adminRegisterClient(w http.ResponseWriter, r *http.Request
 		PKCERequired bool     `json:"pkce_required"`
 		// Registering a client issues credentials → require a fresh step-up
 		// signature like key rotation (p12-11/D19).
-		OwnerVkey       string `json:"owner_vkey"`
+		CoseKey         string `json:"cose_key"`
 		StepUpNonce     string `json:"step_up_nonce"`
 		StepUpSignature string `json:"step_up_signature"`
 	}
@@ -306,7 +306,7 @@ func (h *apiHandlers) adminRegisterClient(w http.ResponseWriter, r *http.Request
 		return
 	}
 	// Step-up gates the actual registration (after request-shape validation).
-	if err := h.requireStepUp(r, struct{ OwnerVkey, Nonce, Signature string }{body.OwnerVkey, body.StepUpNonce, body.StepUpSignature}); err != nil {
+	if err := h.requireStepUp(r, struct{ CoseKey, Nonce, Signature string }{body.CoseKey, body.StepUpNonce, body.StepUpSignature}); err != nil {
 		writeAdminErr(w, err)
 		return
 	}
@@ -343,12 +343,12 @@ func (h *apiHandlers) adminRotateKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		OwnerVkey       string `json:"owner_vkey"`
+		CoseKey         string `json:"cose_key"`
 		StepUpNonce     string `json:"step_up_nonce"`
 		StepUpSignature string `json:"step_up_signature"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&body)
-	if err := h.requireStepUp(r, struct{ OwnerVkey, Nonce, Signature string }{body.OwnerVkey, body.StepUpNonce, body.StepUpSignature}); err != nil {
+	if err := h.requireStepUp(r, struct{ CoseKey, Nonce, Signature string }{body.CoseKey, body.StepUpNonce, body.StepUpSignature}); err != nil {
 		writeAdminErr(w, err)
 		return
 	}

@@ -55,7 +55,7 @@ func TestAdminLogin_CookieFlowAndRBAC(t *testing.T) {
 
 	// challenge → sign → verify (sets cookie via jar).
 	nonce := adminChallengeReq(t, client, srv.URL, vkey)
-	body, _ := json.Marshal(map[string]string{"owner_vkey": vkey, "nonce": nonce, "signature": signNonce(t, priv, nonce)})
+	body, _ := json.Marshal(map[string]string{"cose_key": coseKeyOf(vkey), "nonce": nonce, "signature": signNonce(t, priv, nonce)})
 	resp, err := client.Post(srv.URL+"/api/admin/auth/verify", "application/json", strings.NewReader(string(body)))
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +90,7 @@ func TestAdminLogin_CookieFlowAndRBAC(t *testing.T) {
 
 func adminChallengeReq(t *testing.T, client *http.Client, base, vkey string) string {
 	t.Helper()
-	body, _ := json.Marshal(map[string]string{"owner_vkey": vkey})
+	body, _ := json.Marshal(map[string]string{"owner_stake_address": rewardAddrOf(vkey)})
 	resp, err := client.Post(base+"/api/admin/auth/challenge", "application/json", strings.NewReader(string(body)))
 	if err != nil {
 		t.Fatal(err)

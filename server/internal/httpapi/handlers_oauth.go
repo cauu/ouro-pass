@@ -56,7 +56,7 @@ func (h *apiHandlers) connectAuthorize(w http.ResponseWriter, r *http.Request) {
 		Aud           string   `json:"aud"`
 		Scope         []string `json:"scope"`
 		Nonce         string   `json:"nonce"`
-		StakeVkey     string   `json:"stake_vkey"`
+		CoseKey       string   `json:"cose_key"`
 		Signature     string   `json:"signature"`
 		CodeChallenge string   `json:"code_challenge"`
 		DevicePubkey  string   `json:"device_pubkey"`
@@ -68,7 +68,7 @@ func (h *apiHandlers) connectAuthorize(w http.ResponseWriter, r *http.Request) {
 
 	code, err := h.d.OAuth.Authorize(r.Context(), oauth.AuthorizeRequest{
 		ClientID: req.ClientID, RedirectURI: req.RedirectURI, State: req.State, Aud: req.Aud,
-		Scope: req.Scope, Nonce: req.Nonce, StakeVkey: req.StakeVkey, Signature: req.Signature,
+		Scope: req.Scope, Nonce: req.Nonce, CoseKey: req.CoseKey, Signature: req.Signature,
 		CodeChallenge: req.CodeChallenge, DevicePubkey: req.DevicePubkey,
 	})
 	if err != nil {

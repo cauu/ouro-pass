@@ -20,20 +20,20 @@ const adminUserKey ctxKey = iota
 
 // adminChallenge issues an owner-key login nonce (detailed §9.8).
 //
-//	POST /api/admin/auth/challenge  {owner_vkey} → {nonce}
+//	POST /api/admin/auth/challenge  {owner_stake_address} → {nonce}
 func (h *apiHandlers) adminChallenge(w http.ResponseWriter, r *http.Request) {
 	if h.d.Admin == nil {
 		notImplemented(w, r)
 		return
 	}
 	var req struct {
-		OwnerVkey string `json:"owner_vkey"`
+		OwnerStakeAddress string `json:"owner_stake_address"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.OwnerVkey == "" {
-		respond.Error(w, http.StatusBadRequest, "invalid_request", "owner_vkey required")
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.OwnerStakeAddress == "" {
+		respond.Error(w, http.StatusBadRequest, "invalid_request", "owner_stake_address required")
 		return
 	}
-	nonce, exp, err := h.d.Admin.Challenge(r.Context(), req.OwnerVkey)
+	nonce, exp, err := h.d.Admin.Challenge(r.Context(), req.OwnerStakeAddress)
 	if err != nil {
 		respond.Error(w, http.StatusBadRequest, "invalid_request", "could not issue challenge")
 		return
@@ -43,7 +43,7 @@ func (h *apiHandlers) adminChallenge(w http.ResponseWriter, r *http.Request) {
 
 // adminVerify validates the signed nonce and issues an httpOnly session cookie.
 //
-//	POST /api/admin/auth/verify  {nonce, owner_vkey, signature} → set-cookie
+//	POST /api/admin/auth/verify  {nonce, cose_key, signature} → set-cookie
 func (h *apiHandlers) adminVerify(w http.ResponseWriter, r *http.Request) {
 	if h.d.Admin == nil {
 		notImplemented(w, r)
@@ -51,14 +51,14 @@ func (h *apiHandlers) adminVerify(w http.ResponseWriter, r *http.Request) {
 	}
 	var req struct {
 		Nonce     string `json:"nonce"`
-		OwnerVkey string `json:"owner_vkey"`
+		CoseKey   string `json:"cose_key"`
 		Signature string `json:"signature"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respond.Error(w, http.StatusBadRequest, "invalid_request", "malformed JSON body")
 		return
 	}
-	token, role, err := h.d.Admin.Verify(r.Context(), req.OwnerVkey, req.Nonce, req.Signature, h.clientIP(r))
+	token, role, err := h.d.Admin.Verify(r.Context(), req.CoseKey, req.Nonce, req.Signature, h.clientIP(r))
 	if err != nil {
 		writeAdminErr(w, err)
 		return

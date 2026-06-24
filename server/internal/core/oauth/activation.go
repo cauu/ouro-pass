@@ -22,11 +22,11 @@ type ActivationResult struct {
 // CreateActivation verifies the wallet, gates on eligibility, and issues a
 // one-time short activation code plus a Telegram deep link (D8). The code is
 // stored hashed and consumed by the bot on /start.
-func (s *Server) CreateActivation(ctx context.Context, channelType, nonce, stakeVkey, signature, botUsername string) (*ActivationResult, error) {
+func (s *Server) CreateActivation(ctx context.Context, channelType, nonce, coseKey, signature, botUsername string) (*ActivationResult, error) {
 	if channelType == "" {
 		channelType = "telegram"
 	}
-	sch, err := s.cfg.Wallet.Verify(ctx, domain.NonceActivation, stakeVkey, nonce, signature)
+	sch, err := s.cfg.Wallet.Verify(ctx, domain.NonceActivation, coseKey, nonce, signature)
 	if err != nil {
 		return nil, ErrAccessDenied
 	}
