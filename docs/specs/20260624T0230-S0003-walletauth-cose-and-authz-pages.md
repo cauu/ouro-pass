@@ -76,6 +76,7 @@ CIP-30 钱包**只能在 `signData` 之后**经返回的 `DataSignature.key`(COS
 - [x] p2-1 授权页：`GET /connect` 渲染完整 HTML 模板 + 内嵌 vanilla JS（连钱包/sign/转发）+ `embed`；replace 占位（TC-4）。
 - [x] p2-2 渠道绑定页 HTML + vanilla JS（activation）+ deep link/二维码（TC-5）。
 - [~] p3-1 全量 `go test ./...` + 二进制 smoke + 真钱包手测矩阵（R1 标注；向量入自动化测试）（TC-6）。自动化部分全绿；真钱包浏览器手测需用户在装有 Cardano 钱包扩展的浏览器执行（Claude 无法驱动），见 §6。
+- [x] p2-3 **fix**（手测发现）：钱包探测改为「轮询 + `load`/`cardano#initialized` 事件 + 宽松判定」，解决 Vespr 等**延迟注入** `window.cardano` 导致的 "No Cardano wallet detected"（TC-4 复用 + 用户复测）。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 `StakeVkeyFromCOSEKey`：go-cose 产出的 COSE_Key 抽出正确 32B vkey；坏 kty/crv/len/截断 CBOR → error；reward 地址(raw/CBOR/bech32 三形态)→ 同一 28B hash。
@@ -105,6 +106,7 @@ CIP-30 钱包**只能在 `signData` 之后**经返回的 `DataSignature.key`(COS
 - 2026-06-24 TC-6（自动化部分）| stack: go | command: `go test -count=1 ./...`（17 包）+ `OUROPASS_TEST_PG_DSN=… go test -tags integration ./internal/inttest/` + 二进制 smoke（OAuth 启用） | result: pass | note: 全 17 包 0 FAIL；用户本地 PG 集成绿（walletauth 无 schema 变更，DB 零影响印证）；二进制 `/bind`→200+CSP+activate、`/connect` 坏 client→401（快速失败、非占位）、`/assets/ouropass-auth.js`→200、优雅关停 exit 0。COSE 互操作由 go-cose 双向覆盖（COSE_Sign1 p14-7 + COSE_Key p1-1/TC-1）。
 - 2026-06-24 p3-1 残留（manual，需用户）：真钱包浏览器手测矩阵（Nami/Eternl/Lace 任二）—— 连钱包→`signData`→拿 code 回跳 / 出 Telegram deep link。Claude 无法驱动浏览器钱包扩展；这是 R1 的最终互操作确认，建议用户执行后回填，或在评估 go-cose 互操作已足够时显式豁免再 close。手测信号：mock 链下真钱包签名后 `/activation/create`（或 authorize）回 **`not_eligible`(403)** = 签名路径全通（COSE_Key 解析+验签+hash 命中）；**`access_denied`(400)** = 签名路径失败。
 - 2026-06-24 dev 工具（支持 p3-1 手测）：`server/Makefile` 加 `make dev`（OAuth 开 + mock 链 + 持久 `.dev/ouro.db` 跑 issuer，开 `/bind` 即可测）与 `make dev-seed-client`（塞测试 client + 打印 `/connect` URL）。`.dev/` 入 gitignore。
+- 2026-06-24 p2-3 完成（fix）：用户用 Vespr 手测报 "No Cardano wallet detected"。根因：`ouropass-auth.js` 原本只在脚本加载时一次性探测 `window.cardano`，而 Vespr 等钱包**延迟注入**。改为：`init()` 轮询（250ms×24≈6s，发现即停）+ 监听 `window load` 与 `cardano#initialized` 事件 + 判定放宽（`enable` 函数 + apiVersion/name/icon/isEnabled 任一）+ 错误捕获。`renderWallets(wallets)` 重构为接受列表。验证：`node --check` JS 语法 OK、`go build`、`go test`（AuthAsset/ConnectPage/BindPage）绿。注意：嵌入资源经 `go:embed`，需**重启 `make dev`**（`go run` 会重新编译）后浏览器**硬刷新**生效。Vespr 真实显示由用户复测确认（并入 p3-1 手测矩阵）。
 
 ## 7. Change Requests (append-only)
 - 2026-06-24 决策：把 COSE_Key→vkey 的 CBOR 解码 + reward 地址解析**全部放后端**（消除浏览器手搓 CBOR 的"粗糙"），授权页/绑定页改为 **issuer 服务的 HTML 模板 + vanilla JS（零前端构建）**；walletauth 契约从"裸 vkey"改为"challenge 绑 hash + verify 收 COSE_Key"，四条流一致。安全不变量：抽 vkey 后必须验签名 + 比 hash（vkey 非秘密）。

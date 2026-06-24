@@ -29,28 +29,29 @@
     return out;
   }
 
-  // Wallets expose themselves as objects on window.cardano with an enable()
-  // method and an apiVersion. Keys like "enable"/"isEnabled" are not wallets.
+  // A CIP-30 wallet exposes an object on window.cardano with enable() plus some
+  // of apiVersion/name/icon/isEnabled. Be lenient: shapes vary across wallets.
+  function isWallet(w) {
+    return w && typeof w.enable === "function" &&
+      (w.apiVersion || w.name || w.icon || typeof w.isEnabled === "function");
+  }
+
   function discoverWallets() {
     var c = window.cardano || {};
     var out = [];
     for (var key in c) {
-      var w = c[key];
-      if (w && typeof w.enable === "function" && (w.apiVersion || w.name)) {
-        out.push({ key: key, name: w.name || key, icon: w.icon || "" });
-      }
+      try {
+        if (isWallet(c[key])) {
+          out.push({ key: key, name: c[key].name || key, icon: c[key].icon || "" });
+        }
+      } catch (e) { /* ignore odd injected props */ }
     }
     out.sort(function (a, b) { return a.name.localeCompare(b.name); });
     return out;
   }
 
-  function renderWallets() {
-    var wallets = discoverWallets();
+  function renderWallets(wallets) {
     listEl.innerHTML = "";
-    if (wallets.length === 0) {
-      setStatus("No Cardano wallet detected. Install Nami, Eternl, Lace, Typhon, …", true);
-      return;
-    }
     wallets.forEach(function (wallet) {
       var btn = document.createElement("button");
       btn.className = "wallet";
@@ -186,5 +187,37 @@
     return (data && (data.error_description || data.error)) || fallback;
   }
 
-  renderWallets();
+  // Wallets inject at different (sometimes late) times, so discovery is not a
+  // one-shot: poll briefly and re-render as wallets appear, and also react to
+  // the load event and the cardano#initialized signal some wallets dispatch.
+  var lastCount = -1;
+  function refresh() {
+    var wallets = discoverWallets();
+    if (wallets.length !== lastCount) {
+      lastCount = wallets.length;
+      renderWallets(wallets);
+      if (wallets.length > 0) setStatus("");
+    }
+  }
+
+  function init() {
+    setStatus("Detecting wallet…");
+    refresh();
+    var tries = 0;
+    var timer = setInterval(function () {
+      tries++;
+      refresh();
+      if (lastCount > 0) {
+        clearInterval(timer);
+      } else if (tries >= 24) { // ~6s
+        clearInterval(timer);
+        setStatus("No Cardano wallet detected. Install Nami, Eternl, Lace, Typhon, Vespr, … then reload.", true);
+      }
+    }, 250);
+  }
+
+  window.addEventListener("load", refresh);
+  window.addEventListener("cardano#initialized", refresh);
+  init();
 })();
+
