@@ -77,6 +77,7 @@ CIP-30 钱包**只能在 `signData` 之后**经返回的 `DataSignature.key`(COS
 - [x] p2-2 渠道绑定页 HTML + vanilla JS（activation）+ deep link/二维码（TC-5）。
 - [~] p3-1 全量 `go test ./...` + 二进制 smoke + 真钱包手测矩阵（R1 标注；向量入自动化测试）（TC-6）。自动化部分全绿；真钱包浏览器手测需用户在装有 Cardano 钱包扩展的浏览器执行（Claude 无法驱动），见 §6。
 - [x] p2-3 **fix**（手测发现）：钱包探测改为「轮询 + `load`/`cardano#initialized` 事件 + 宽松判定」，解决 Vespr 等**延迟注入** `window.cardano` 导致的 "No Cardano wallet detected"（TC-4 复用 + 用户复测）。
+- [x] p3-1-fix1 **fix**（真钱包手测发现，关键）：`cose.go` `checkAlg` 把 protected header 解成 `map[int]`，而真钱包（Vespr）按 CIP-8 在 protected header 里放**字符串 label `"address"`**（签名地址）→ 混合 int/string 键 → 解码失败被误判为 "unexpected algorithm" → 所有真钱包签名 `access_denied`。改为 `map[any]` 解码 + `cborKeyInt` 取 label 1，严格 alg 校验不变。新增**真钱包 golden vector** 回归测试（TC-3 复用 + 兑现 D25）。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 `StakeVkeyFromCOSEKey`：go-cose 产出的 COSE_Key 抽出正确 32B vkey；坏 kty/crv/len/截断 CBOR → error；reward 地址(raw/CBOR/bech32 三形态)→ 同一 28B hash。
@@ -107,6 +108,9 @@ CIP-30 钱包**只能在 `signData` 之后**经返回的 `DataSignature.key`(COS
 - 2026-06-24 p3-1 残留（manual，需用户）：真钱包浏览器手测矩阵（Nami/Eternl/Lace 任二）—— 连钱包→`signData`→拿 code 回跳 / 出 Telegram deep link。Claude 无法驱动浏览器钱包扩展；这是 R1 的最终互操作确认，建议用户执行后回填，或在评估 go-cose 互操作已足够时显式豁免再 close。手测信号：mock 链下真钱包签名后 `/activation/create`（或 authorize）回 **`not_eligible`(403)** = 签名路径全通（COSE_Key 解析+验签+hash 命中）；**`access_denied`(400)** = 签名路径失败。
 - 2026-06-24 dev 工具（支持 p3-1 手测）：`server/Makefile` 加 `make dev`（OAuth 开 + mock 链 + 持久 `.dev/ouro.db` 跑 issuer，开 `/bind` 即可测）与 `make dev-seed-client`（塞测试 client + 打印 `/connect` URL）。`.dev/` 入 gitignore。
 - 2026-06-24 p2-3 完成（fix）：用户用 Vespr 手测报 "No Cardano wallet detected"。根因：`ouropass-auth.js` 原本只在脚本加载时一次性探测 `window.cardano`，而 Vespr 等钱包**延迟注入**。改为：`init()` 轮询（250ms×24≈6s，发现即停）+ 监听 `window load` 与 `cardano#initialized` 事件 + 判定放宽（`enable` 函数 + apiVersion/name/icon/isEnabled 任一）+ 错误捕获。`renderWallets(wallets)` 重构为接受列表。验证：`node --check` JS 语法 OK、`go build`、`go test`（AuthAsset/ConnectPage/BindPage）绿。注意：嵌入资源经 `go:embed`，需**重启 `make dev`**（`go run` 会重新编译）后浏览器**硬刷新**生效。Vespr 真实显示由用户复测确认（并入 p3-1 手测矩阵）。
+
+- 2026-06-24 p3-1-fix1 | stack: go | command: `go test -count=1 -v ./internal/utils/crypto/` + 全量 `go test ./...` | result: pass | note: 真钱包 Vespr vector（cose_key/signature/nonce）现 `Verify err=<nil>`、`blake2b224(vkey)==地址凭证`、篡改 payload 被拒；严格 alg 测试（ES256/缺 alg→ErrCOSEAlg）仍绿；全仓 0 FAIL。**根因即 D25 担心的真钱包 golden vector 盲区被兑现**：合成/go-cose 向量只用 `{1:alg}`，真钱包 protected header 还带 `"address"` 字符串键。
+- 2026-06-24 手测进展（用户）：Vespr 在 `/bind` 实测——修复前 `access_denied`（暴露 p3-1-fix1）；修复后需用户重启 `make dev` + 硬刷新复测，预期 `not_eligible`(403)。
 
 ## 7. Change Requests (append-only)
 - 2026-06-24 决策：把 COSE_Key→vkey 的 CBOR 解码 + reward 地址解析**全部放后端**（消除浏览器手搓 CBOR 的"粗糙"），授权页/绑定页改为 **issuer 服务的 HTML 模板 + vanilla JS（零前端构建）**；walletauth 契约从"裸 vkey"改为"challenge 绑 hash + verify 收 COSE_Key"，四条流一致。安全不变量：抽 vkey 后必须验签名 + 比 hash（vkey 非秘密）。

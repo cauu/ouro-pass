@@ -110,30 +110,56 @@ func (c *COSESign1) Verify(pubKey ed25519.PublicKey, expectedPayload []byte) err
 
 // checkAlg enforces the algorithm declared in the COSE protected header. CIP-8
 // signs the protected header, so a CIP-30 signData message carries alg there. A
-// non-empty protected header MUST therefore parse as a COSE int-keyed map and
-// declare alg=EdDSA (-8); anything else is rejected (p12-12/D20). An entirely
-// empty protected header is still tolerated (rare/unprotected case) — the
-// signature itself is independently verified by ed25519.Verify regardless.
+// non-empty protected header MUST declare alg=EdDSA (-8); anything else is
+// rejected (p12-12/D20). An entirely empty protected header is still tolerated
+// (rare/unprotected case) — the signature itself is independently verified by
+// ed25519.Verify regardless.
+//
+// Real wallets (e.g. Vespr) also place the signing address under a STRING label
+// "address" in the protected header (CIP-30 signData / CIP-8), so the header is a
+// mixed int/string-keyed map; it is decoded with any-typed keys rather than
+// map[int] (which would choke on the string key and be misread as a bad alg).
 func (c *COSESign1) checkAlg() error {
 	if len(c.Protected) == 0 {
 		return nil
 	}
-	var hdr map[int]cbor.RawMessage
+	var hdr map[any]cbor.RawMessage
 	if err := cbor.Unmarshal(c.Protected, &hdr); err != nil {
-		return ErrCOSEAlg // non-empty but not a COSE int-keyed header map
+		return ErrCOSEAlg // non-empty but not a COSE header map
 	}
-	raw, ok := hdr[1] // label 1 = alg
-	if !ok {
+	var algRaw cbor.RawMessage
+	for k, v := range hdr {
+		if n, ok := cborKeyInt(k); ok && n == 1 { // label 1 = alg
+			algRaw = v
+			break
+		}
+	}
+	if algRaw == nil {
 		return ErrCOSEAlg // CIP-8 signs alg in the protected header; require it
 	}
 	var alg int
-	if err := cbor.Unmarshal(raw, &alg); err != nil {
+	if err := cbor.Unmarshal(algRaw, &alg); err != nil {
 		return ErrCOSEAlg
 	}
 	if alg != algEdDSA {
 		return ErrCOSEAlg
 	}
 	return nil
+}
+
+// cborKeyInt coerces a CBOR map key decoded into an any to its integer label.
+// fxamacker yields uint64 for non-negative and int64 for negative CBOR ints.
+func cborKeyInt(k any) (int64, bool) {
+	switch v := k.(type) {
+	case int64:
+		return v, true
+	case uint64:
+		return int64(v), true
+	case int:
+		return int64(v), true
+	default:
+		return 0, false
+	}
 }
 
 func isCBORNull(b []byte) bool { return len(b) == 1 && (b[0] == 0xf6 || b[0] == 0xf7) }
