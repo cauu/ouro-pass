@@ -1,9 +1,9 @@
 # Ouro Pass Admin 前端 — SPO 运营后台 SPA
 
 Spec-ID: S0002
-Status: draft
+Status: active
 Created Time: 2026-06-24T01:40:00+08:00
-Start Time:
+Start Time: 2026-06-24T23:55:00+08:00
 Completion Time:
 Previous Spec-ID: (none)
 Closure Reason:
@@ -110,7 +110,7 @@ interface WalletAdapter {
 - CIP-30 / CIP-19
 
 ## 3. Execution Plan
-- [ ] p0-1 **[blocking 前置]** 完成 S0003（walletauth 契约 + 授权/绑定页）——admin 登录/step-up 依赖其新契约。
+- [x] p0-1 **[blocking 前置]** 完成 S0003（walletauth 契约 + 授权/绑定页）——admin 登录/step-up 依赖其新契约。（S0003 已 delivered/closed）
 - [ ] p1-1 脚手架：Vite + React + TS(strict) + Tailwind + shadcn init；`src/{wallet,api,ui,features,app}`；lint/format/CI 占位（TC-7）。
 - [ ] p1-2 `WalletAdapter`（连钱包/enable/getRewardAddresses/signData/转发 + network guard）+ mock `window.cardano` 单测（TC-1）。
 - [ ] p1-3 `api` client：fetch + 错误信封 + 429 + 类型（TC-7 部分）。
