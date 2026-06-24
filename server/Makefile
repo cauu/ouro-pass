@@ -19,7 +19,7 @@ DEV_TELEGRAM_BOT ?= ouro_dev_bot
 DEV_DB           ?= file:.dev/ouro.db
 DEV_REDIRECT     ?= http://localhost:9999/cb
 
-.PHONY: build vet fmt tidy test test-e2e cover test-integration test-all clean dev dev-seed-client
+.PHONY: build vet fmt tidy test test-e2e cover test-integration test-all clean dev dev-stop dev-seed-client
 
 ## build: compile all packages
 build:
@@ -64,7 +64,8 @@ test-all: test test-integration
 ## path. Override e.g.: make dev DEV_NETWORK=preprod DEV_ADDR=:9000
 dev:
 	@mkdir -p .dev
-	OUROPASS_ADDR=$(DEV_ADDR) \
+	$(GO) build -o .dev/issuer ./cmd/issuer
+	@OUROPASS_ADDR=$(DEV_ADDR) \
 	OUROPASS_POOL_ID=$(DEV_POOL_ID) \
 	OUROPASS_NETWORK=$(DEV_NETWORK) \
 	OUROPASS_CHAIN_KIND=mock \
@@ -72,7 +73,11 @@ dev:
 	OUROPASS_SERVER_SALT=$(DEV_SERVER_SALT) \
 	OUROPASS_TELEGRAM_BOT=$(DEV_TELEGRAM_BOT) \
 	OUROPASS_DB_DSN="$(DEV_DB)" \
-	$(GO) run ./cmd/issuer
+	exec .dev/issuer
+
+## dev-stop: kill a leftover dev issuer still holding the port
+dev-stop:
+	@pkill -f '\.dev/issuer' && echo "stopped dev issuer" || echo "no dev issuer running"
 
 ## dev-seed-client: insert a test OAuth client into the dev DB so /connect works,
 ## then print the authorization URL. Needs sqlite3 and a prior `make dev` (to
