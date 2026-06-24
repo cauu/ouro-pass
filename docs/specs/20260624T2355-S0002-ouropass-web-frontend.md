@@ -112,7 +112,7 @@ interface WalletAdapter {
 ## 3. Execution Plan
 - [x] p0-1 **[blocking 前置]** 完成 S0003（walletauth 契约 + 授权/绑定页）——admin 登录/step-up 依赖其新契约。（S0003 已 delivered/closed）
 - [x] p1-1 脚手架：Vite + React + TS(strict) + Tailwind + shadcn init；`src/{wallet,api,ui,features,app}`；lint/format/CI 占位（TC-7）。
-- [ ] p1-2 `WalletAdapter`（连钱包/enable/getRewardAddresses/signData/转发 + network guard）+ mock `window.cardano` 单测（TC-1）。
+- [x] p1-2 `WalletAdapter`（连钱包/enable/getRewardAddresses/signData/转发 + network guard）+ mock `window.cardano` 单测（TC-1）。
 - [ ] p1-3 `api` client：fetch + 错误信封 + 429 + 类型（TC-7 部分）。
 - [ ] p2-1 登录/会话/RBAC/step-up + 布局/导航（TC-2）。
 - [ ] p3-1 业务页一批：Dashboard、名册+撤销(step-up)、订阅+取消、规则编辑器、渠道+telegram 测试、推送+日志、客户端注册(一次性 secret)、密钥轮换(step-up)+JWKS、审计、初始化向导（TC-3）。
@@ -132,8 +132,12 @@ interface WalletAdapter {
 - 2026-06-24 S0002 激活（active）：S0003 已 delivered，p0-1 标 [x]。
 - 2026-06-25 p1-1 完成：`web/` 脚手架——React 18 + Vite 6 + TS(strict) + Tailwind v4(`@tailwindcss/vite`) + 自写 shadcn 风格 UI 基元（不跑交互式 CLI，copy-in 更可控）。pnpm（lockfile 入库），`src/{lib,wallet,api,auth,ui,app,features,test}` 目录，eslint flat + prettier，vitest(jsdom)，vite dev 代理 `/api`+`/.well-known`→issuer(:8080)。**决策**：① Tailwind v4（CSS 变量主题，免 tailwind.config）；② pnpm `overrides.vite ^6` 去重（vitest 拉 vite5 致类型冲突）+ `onlyBuiltDependencies:[esbuild]`；③ 生产同源（相对 API 路径），dev 用代理。
 
+- 2026-06-25 p1-2 完成：`src/wallet/`——`listWallets()`（探测 window.cardano，宽松判定，跳过非钱包键）+ `connectWallet(key, expectedNetwork?)`→`WalletSession{rewardAddress, signNonce(nonce)}`。`signNonce` 调 `signData(addr, hex(utf8(nonce)))` 并**原样转发** `{coseKeyHex:key, signatureHex:signature}`——浏览器零 CBOR（S0003 C3）。network guard 不匹配抛错、无 reward 地址抛错。`src/lib/hex.ts` utf8ToHex。
+
 ## 6. Validation Evidence (append-only)
 - 2026-06-25 TC-7（部分）| stack: ui | command: `pnpm install` + `pnpm build`（`tsc -b && vite build`） | result: pass | note: 工具链就绪，类型检查 + 生产打包绿（27 模块、JS 144KB/gzip 46KB、CSS 5.3KB）。
+
+- 2026-06-25 TC-1 | stack: ui | command: `pnpm test`（vitest, jsdom, mock window.cardano） | result: pass | note: 8 用例绿——探测/跳过非钱包键/空、signNonce 转发 key+signature 且 payload=hex(utf8(nonce))、错网络拒、无 reward 拒、未知钱包拒、networkName 映射。
 
 ## 7. Change Requests (append-only)
 - 2026-06-24 选型：框架 React+Vite 纯 SPA（用户确认）；组件库 shadcn/ui（用户确认）；钱包 thin `window.cardano` 封装（用户质疑 Weld 成熟度：~550 下载/月、pre-1.0；且 CBOR 解码改放后端后前端只需转发，thin-wrapper 最契合，库藏 `WalletAdapter` 后可换）。
