@@ -216,9 +216,9 @@ func TestE2E_ConfidentialAuthCodeLifecycle(t *testing.T) {
 	e.eligible(w)
 	secret := "top-secret"
 	e.seedClient(domain.OAuthClient{
-		ClientID: "web", Name: "Web", ClientType: domain.ClientConfidential, Party: domain.FirstParty,
+		ClientID: "web", Name: "Web", ClientType: domain.ClientConfidential,
 		ClientSecretHash: ptr(crypto.HashToken(secret)), RedirectURIs: []string{"https://web/cb"},
-		AllowedAudiences: []string{"app:ouro"}, AllowedScopes: []string{"read"},
+		AllowedAudiences: []string{"app:ouro"},
 	})
 
 	// authorize → code
@@ -281,9 +281,9 @@ func TestE2E_PublicPKCEDevicePoP(t *testing.T) {
 	w := newWallet(t)
 	e.eligible(w)
 	e.seedClient(domain.OAuthClient{
-		ClientID: "spa", Name: "SPA", ClientType: domain.ClientPublic, Party: domain.ThirdParty,
+		ClientID: "spa", Name: "SPA", ClientType: domain.ClientPublic,
 		RedirectURIs: []string{"https://spa/cb"}, AllowedAudiences: []string{"app:ouro"},
-		AllowedScopes: []string{"read"}, PKCERequired: true,
+		PKCERequired: true,
 	})
 	verifier := "the-pkce-code-verifier-string-e2e"
 	challenge := pkceS256(verifier)
@@ -322,9 +322,9 @@ func TestE2E_IneligibleAndAdminRevoke(t *testing.T) {
 	member := newWallet(t)
 	e.eligible(member)
 	e.seedClient(domain.OAuthClient{
-		ClientID: "web", Name: "Web", ClientType: domain.ClientConfidential, Party: domain.FirstParty,
+		ClientID: "web", Name: "Web", ClientType: domain.ClientConfidential,
 		ClientSecretHash: ptr(crypto.HashToken("s")), RedirectURIs: []string{"https://web/cb"},
-		AllowedAudiences: []string{"app:ouro"}, AllowedScopes: []string{"read"},
+		AllowedAudiences: []string{"app:ouro"},
 	})
 
 	// Member is eligible → gets a token.

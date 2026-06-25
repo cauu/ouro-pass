@@ -66,10 +66,8 @@ export interface OAuthClient {
   Name: string;
   ClientType: string;
   ClientSecretHash: string | null;
-  Party: string;
   RedirectURIs: string[] | null;
   AllowedAudiences: string[] | null;
-  AllowedScopes: string[] | null;
   PKCERequired: boolean;
   Status: string;
   CreatedAt: string;
@@ -107,10 +105,8 @@ export interface ClientRegister {
   // client_id is system-generated server-side; not part of the request.
   name: string;
   client_type: "public" | "confidential";
-  party: string;
   redirect_uris: string[];
   allowed_audiences: string[];
-  allowed_scopes: string[];
   pkce_required: boolean;
 }
 

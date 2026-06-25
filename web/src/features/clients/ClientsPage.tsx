@@ -26,10 +26,8 @@ import { useToast } from "@/ui/toast";
 interface ClientForm {
   name: string;
   client_type: "public" | "confidential";
-  party: string;
   redirect_uris: string;
   allowed_audiences: string;
-  allowed_scopes: string;
   pkce_required: boolean;
 }
 
@@ -51,10 +49,8 @@ function RegisterClientDialog({ onRegistered }: { onRegistered: () => void }) {
     defaultValues: {
       name: "",
       client_type: "confidential",
-      party: "first_party",
       redirect_uris: "",
       allowed_audiences: "",
-      allowed_scopes: "",
       pkce_required: false,
     },
   });
@@ -80,10 +76,8 @@ function RegisterClientDialog({ onRegistered }: { onRegistered: () => void }) {
       const body: ClientRegister = {
         name: v.name,
         client_type: v.client_type,
-        party: v.party,
         redirect_uris: splitLines(v.redirect_uris),
         allowed_audiences: splitLines(v.allowed_audiences),
-        allowed_scopes: splitLines(v.allowed_scopes),
         pkce_required: v.pkce_required,
       };
       const res = await registerClient({ ...body, ...stepUp });
@@ -157,24 +151,13 @@ function RegisterClientDialog({ onRegistered }: { onRegistered: () => void }) {
                     <option value="public">public</option>
                   </Select>
                 </Field>
-                <Field label="Party">
-                  <Select {...register("party")}>
-                    <option value="first_party">first_party</option>
-                    <option value="third_party">third_party</option>
-                  </Select>
-                </Field>
               </div>
               <Field label="Redirect URIs (one per line)">
                 <Input {...register("redirect_uris")} placeholder="https://app/cb" />
               </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Audiences (comma-sep)">
-                  <Input {...register("allowed_audiences")} placeholder="app:ouro" />
-                </Field>
-                <Field label="Scopes (comma-sep)">
-                  <Input {...register("allowed_scopes")} placeholder="read" />
-                </Field>
-              </div>
+              <Field label="Audiences (comma-sep)">
+                <Input {...register("allowed_audiences")} placeholder="app:ouro" />
+              </Field>
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" {...register("pkce_required")} /> Require PKCE
               </label>
@@ -206,7 +189,6 @@ export function ClientsPage() {
             <TR>
               <TH>Client</TH>
               <TH>Type</TH>
-              <TH>Party</TH>
               <TH>Audiences</TH>
               <TH>Status</TH>
             </TR>
@@ -219,7 +201,6 @@ export function ClientsPage() {
                   <div className="font-mono text-xs text-muted-foreground">{c.ClientID}</div>
                 </TD>
                 <TD>{c.ClientType}</TD>
-                <TD>{c.Party}</TD>
                 <TD className="text-xs text-muted-foreground">{(c.AllowedAudiences ?? []).join(", ") || "—"}</TD>
                 <TD>
                   <Badge variant={c.Status === "active" ? "success" : "muted"}>{c.Status}</Badge>

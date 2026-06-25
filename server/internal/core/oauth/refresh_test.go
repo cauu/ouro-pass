@@ -16,9 +16,9 @@ func confidentialHarness(t *testing.T) (*harness, string, string) {
 	h := newHarness(t)
 	ctx := context.Background()
 	h.st.OAuthClients().Upsert(ctx, domain.OAuthClient{
-		ClientID: "c1", Name: "App", ClientType: domain.ClientConfidential, Party: domain.FirstParty,
+		ClientID: "c1", Name: "App", ClientType: domain.ClientConfidential,
 		ClientSecretHash: ptrStr(crypto.HashToken("s")), RedirectURIs: []string{"https://app/cb"},
-		AllowedAudiences: []string{"app:ouro"}, AllowedScopes: []string{"read"}, Status: "active", CreatedAt: time.Now(),
+		AllowedAudiences: []string{"app:ouro"}, Status: "active", CreatedAt: time.Now(),
 	})
 	code, sch := h.eligibleCode(t)
 	resp, err := h.srv.Token(ctx, TokenRequest{

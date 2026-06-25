@@ -284,10 +284,8 @@ func (h *apiHandlers) adminRegisterClient(w http.ResponseWriter, r *http.Request
 	var body struct {
 		Name         string   `json:"name"`
 		ClientType   string   `json:"client_type"`
-		Party        string   `json:"party"`
 		RedirectURIs []string `json:"redirect_uris"`
 		Audiences    []string `json:"allowed_audiences"`
-		Scopes       []string `json:"allowed_scopes"`
 		PKCERequired bool     `json:"pkce_required"`
 		// Registering a client issues credentials → require a fresh step-up
 		// signature like key rotation (p12-11/D19).
@@ -305,10 +303,6 @@ func (h *apiHandlers) adminRegisterClient(w http.ResponseWriter, r *http.Request
 		respond.Error(w, http.StatusBadRequest, "invalid_request", "client_type must be public or confidential")
 		return
 	}
-	if p := domain.ClientParty(body.Party); !p.Valid() {
-		respond.Error(w, http.StatusBadRequest, "invalid_request", "party must be first_party or third_party")
-		return
-	}
 	// Step-up gates the actual registration (after request-shape validation).
 	if err := h.requireStepUp(r, struct{ CoseKey, Nonce, Signature string }{body.CoseKey, body.StepUpNonce, body.StepUpSignature}); err != nil {
 		writeAdminErr(w, err)
@@ -317,8 +311,8 @@ func (h *apiHandlers) adminRegisterClient(w http.ResponseWriter, r *http.Request
 	clientID := "op-client-" + crypto.RandomToken(9)
 	c := domain.OAuthClient{
 		ClientID: clientID, Name: body.Name, ClientType: domain.ClientType(body.ClientType),
-		Party: domain.ClientParty(body.Party), RedirectURIs: body.RedirectURIs,
-		AllowedAudiences: body.Audiences, AllowedScopes: body.Scopes, PKCERequired: body.PKCERequired,
+		RedirectURIs:     body.RedirectURIs,
+		AllowedAudiences: body.Audiences, PKCERequired: body.PKCERequired,
 		Status: "active", CreatedAt: time.Now(),
 	}
 	// Confidential clients get a one-time secret (returned once, stored hashed).

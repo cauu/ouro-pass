@@ -125,7 +125,7 @@ interface WalletAdapter {
 - [ ] p5-1 **（后端，延后/不采用）** rotating key 退役**自动 worker**：`keys.RetireRotating(olderThan)` 无生产调用方，rotating key 随每次 rotate 累积。原拟后台 worker 周期退役。**决策（用户确认）**：不做自动 worker——① 现状判据 `RetireRotating` 以 `ValidFrom`（激活时刻）为 cutoff，而非降级时刻+TTL，可能在旧 token 仍有效时过早退役（潜在 bug，且 schema 无 `demoted_at` 列需迁移）；② rotate 稀有、JWKS 增长极慢、收益近零。改为手动退役（p5-2）。本项保留为"仅当 JWKS 真膨胀到困扰时再考虑，且需先补 `demoted_at` 并修判据"。
 - [x] p5-2 **（手动退役，用户确认采用）** owner 手动退役单个 rotating key：后端 `keys.Service.Retire(kid)`（仅 `rotating` 可退，`ErrNotRotating`/`ErrNotFound` 守卫）+ `POST /api/admin/keys/issuer/{kid}/retire`（owner + step-up，404/409 映射）+ 审计 `issuer_key.retire`；前端 `retireKey()` + Keys 表 rotating 行加 "Retire"（step-up 弹窗，含"仅在 token 过期后退役"警示）。绕开自动方案的时间启发式，由 owner 判时点。
 - [x] p6-1 **（OAuth client 注册简化，用户要求）** `client_id` 改为系统生成（同 `client_secret` 已是）：后端去掉请求体 `client_id`、改为 `"op-client-"+RandomToken(9)` 生成（不可被调用方指定/猜测/碰撞），必填字段从 `client_id` 改 `name`，响应回 `client_id`（+ confidential 的一次性 secret）。前端 `ClientRegister`/表单去掉 Client ID 输入，注册成功面板**始终展示生成的 client_id**（public 也展示，不再仅 toast）+ confidential 再附 secret，可一键复制。
-- [ ] p6-2 **（待定，已提出未拍板）** 注册表单死字段精简：`party`（0 处读取）、`allowed_scopes`（authorize 不强制、空操作）。方向二选一——A 直接删两者；B 删 `party` 但把 `allowed_scopes` 改成真生效（authorize 校验/裁剪 scope）。等用户定 scope 限制是否现在要。
+- [x] p6-2 **（死字段精简，用户定 A：两者皆删）** 注册表单死字段精简：`party`（0 处读取）、`allowed_scopes`（authorize 不强制、空操作）。已选**方案 A：两者皆删**（用户答"party 和 scopes 都可以删"；并确认保留 audiences/type，已解释二者用途）。端到端删除：DB 列（迁移 0007 DROP COLUMN，sqlite+postgres）、domain（`ClientParty` 类型/常量/`Valid` + `Party`/`AllowedScopes` 字段）、repo（INSERT/SELECT/scan）、handler（请求体 + party 校验）、前端（`OAuthClient`/`ClientRegister`/表单输入/Party 列）。详见执行日志。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 `WalletAdapter`：mock `window.cardano` 覆盖探测/enable/getRewardAddresses/signData；`signNonce` 返回 `{coseKeyHex, signatureHex}` 且**不在浏览器解 CBOR**；network guard 不匹配报错。
@@ -167,6 +167,8 @@ interface WalletAdapter {
 
 - 2026-06-25 p6-1 完成（client_id 系统生成，用户"id 和 secret 都应由系统生成"）：核对——secret 本已系统生成（confidential `RandomToken(32)`、回显一次、存 hash），仅 `client_id` 手填。改：`adminRegisterClient` 删请求体 `ClientID`、必填校验改 `name`、生成 `clientID="op-client-"+RandomToken(9)`（72-bit，沿用 `op-issuer-` 命名风格），audit/response 用生成值。前端 `ClientRegister` 与 `ClientForm` 去 `client_id`、表单删该输入、`signAndRegister` 校验改 `name`；注册结果由"仅 confidential 弹 secret"改为 `result{clientId,secret?}` 面板——**始终显示 client_id**（public 也显示，原仅 toast），confidential 再附 secret，复制按钮 id（+secret）。测试：`TestAdminOwner_RegisterClientAndRotateKey` 加断言"供给的 `client_id:c1` 被忽略、返回 `op-client-…`"；新增"缺 name→400"用例；两条坏 type/party 用例补 `name` 以真正命中各自校验。决策：本项只做 id 生成；`party`/`allowed_scopes` 死字段精简单列为 p6-2 待用户拍板。
 
+- 2026-06-25 p6-2 完成（死字段精简，用户答"party 和 scopes 都可以删"；并问 audiences/type 何用 → 已解释：type=public/confidential 凭证模型、audiences=token 受众白名单，二者真生效予以保留）。方案 A 端到端删 `party`+`allowed_scopes`：① 迁移 `0007_drop_client_party_scopes.sql`（sqlite+postgres，`ALTER TABLE OAuthClient DROP COLUMN`；驱动 modernc sqlite v1.53/pgx 均支持——注意原两列 `NOT NULL` 无默认，故不可仅停写、必须删列）；② `domain.OAuthClient` 删 `Party`/`AllowedScopes` 字段 + 删 `ClientParty` 类型/`FirstParty`/`ThirdParty`/`Valid`；③ `repo_oauthclient.go` 三处（Upsert/Get/List）SQL 列与 scan 同步；④ handler 删请求体 `Party`/`Scopes` + 删 party `Valid()` 校验块 + 构造体去字段；⑤ 前端 `OAuthClient`/`ClientRegister`/`ClientForm`/defaults/body 去两字段、表单删 Party 下拉 + Scopes 输入、客户端表删 Party 列。测试同步：删 6 个测试文件中 `OAuthClient{}` 字面量的 `Party`/`AllowedScopes`、`repo_clients`/`pg_concurrency` 断言改查 audiences、`TestAdminF2_RejectsInvalidEnums` 删失效的"bad party→400"用例（party 校验已不存在）。
+
 ## 6. Validation Evidence (append-only)
 - 2026-06-25 TC-7（部分）| stack: ui | command: `pnpm install` + `pnpm build`（`tsc -b && vite build`） | result: pass | note: 工具链就绪，类型检查 + 生产打包绿（27 模块、JS 144KB/gzip 46KB、CSS 5.3KB）。
 
@@ -195,6 +197,9 @@ interface WalletAdapter {
 
 - 2026-06-25 p6-1 | stack: go | command: `go test ./internal/httpapi/` + `go build ./...` | result: pass | note: 注册返回系统生成 `op-client-…`、忽略供给 id、缺 name→400、坏 type/party→400 全绿；httpapi 全包绿。
 - 2026-06-25 p6-1 | stack: ui | command: `pnpm build`(tsc -b && vite build) + `pnpm lint` | result: pass | note: 表单去 Client ID 输入、成功面板始终显示生成的 client_id（+confidential secret）打包绿（JS 463KB/gzip 145KB），lint 0 error。
+
+- 2026-06-25 p6-2 | stack: go | command: `go build ./...` + `go vet ./...` + `go test ./...` + `go vet -tags=integration ./internal/inttest/` | result: pass | note: 删 party/allowed_scopes（含迁移 0007）后全包 build/vet/test 绿（store/e2e 跑 Migrate 含新迁移）；integration-tagged pg 测试编译通过。
+- 2026-06-25 p6-2 | stack: ui | command: `pnpm build`(tsc -b && vite build) + `pnpm lint` | result: pass | note: 去 Party 下拉/Scopes 输入/Party 列后打包绿（JS 463KB/gzip 145KB），lint 0 error。
 
 ## 7. Change Requests (append-only)
 - 2026-06-24 选型：框架 React+Vite 纯 SPA（用户确认）；组件库 shadcn/ui（用户确认）；钱包 thin `window.cardano` 封装（用户质疑 Weld 成熟度：~550 下载/月、pre-1.0；且 CBOR 解码改放后端后前端只需转发，thin-wrapper 最契合，库藏 `WalletAdapter` 后可换）。

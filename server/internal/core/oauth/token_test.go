@@ -31,10 +31,10 @@ func TestToken_AuthCodeConfidential(t *testing.T) {
 	// Give the client a secret.
 	secret := "s3cr3t"
 	h.st.OAuthClients().Upsert(ctx, domain.OAuthClient{
-		ClientID: "c1", Name: "App", ClientType: domain.ClientConfidential, Party: domain.FirstParty,
+		ClientID: "c1", Name: "App", ClientType: domain.ClientConfidential,
 		ClientSecretHash: ptrStr(crypto.HashToken(secret)),
 		RedirectURIs:     []string{"https://app/cb"}, AllowedAudiences: []string{"app:ouro"},
-		AllowedScopes: []string{"read"}, Status: "active", CreatedAt: time.Now(),
+		Status: "active", CreatedAt: time.Now(),
 	})
 	code, sch := h.eligibleCode(t)
 
@@ -80,9 +80,9 @@ func TestToken_AuthCodePublicPKCE(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	h.st.OAuthClients().Upsert(ctx, domain.OAuthClient{
-		ClientID: "spa", Name: "SPA", ClientType: domain.ClientPublic, Party: domain.ThirdParty,
+		ClientID: "spa", Name: "SPA", ClientType: domain.ClientPublic,
 		RedirectURIs: []string{"https://spa/cb"}, AllowedAudiences: []string{"app:ouro"},
-		AllowedScopes: []string{"read"}, PKCERequired: true, Status: "active", CreatedAt: time.Now(),
+		PKCERequired: true, Status: "active", CreatedAt: time.Now(),
 	})
 	sch := hex.EncodeToString(crypto.Blake2b224(h.pub))
 	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakeLovelace: "5000000"})
@@ -135,9 +135,9 @@ func TestToken_PublicDevicePoP(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	h.st.OAuthClients().Upsert(ctx, domain.OAuthClient{
-		ClientID: "spa", Name: "SPA", ClientType: domain.ClientPublic, Party: domain.ThirdParty,
+		ClientID: "spa", Name: "SPA", ClientType: domain.ClientPublic,
 		RedirectURIs: []string{"https://spa/cb"}, AllowedAudiences: []string{"app:ouro"},
-		AllowedScopes: []string{"read"}, PKCERequired: true, Status: "active", CreatedAt: time.Now(),
+		PKCERequired: true, Status: "active", CreatedAt: time.Now(),
 	})
 	sch := hex.EncodeToString(crypto.Blake2b224(h.pub))
 	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakeLovelace: "5000000"})
@@ -192,9 +192,9 @@ func TestToken_ReusedCodeRejected(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	h.st.OAuthClients().Upsert(ctx, domain.OAuthClient{
-		ClientID: "c1", Name: "App", ClientType: domain.ClientConfidential, Party: domain.FirstParty,
+		ClientID: "c1", Name: "App", ClientType: domain.ClientConfidential,
 		ClientSecretHash: ptrStr(crypto.HashToken("s")), RedirectURIs: []string{"https://app/cb"},
-		AllowedAudiences: []string{"app:ouro"}, AllowedScopes: []string{"read"}, Status: "active", CreatedAt: time.Now(),
+		AllowedAudiences: []string{"app:ouro"}, Status: "active", CreatedAt: time.Now(),
 	})
 	code, _ := h.eligibleCode(t)
 	r := TokenRequest{GrantType: "authorization_code", Code: code, ClientID: "c1", ClientSecret: "s", RedirectURI: "https://app/cb"}

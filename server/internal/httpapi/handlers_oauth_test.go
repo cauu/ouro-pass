@@ -47,9 +47,9 @@ func oauthDeps(t *testing.T) (Deps, *chain.MockSource, ed25519.PrivateKey, strin
 		Issuer: "ouropass:pool1abc", ServerSalt: []byte("salt"), AccessTTL: time.Hour, RefreshTTL: time.Hour,
 	})
 	st.OAuthClients().Upsert(ctx, domain.OAuthClient{
-		ClientID: "c1", Name: "App", ClientType: domain.ClientConfidential, Party: domain.FirstParty,
+		ClientID: "c1", Name: "App", ClientType: domain.ClientConfidential,
 		RedirectURIs: []string{"https://app/cb"}, AllowedAudiences: []string{"app:ouro"},
-		AllowedScopes: []string{"read"}, Status: "active", CreatedAt: time.Now(),
+		Status: "active", CreatedAt: time.Now(),
 	})
 	st.Rules().Upsert(ctx, domain.MembershipRule{
 		RuleID: "gold", Tier: "gold", Priority: 10, Status: domain.RuleActive,

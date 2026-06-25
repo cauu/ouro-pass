@@ -61,9 +61,9 @@ func newHarness(t *testing.T) *harness {
 
 	// One active confidential client + a gold rule.
 	if err := st.OAuthClients().Upsert(ctx, domain.OAuthClient{
-		ClientID: "c1", Name: "App", ClientType: domain.ClientConfidential, Party: domain.FirstParty,
+		ClientID: "c1", Name: "App", ClientType: domain.ClientConfidential,
 		RedirectURIs: []string{"https://app/cb"}, AllowedAudiences: []string{"app:ouro"},
-		AllowedScopes: []string{"read"}, Status: "active", CreatedAt: time.Now(),
+		Status: "active", CreatedAt: time.Now(),
 	}); err != nil {
 		t.Fatal(err)
 	}

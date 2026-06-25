@@ -16,9 +16,9 @@ func TestOAuthClientRepo_RoundTrip(t *testing.T) {
 
 	c := domain.OAuthClient{
 		ClientID: "c1", Name: "Ouro App", ClientType: domain.ClientConfidential,
-		ClientSecretHash: ptr("hash"), Party: domain.FirstParty,
-		RedirectURIs: []string{"https://app/cb"}, AllowedAudiences: []string{"app:ouro"},
-		AllowedScopes: []string{"read", "push"}, PKCERequired: false, Status: "active", CreatedAt: now,
+		ClientSecretHash: ptr("hash"),
+		RedirectURIs:     []string{"https://app/cb"}, AllowedAudiences: []string{"app:ouro"},
+		PKCERequired: false, Status: "active", CreatedAt: now,
 	}
 	if err := st.OAuthClients().Upsert(ctx, c); err != nil {
 		t.Fatal(err)
@@ -27,16 +27,16 @@ func TestOAuthClientRepo_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ClientType != domain.ClientConfidential || got.Party != domain.FirstParty ||
-		len(got.AllowedScopes) != 2 || got.PKCERequired {
+	if got.ClientType != domain.ClientConfidential ||
+		len(got.AllowedAudiences) != 1 || got.PKCERequired {
 		t.Fatalf("mismatch: %+v", got)
 	}
 
 	// Public client with PKCE required.
 	pub := domain.OAuthClient{
-		ClientID: "spa", Name: "SPA", ClientType: domain.ClientPublic, Party: domain.ThirdParty,
+		ClientID: "spa", Name: "SPA", ClientType: domain.ClientPublic,
 		RedirectURIs: []string{"https://spa/cb"}, AllowedAudiences: []string{"app:ouro"},
-		AllowedScopes: []string{"read"}, PKCERequired: true, Status: "active", CreatedAt: now,
+		PKCERequired: true, Status: "active", CreatedAt: now,
 	}
 	st.OAuthClients().Upsert(ctx, pub)
 	got, _ = st.OAuthClients().Get(ctx, "spa")

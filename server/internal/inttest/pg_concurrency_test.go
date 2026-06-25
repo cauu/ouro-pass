@@ -282,14 +282,14 @@ func TestPG_DialectRoundTrip(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Millisecond)
 	cid := uk("pg-c")
 	if err := st.OAuthClients().Upsert(ctx, domain.OAuthClient{
-		ClientID: cid, Name: "PG", ClientType: domain.ClientConfidential, Party: domain.FirstParty,
+		ClientID: cid, Name: "PG", ClientType: domain.ClientConfidential,
 		RedirectURIs: []string{"https://a/cb", "https://b/cb"}, AllowedAudiences: []string{"app:ouro"},
-		AllowedScopes: []string{"read", "push"}, PKCERequired: true, Status: "active", CreatedAt: now,
+		PKCERequired: true, Status: "active", CreatedAt: now,
 	}); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
 	got, err := st.OAuthClients().Get(ctx, cid)
-	if err != nil || len(got.RedirectURIs) != 2 || len(got.AllowedScopes) != 2 || !got.PKCERequired {
+	if err != nil || len(got.RedirectURIs) != 2 || len(got.AllowedAudiences) != 1 || !got.PKCERequired {
 		t.Fatalf("roundtrip mismatch: %+v err=%v", got, err)
 	}
 	// List must succeed on PG (Rebind path) and include our client (the DSN may
