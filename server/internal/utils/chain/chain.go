@@ -49,11 +49,21 @@ type Source interface {
 	Name() string
 }
 
+// DelegatorLister is an OPTIONAL capability (S0004 §2.7, track C): enumerate a
+// pool's full delegator set, one page at a time. It is decoupled from the hot
+// authorization path — a cold, read-only admin roster query — so it is a separate
+// interface, not part of Source: sources that cannot provide it simply don't
+// implement it, and callers type-assert. Returns stake credential hashes (hex).
+type DelegatorLister interface {
+	Delegators(ctx context.Context, poolID string, page int) ([]string, error)
+}
+
 // MockSource is an in-memory Source for tests and local development; the rule
 // engine and handlers depend only on the Source interface.
 type MockSource struct {
-	CurrentEpoch uint64
-	Snapshots    map[string]*Snapshot
+	CurrentEpoch     uint64
+	Snapshots        map[string]*Snapshot
+	DelegatorsByPool map[string][]string // poolID → stake credential hashes (optional)
 }
 
 // NewMockSource builds an empty mock at the given epoch.
@@ -77,6 +87,16 @@ func (m *MockSource) Epoch(context.Context) (uint64, error) { return m.CurrentEp
 
 // Name returns "mock".
 func (m *MockSource) Name() string { return "mock" }
+
+// Delegators returns the configured delegator page for a pool (the mock ignores
+// paging beyond page 0, returning the full set on page 0). Implements the
+// optional DelegatorLister capability for tests.
+func (m *MockSource) Delegators(_ context.Context, poolID string, page int) ([]string, error) {
+	if page > 0 {
+		return nil, nil
+	}
+	return m.DelegatorsByPool[poolID], nil
+}
 
 // Config selects and configures a Source.
 type Config struct {

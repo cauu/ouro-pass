@@ -49,6 +49,17 @@ func (c *CachedSource) Name() string { return c.inner.Name() + "+cache" }
 // Epoch passes through to the underlying source (the live chain tip).
 func (c *CachedSource) Epoch(ctx context.Context) (uint64, error) { return c.inner.Epoch(ctx) }
 
+// Delegators forwards the optional delegator-enumeration capability to the inner
+// source (S0004 §2.7) — a cold admin query, never cached. Returns
+// chain.ErrNotImplemented if the wrapped source can't enumerate delegators.
+func (c *CachedSource) Delegators(ctx context.Context, poolID string, page int) ([]string, error) {
+	dl, ok := c.inner.(chain.DelegatorLister)
+	if !ok {
+		return nil, chain.ErrNotImplemented
+	}
+	return dl.Delegators(ctx, poolID, page)
+}
+
 // Snapshot serves the active cache on a same-epoch hit, else fetches live
 // (single-flighted) and caches iff the credential is active with our pool.
 func (c *CachedSource) Snapshot(ctx context.Context, sch string) (*chain.Snapshot, error) {

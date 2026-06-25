@@ -197,6 +197,7 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, chain.Sou
 	// lookups skip the chain; pending/none stay live. Both the issuance path and
 	// the reconciler share it (the reconciler warms it across epoch boundaries).
 	chainSrc := membership.NewCachedSource(rawChain, st.SnapshotCache(), cfg.PoolID, cfg.Network, 10*time.Second)
+	deps.Chain = chainSrc // optional admin delegator roster (S0004 §2.7)
 	if deps.Keys != nil && len(serverSalt) > 0 {
 		deps.OAuth = oauth.New(oauth.Config{
 			Store: st, Wallet: deps.Wallet, Keys: deps.Keys, Chain: chainSrc,

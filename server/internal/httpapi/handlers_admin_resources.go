@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -11,6 +12,7 @@ import (
 	"ouro-pass/server/internal/core/keys"
 	"ouro-pass/server/internal/domain"
 	"ouro-pass/server/internal/httpapi/respond"
+	"ouro-pass/server/internal/utils/chain"
 	"ouro-pass/server/internal/utils/crypto"
 )
 
@@ -22,6 +24,7 @@ func (h *apiHandlers) mountAdminResources(r chi.Router) {
 	owner := func(fn http.HandlerFunc) http.Handler { return h.requireRole(domain.RoleOwner)(fn) }
 
 	r.Method(http.MethodGet, "/members", viewer(h.adminMembers))
+	r.Method(http.MethodGet, "/delegators", viewer(h.adminDelegators))
 	r.Method(http.MethodPost, "/members/{sch}/revoke", operator(h.adminRevokeMember))
 	r.Method(http.MethodGet, "/subscriptions", viewer(h.adminSubscriptions))
 	r.Method(http.MethodPost, "/subscriptions/{id}/cancel", operator(h.adminCancelSub))
@@ -81,6 +84,34 @@ func (h *apiHandlers) adminMembers(w http.ResponseWriter, r *http.Request) {
 		out = append(out, member{StakeCredentialHash: s.StakeCredentialHash, Tier: s.Tier, Channel: s.ChannelType})
 	}
 	respond.JSON(w, http.StatusOK, map[string]any{"members": out})
+}
+
+// adminDelegators enumerates the pool's full on-chain delegator set, one page at
+// a time (S0004 §2.7, track C): `GET /api/admin/delegators?page=N`. This is the
+// full delegating set (a superset of `members`, who are active subscribers). It
+// is a cold, read-only roster query served directly from the chain source (no
+// cache), and degrades to 501 when the configured source cannot enumerate.
+func (h *apiHandlers) adminDelegators(w http.ResponseWriter, r *http.Request) {
+	lister, ok := h.d.Chain.(chain.DelegatorLister)
+	if h.d.Chain == nil || !ok {
+		notImplemented(w, r)
+		return
+	}
+	page := 0
+	if p := r.URL.Query().Get("page"); p != "" {
+		if n, err := strconv.Atoi(p); err == nil && n > 0 {
+			page = n
+		}
+	}
+	hashes, err := lister.Delegators(r.Context(), h.d.PoolID, page)
+	if err != nil {
+		serverError(w, r, err)
+		return
+	}
+	if hashes == nil {
+		hashes = []string{}
+	}
+	respond.JSON(w, http.StatusOK, map[string]any{"delegators": hashes, "page": page})
 }
 
 // adminRevokeMember blacklists a member by stake credential hash and immediately

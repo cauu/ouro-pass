@@ -20,6 +20,7 @@ import (
 	"ouro-pass/server/internal/core/walletauth"
 	"ouro-pass/server/internal/domain"
 	"ouro-pass/server/internal/store"
+	"ouro-pass/server/internal/utils/chain"
 	"ouro-pass/server/internal/utils/crypto"
 )
 
@@ -51,6 +52,7 @@ func adminResourceEnv(t *testing.T, role domain.AdminRole) (*httptest.Server, *h
 	cipher, _ := crypto.NewFieldCipher(make([]byte, 32))
 	deps := Deps{
 		Wallet: wallet, Store: st, PoolID: "pool1", Keys: keys.New(st, cipher),
+		Chain: &chain.MockSource{DelegatorsByPool: map[string][]string{"pool1": {"sch-aaa", "sch-bbb"}}},
 		Admin: admin.New(admin.Config{Wallet: wallet, Store: st, OwnerKeyHash: ownerKeys, PoolID: "pool1"}),
 	}
 	srv := httptest.NewTLSServer(NewRouter(deps))
@@ -81,6 +83,30 @@ func TestAdminRBAC_Matrix(t *testing.T) {
 	}
 	if code := getCode(t, client, srv.URL+"/api/admin/oauth-clients"); code != http.StatusForbidden {
 		t.Errorf("viewer GET clients = %d, want 403 (owner only)", code)
+	}
+}
+
+// TestAdminDelegators lists the pool's full on-chain delegator set (S0004 §2.7):
+// a viewer-readable roster served from the chain source (mocked here).
+func TestAdminDelegators(t *testing.T) {
+	srv, client, _, _, _ := adminResourceEnv(t, domain.RoleViewer)
+	resp, err := client.Get(srv.URL + "/api/admin/delegators")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	var body struct {
+		Delegators []string `json:"delegators"`
+		Page       int      `json:"page"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Delegators) != 2 || body.Delegators[0] != "sch-aaa" || body.Delegators[1] != "sch-bbb" {
+		t.Fatalf("delegators = %v (want full set sch-aaa/sch-bbb)", body.Delegators)
 	}
 }
 

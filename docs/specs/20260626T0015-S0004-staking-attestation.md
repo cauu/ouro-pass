@@ -150,7 +150,7 @@ e = currentEpoch(now()); row = cache.Get(sch)
 - [x] p2-3 reconciler:epoch 边界刷活跃集合 + state 重算 + 不活跃退休;集成测试。
 - [x] p3-1 token claims:签发/刷新写 state/active_stake/epochs/since(+可选 tier);薄 issuer 闸;e2e。
 - [x] p4-1 rules 删除:删 `MembershipRule`/Rules 端点/引擎 tier 判定;`PoolConfig.tier_rules` + 第一方 tier 映射(渠道/push);迁移既有测试;(S0002 删 Rules 页另计)。
-- [ ] p5-1 (可选/可延后) delegator 枚举:`chain.Delegators(poolID,page)` + `GET /api/admin/delegators`(**透传 Koios 分页、不缓存**)+ 测试。
+- [x] p5-1 (可选/可延后) delegator 枚举:`chain.Delegators(poolID,page)` + `GET /api/admin/delegators`(**透传 Koios 分页、不缓存**)+ 测试。
 - [ ] p6-1 全量 `go test ./...` + 二进制 smoke + 文档(链数据架构/口径/claims/tier)。
 
 ## 4. Test and Acceptance Criteria
@@ -185,6 +185,9 @@ e = currentEpoch(now()); row = cache.Get(sch)
 
 - 2026-06-26 p4-1 完成：删除 rules 子系统 + 薄第一方 tier 进 PoolConfig。**新 tier 基建**：`PoolConfig.TierRules`(JSON，迁移 0010 加列)+ 纯函数 `membership.TierFor(state, active_stake, rulesJSON)`(有序 `[{tier,min_state,min_active_stake}]` 首匹配、big.Int 比较 C4)。**消费方改接**：`oauth.firstPartyTier` rules→`PoolConfig.tier_rules`；新增公开 `oauth.Server.Attest(sch)→(state,tier)` 给 telegram；telegram `Eligibilizer`→`Attester`（state none→拒、tier 从 tier_rules，Topics/Entitlements 置空）；activation 闸改 `Membership` state。**删除**：`core/rules/`(engine+test)、`domain.MembershipRule`、`repo_membershiprule.go`+`repo_rules_test.go`、`oauth.evaluate()`/`Eligibility()`/`s.rules`、admin `GET/POST /rules` handler+路由、迁移 0011 `DROP TABLE MembershipRule`。**测试迁移**：oauth/e2e/httpapi 的 rule seed→`PoolConfig.tier_rules` seed；`TestRefresh_TierDowngrade` 用 stake 500k→silver；telegram_test mock→Attester；删 rules 端点测试；pg_concurrency 删 rule 往返。**决策**：① tier 仅 issuer 自家渠道用，对外 RP 读 raw claims 自判（D1/D6）；② 编辑 tier_rules 经 PoolConfig（本期无专用 admin 端点，后续可加）；③ 第一方订阅 Topics/Entitlements 置空（push 按 tier 定向；旧 rules 派生的 entitlements 取消）。
 - 2026-06-26 p4-1 | stack: go | command: `go test ./...` + `go vet ./...` + `go vet -tags=integration ./internal/inttest/` | result: pass | note: 全仓 build/test/vet 0 FAIL（store 跑迁移 0010/0011）；`TestTierFor` 6 向量 + big lovelace；rules 子系统全删后 0 残留引用；integration 编译通过。
+
+- 2026-06-26 p5-1 完成（可选 track C）：delegator 枚举。**决策**：用**能力接口** `chain.DelegatorLister`（非塞进 `Source`）——冷只读 admin 查询，不强迫 mock/node_lsq/db_sync 实现；koios 实现真 `/pool_delegators`（GET `_pool_bech32`+offset/limit 透传分页、不缓存，stake 地址→hash），`CachedSource` 透传（inner 不支持→`ErrNotImplemented`），`MockSource` 加可配 `DelegatorsByPool` 供测试。`httpapi.Deps` 加 `Chain`，main 注入 CachedSource。`GET /api/admin/delegators?page=N`（viewer，源不支持→501）。口径：delegators=链上全量委托者（superset），members=活跃订阅者（subset）。
+- 2026-06-26 p5-1 | stack: go | command: `go test ./internal/httpapi/ ./internal/utils/chain/ ./...` + `go vet ./...` | result: pass | note: `TestAdminDelegators` viewer 列全量集（mock 注入）；全仓绿。
 
 ## 7. Change Requests (append-only)
 - 2026-06-25 核心决策(累积,用户拍板):① issuer = 质押身份证明提供方,业务策略下沉 RP;② token 带精确事实(state/active_stake/epochs/since),**不分桶**;③ **删除 rules 子系统**,薄第一方 tier 映射进 `PoolConfig.tier_rules`(仅自家渠道用);④ 有效质押 = epoch active_stake 口径,pending 仅入场过渡,leaving 由 epoch 自然收敛、grace 下沉 RP;⑤ 缓存**只缓 `active`**(epoch 稳定;命中 iff snapshot_epoch==当前、本地算 epoch),pending/none 现算不缓(onboarding/bail 即时对称);⑥ Koios 失败 D8 分场景(登录 fail-closed / reconciler 软 fail-open);⑦ epoch 常量内置 per-network;⑧ **砍掉 owner 链上校验 / operator-viewer 管理(原 B)**——owner 沿用 env 配置信任;⑨ delegator 枚举(C)解耦、可延后/单独排期。

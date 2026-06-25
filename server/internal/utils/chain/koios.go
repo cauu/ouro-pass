@@ -151,6 +151,38 @@ func trailingActiveEpochs(hist []koiosStakeHistory, pool string) int {
 	return count
 }
 
+// koiosDelegator is the relevant subset of Koios /pool_delegators.
+type koiosDelegator struct {
+	StakeAddress string `json:"stake_address"`
+}
+
+// delegatorPageSize is the Koios page size for delegator enumeration.
+const delegatorPageSize = 1000
+
+// Delegators enumerates a pool's delegators one page at a time (S0004 §2.7, D9):
+// a direct passthrough of Koios /pool_delegators paging (no cache — this is a
+// cold, read-only admin query, and the active-membership cache only serves the
+// hot authorization path). Stake addresses are mapped to credential hashes (hex).
+func (k *KoiosSource) Delegators(ctx context.Context, poolID string, page int) ([]string, error) {
+	if page < 0 {
+		page = 0
+	}
+	path := fmt.Sprintf("/pool_delegators?_pool_bech32=%s&offset=%d&limit=%d", poolID, page*delegatorPageSize, delegatorPageSize)
+	var rows []koiosDelegator
+	if err := k.get(ctx, path, &rows); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(rows))
+	for _, d := range rows {
+		hash, err := StakeHashFromRewardAddress(d.StakeAddress)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, hash)
+	}
+	return out, nil
+}
+
 // Epoch fetches the current epoch from Koios /tip.
 func (k *KoiosSource) Epoch(ctx context.Context) (uint64, error) {
 	var tips []koiosTip
