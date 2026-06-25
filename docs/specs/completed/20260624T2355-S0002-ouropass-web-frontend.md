@@ -1,12 +1,12 @@
 # Ouro Pass Admin 前端 — SPO 运营后台 SPA
 
 Spec-ID: S0002
-Status: active
+Status: completed
 Created Time: 2026-06-24T01:40:00+08:00
 Start Time: 2026-06-24T23:55:00+08:00
-Completion Time:
+Completion Time: 2026-06-26T00:15:00+08:00
 Previous Spec-ID: (none)
-Closure Reason:
+Closure Reason: delivered
 
 > 修订（2026-06-24）：原 draft 误把**授权页**当成 web/ SPA。设计文档（§9.4）确认 `GET /connect` 是 **issuer 直接返回的 HTML**；授权页/绑定页 + walletauth 契约改造已移到 **S0003（后端）**。本 spec **收敛为纯 Admin 后台 SPA**，并依赖 S0003 的新钱包签名契约。
 

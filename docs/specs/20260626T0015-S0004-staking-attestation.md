@@ -1,11 +1,11 @@
 # Ouro Pass 质押身份证明(attestation)
 
 Spec-ID: S0004
-Status: draft
+Status: active
 Created Time: 2026-06-25T01:30:00+08:00
-Start Time:
+Start Time: 2026-06-26T00:15:00+08:00
 Completion Time:
-Previous Spec-ID: (none)
+Previous Spec-ID: S0002
 Closure Reason:
 
 ## 1. Requirement Details
