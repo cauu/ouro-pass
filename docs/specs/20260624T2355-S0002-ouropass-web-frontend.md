@@ -119,6 +119,7 @@ interface WalletAdapter {
 - [x] p3-1 业务页一批：Dashboard、名册+撤销(step-up)、订阅+取消、规则编辑器、渠道+telegram 测试、推送+日志、客户端注册(一次性 secret)、密钥轮换(step-up)+JWKS、审计、初始化向导（TC-3）。
 - [x] p4-1 构建/部署：静态产物、可 embed/静态托管、env(issuer base URL/network)、CI 增 web job（TC-7/TC-8）。
 - [x] p3-1-fix1 **fix**（验收发现）：Setup/Dashboard 的 `data?.X.length` 只对 `data` 可选链、未对数组 `X`，接口返回缺 `keys`/`members` 等字段时 `undefined.length` 崩页；改为 `data?.X?.length`（全仓扫净同类）。Setup 页 = owner 首次配置就绪清单（其"规则"步将随 S0004 删 rules 改写）。
+- [x] p3-1-fix2 **fix**（验收发现）：Keys 页生成/轮换密钥后 JWKS 列表 ~60s 不更新（仍显示空/旧值）。根因——KeysPage 以公开 `GET /.well-known/ouropass/jwks.json` 为数据源，后端给它发 `Cache-Control: public, max-age=60`（面向 verifier 的有意缓存），而 admin client 的 `fetch` 未设 `cache`，react-query 失效后重取命中浏览器 HTTP 缓存返回过期空列表。修复——admin client GET 加 `cache: "no-store"` 绕过浏览器缓存（verifier 侧缓存保持不变）。后端 Rotate 逻辑无误；"两个 key"= active+rotating 正常重叠。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 `WalletAdapter`：mock `window.cardano` 覆盖探测/enable/getRewardAddresses/signData；`signNonce` 返回 `{coseKeyHex, signatureHex}` 且**不在浏览器解 CBOR**；network guard 不匹配报错。
@@ -150,6 +151,8 @@ interface WalletAdapter {
 
 - 2026-06-25 p3-1-fix1 完成（fix，验收发现）：Setup 页报错。根因——`(jwks.data?.keys.length ?? 0)` 只可选链 `data`、未链数组 `keys`，接口返回不含 `keys` 的形状时 `undefined.length` 崩页；Setup 三处(keys/rules/clients)+ Dashboard 两处(members/keys)同患。改为 `data?.X?.length`，全仓扫净同类不安全访问；`pnpm build` 绿。
 
+- 2026-06-25 p3-1-fix2 完成（fix，验收发现）：Keys 页 generate/rotate 返回成功（`status:active`,`jwks_updated:true`）但 JWKS 列表 ~60s 不刷新、过后才显示（此时 active+rotating=2 key）。排查链：KeysPage(`fetchJwks`)→公开 `GET /.well-known/ouropass/jwks.json`，后端发 `Cache-Control: public, max-age=60`（`handlers_verifier.go:29`，verifier 缓存有意为之）；`client.ts` 的 `fetch` 未设 `cache`，故 `invalidateQueries(["jwks"])` 重取命中浏览器磁盘缓存返回 60s 内"新鲜"的空 `[]`。**决策**：不动后端缓存（保留对 verifier 的减压），仅在 admin client 的统一 `request()` 加 `cache:"no-store"`——admin SPA 恒取实时数据，覆盖此类及未来被缓存端点。后端 `keys.Rotate`/`PublicJWKSKeys` 逻辑核对无误。
+
 ## 6. Validation Evidence (append-only)
 - 2026-06-25 TC-7（部分）| stack: ui | command: `pnpm install` + `pnpm build`（`tsc -b && vite build`） | result: pass | note: 工具链就绪，类型检查 + 生产打包绿（27 模块、JS 144KB/gzip 46KB、CSS 5.3KB）。
 
@@ -166,6 +169,8 @@ interface WalletAdapter {
 - 2026-06-25 TC-7/TC-8 | stack: ui+go | command: `make web`+`go build`+二进制 smoke / `pnpm {lint,typecheck,test,build}` / `go build vet test ./...` / CI `yaml.safe_load` | result: pass | note: `make web` 出静态产物并 stage，issuer 二进制 `/admin/` 返回真 index.html（引 `/admin/assets`）、hashed JS 200+immutable、`/admin/dashboard` SPA fallback 200、`/admin`→301；未构建时占位 200。web 全绿(lint 0 error/typecheck/11 测/打包)；后端 build+vet+全测 0 FAIL；CI 3 job(test/integration/web) yaml 合法。network 经 `VITE_ISSUER_NETWORK` env 注入。
 
 - 2026-06-25 p3-1-fix1 | stack: ui | command: `pnpm build`(tsc+vite) + grep 扫描数组可选链 | result: pass | note: 修复后打包绿;无残留 `data?.X.length` 类不安全访问。
+
+- 2026-06-25 p3-1-fix2 | stack: ui | command: `pnpm build`(tsc -b && vite build) | result: pass | note: admin client GET 加 `cache:"no-store"` 后打包绿（1745 模块、JS 463KB/gzip 145KB）；生成/轮换后 jwks 重取不再命中浏览器缓存。后端 jwks `Cache-Control` 保持不变（verifier 侧）。
 
 ## 7. Change Requests (append-only)
 - 2026-06-24 选型：框架 React+Vite 纯 SPA（用户确认）；组件库 shadcn/ui（用户确认）；钱包 thin `window.cardano` 封装（用户质疑 Weld 成熟度：~550 下载/月、pre-1.0；且 CBOR 解码改放后端后前端只需转发，thin-wrapper 最契合，库藏 `WalletAdapter` 后可换）。

@@ -28,6 +28,12 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   const res = await fetch(path, {
     method,
     credentials: "include",
+    // Admin SPA always wants live data. Without this, GET /.well-known/ouropass/
+    // jwks.json is served from the browser HTTP cache (the server sends it
+    // `Cache-Control: public, max-age=60` for verifiers), so after a key
+    // generate/rotate the react-query refetch returns a stale empty list for up
+    // to 60s. no-store bypasses the cache; the verifier-facing cache stays intact.
+    cache: "no-store",
     headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
