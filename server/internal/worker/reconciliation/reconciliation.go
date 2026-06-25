@@ -1,8 +1,10 @@
-// Package reconciliation re-evaluates membership at each epoch boundary
-// (detailed §3.3/§6, C7): eligibility is recomputed from the live snapshot and
-// subscription sessions are downgraded (tier change) or expired (no longer
-// eligible) accordingly. It runs as a long-lived worker that triggers when the
-// chain epoch advances; Reconcile is directly callable and unit-tested.
+// Package reconciliation re-derives pool-membership at each epoch boundary
+// (S0004 §2.3, C7): the three-state membership is recomputed from the live
+// snapshot and subscription sessions are expired once the credential is no longer
+// a member (state `none`). Tier is first-party and recomputed at consumption
+// (token issue / channel activation), not reconciled here. It runs as a
+// long-lived worker that triggers when the chain epoch advances; Reconcile is
+// directly callable and unit-tested.
 package reconciliation
 
 import (
@@ -10,46 +12,45 @@ import (
 	"log/slog"
 	"time"
 
-	"ouro-pass/server/internal/core/rules"
+	"ouro-pass/server/internal/core/membership"
 	"ouro-pass/server/internal/domain"
 	"ouro-pass/server/internal/store"
 	"ouro-pass/server/internal/utils/chain"
 )
 
-// Eligibilizer re-evaluates a credential's current eligibility.
-type Eligibilizer interface {
-	Eligibility(ctx context.Context, stakeCredentialHash string) (bool, rules.Decision, error)
+// StateEvaluator re-derives a credential's current pool-membership state.
+type StateEvaluator interface {
+	Membership(ctx context.Context, stakeCredentialHash string) (membership.State, error)
 }
 
-// Reconciler maintains subscription sessions against current eligibility.
+// Reconciler maintains subscription sessions against current membership state.
 type Reconciler struct {
 	poolID string
 	subs   *store.SubscriptionRepo
-	elig   Eligibilizer
+	elig   StateEvaluator
 	source chain.Source
 	now    func() time.Time
 }
 
 // New builds a reconciler.
-func New(st *store.Store, elig Eligibilizer, source chain.Source, poolID string) *Reconciler {
+func New(st *store.Store, elig StateEvaluator, source chain.Source, poolID string) *Reconciler {
 	return &Reconciler{poolID: poolID, subs: st.Subscriptions(), elig: elig, source: source, now: time.Now}
 }
 
 // Result summarizes a reconciliation pass.
 type Result struct {
-	Checked    int
-	Downgraded int
-	Expired    int
-	Unchanged  int
-	Failed     int // per-session errors that were isolated (logged, skipped)
+	Checked   int
+	Expired   int
+	Unchanged int
+	Failed    int // per-session errors that were isolated (logged, skipped)
 }
 
-// Reconcile re-evaluates every active session once: ineligible → expired;
-// tier change → downgrade/upgrade with refreshed entitlements; otherwise the
-// verification timestamp is refreshed. A per-session error (transient chain
-// query or store write) is fault-isolated — logged, counted, and skipped — so
-// one bad credential never blocks revocation/downgrade for the rest of the pool
-// (p12-3). Only a whole-pass failure (listing active sessions) returns an error.
+// Reconcile re-derives every active session's membership once: state `none` →
+// expired; still a member (active/pending) → the verification timestamp is
+// refreshed. A per-session error is fault-isolated — logged, counted, and the
+// session left untouched (D8 soft fail-open: never expire a member on a transient
+// chain error) — so one bad credential never blocks revocation for the rest of
+// the pool (p12-3). Only a whole-pass failure (listing sessions) returns an error.
 func (r *Reconciler) Reconcile(ctx context.Context) (Result, error) {
 	sessions, err := r.subs.ListActive(ctx, r.poolID)
 	if err != nil {
@@ -58,14 +59,14 @@ func (r *Reconciler) Reconcile(ctx context.Context) (Result, error) {
 	var res Result
 	for _, sess := range sessions {
 		res.Checked++
-		eligible, decision, err := r.elig.Eligibility(ctx, sess.StakeCredentialHash)
+		state, err := r.elig.Membership(ctx, sess.StakeCredentialHash)
 		if err != nil {
-			slog.Warn("reconciliation: eligibility failed, skipping session",
+			slog.Warn("reconciliation: membership check failed, keeping session",
 				"session", sess.SessionID, "err", err)
 			res.Failed++
 			continue
 		}
-		if !eligible {
+		if state == membership.StateNone {
 			if err := r.subs.SetStatus(ctx, sess.SessionID, domain.SubExpired); err != nil {
 				slog.Warn("reconciliation: expire failed, skipping session", "session", sess.SessionID, "err", err)
 				res.Failed++
@@ -74,21 +75,8 @@ func (r *Reconciler) Reconcile(ctx context.Context) (Result, error) {
 			res.Expired++
 			continue
 		}
-		now := r.now()
-		if decision.Tier != sess.Tier {
-			sess.Tier = decision.Tier
-			sess.Entitlements = decision.Entitlements
-			sess.Topics = decision.Entitlements
-			sess.LastVerifiedAt = now
-			if err := r.subs.Upsert(ctx, sess); err != nil {
-				slog.Warn("reconciliation: downgrade failed, skipping session", "session", sess.SessionID, "err", err)
-				res.Failed++
-				continue
-			}
-			res.Downgraded++
-			continue
-		}
-		sess.LastVerifiedAt = now
+		// Still a member (active or pending): refresh the verification timestamp.
+		sess.LastVerifiedAt = r.now()
 		if err := r.subs.Upsert(ctx, sess); err != nil {
 			slog.Warn("reconciliation: touch failed, skipping session", "session", sess.SessionID, "err", err)
 			res.Failed++
@@ -120,8 +108,8 @@ func (r *Reconciler) Run(ctx context.Context, pollInterval time.Duration) {
 			} else {
 				lastEpoch = epoch
 				slog.Info("reconciliation complete", "epoch", epoch,
-					"checked", res.Checked, "downgraded", res.Downgraded,
-					"expired", res.Expired, "failed", res.Failed)
+					"checked", res.Checked, "expired", res.Expired,
+					"unchanged", res.Unchanged, "failed", res.Failed)
 			}
 		}
 		if !sleep(ctx, pollInterval) {

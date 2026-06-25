@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"ouro-pass/server/internal/core/keys"
+	"ouro-pass/server/internal/core/membership"
 	"ouro-pass/server/internal/core/rules"
 	"ouro-pass/server/internal/core/walletauth"
 	"ouro-pass/server/internal/domain"
@@ -168,6 +169,23 @@ func (s *Server) evaluate(ctx context.Context, sch string) (bool, rules.Decision
 	in := rules.InputFromSnapshot(s.cfg.PoolID, snap)
 	d := rules.Evaluate(in, ruleset, snap.Epoch)
 	return d.Eligible, d, nil
+}
+
+// Membership derives a credential's current pool-membership state (S0004 §2.2):
+// the live-snapshot three-state classification, with blacklisted credentials
+// forced to `none`. It is the membership signal used by the reconciler (and, from
+// p3-1, the issuance gate), replacing the rules-based eligibility verdict.
+func (s *Server) Membership(ctx context.Context, sch string) (membership.State, error) {
+	if blocked, err := s.blacklist.Has(ctx, sch); err != nil {
+		return membership.StateNone, err
+	} else if blocked {
+		return membership.StateNone, nil
+	}
+	snap, err := s.cfg.Chain.Snapshot(ctx, sch)
+	if err != nil {
+		return membership.StateNone, err
+	}
+	return membership.DeriveState(snap, s.cfg.PoolID), nil
 }
 
 func contains(xs []string, v string) bool { return slices.Contains(xs, v) }
