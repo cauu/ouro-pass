@@ -124,6 +124,42 @@ func TestRevoke_DropsKeyFromJWKS(t *testing.T) {
 	}
 }
 
+// TestRetire covers the owner-driven manual retire (p5-1): only a rotating key
+// is eligible — the active signing key and unknown kids are rejected — and a
+// retired key drops from the JWKS while the active signer is untouched.
+func TestRetire(t *testing.T) {
+	ctx := context.Background()
+	s := testService(t)
+	kid1, _ := s.Rotate(ctx)
+	time.Sleep(2 * time.Millisecond)
+	kid2, _ := s.Rotate(ctx) // kid1 → rotating, kid2 → active
+
+	// The active signing key cannot be retired out from under issuance.
+	if err := s.Retire(ctx, kid2); err != ErrNotRotating {
+		t.Fatalf("retiring active key: got %v, want ErrNotRotating", err)
+	}
+	// An unknown kid surfaces a not-found error (handler maps it to 404).
+	if err := s.Retire(ctx, "op-issuer-nope"); err == nil {
+		t.Fatal("retiring unknown kid must error")
+	}
+
+	// Retire the rotating key → drops from JWKS; the active key still signs.
+	if err := s.Retire(ctx, kid1); err != nil {
+		t.Fatal(err)
+	}
+	keys, _ := s.PublicJWKSKeys(ctx)
+	if len(keys) != 1 || keys[0].KID != kid2 {
+		t.Fatalf("after retire %s, JWKS = %+v, want only %s", kid1, keys, kid2)
+	}
+	if _, err := s.ActiveSigner(ctx); err != nil {
+		t.Fatalf("active key must still sign after retiring the rotating one: %v", err)
+	}
+	// Retiring an already-retired key is rejected (not rotating anymore).
+	if err := s.Retire(ctx, kid1); err != ErrNotRotating {
+		t.Fatalf("re-retiring: got %v, want ErrNotRotating", err)
+	}
+}
+
 func TestRetireRotating(t *testing.T) {
 	ctx := context.Background()
 	s := testService(t)

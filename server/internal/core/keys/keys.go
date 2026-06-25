@@ -115,6 +115,26 @@ func (s *Service) PublicJWKSKeys(ctx context.Context) ([]jose.PublicKey, error) 
 	return out, nil
 }
 
+// ErrNotRotating rejects retiring a key that isn't in the rotating overlap
+// state (the active signing key or an already-terminal key cannot be retired).
+var ErrNotRotating = errors.New("keys: only rotating keys can be retired")
+
+// Retire moves a single rotating key to `retired` (manual JWKS cleanup once the
+// operator judges its short-lived tokens have all expired). It is the owner-
+// driven counterpart to RetireRotating: only `rotating` keys are eligible, so
+// the active signing key can never be retired out from under issuance.
+func (s *Service) Retire(ctx context.Context, kid string) error {
+	k, err := s.repo.Get(ctx, kid)
+	if err != nil {
+		return err // domain.ErrNotFound when missing
+	}
+	if k.Status != domain.KeyRotating {
+		return ErrNotRotating
+	}
+	now := s.now()
+	return s.repo.SetStatus(ctx, kid, domain.KeyRetired, &now)
+}
+
 // RetireRotating moves rotating keys created before `olderThan` to `retired`
 // (called once their short-lived tokens have all expired). Returns retired kids.
 func (s *Service) RetireRotating(ctx context.Context, olderThan time.Time) ([]string, error) {

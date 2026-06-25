@@ -79,6 +79,13 @@ export const generateKey = (stepUp: StepUpBody) =>
     "/api/admin/keys/issuer/generate",
     stepUp,
   );
+// Manual JWKS cleanup: retire a single rotating (verify-only) key once its
+// short-lived tokens have expired. Only rotating keys are eligible (owner + step-up).
+export const retireKey = (kid: string, stepUp: StepUpBody) =>
+  api.post<{ kid: string; status: string }>(
+    `/api/admin/keys/issuer/${encodeURIComponent(kid)}/retire`,
+    stepUp,
+  );
 
 // ---- audit ----
 export const listAudit = () => api.get<{ audit: AuditEntry[] }>("/api/admin/audit");

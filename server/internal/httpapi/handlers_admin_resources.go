@@ -2,11 +2,13 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"ouro-pass/server/internal/core/admin"
+	"ouro-pass/server/internal/core/keys"
 	"ouro-pass/server/internal/domain"
 	"ouro-pass/server/internal/httpapi/respond"
 	"ouro-pass/server/internal/utils/crypto"
@@ -32,6 +34,7 @@ func (h *apiHandlers) mountAdminResources(r chi.Router) {
 	r.Method(http.MethodPost, "/oauth-clients", owner(h.adminRegisterClient))
 	r.Method(http.MethodPost, "/keys/issuer/generate", owner(h.adminRotateKey))
 	r.Method(http.MethodPost, "/keys/issuer/rotate", owner(h.adminRotateKey))
+	r.Method(http.MethodPost, "/keys/issuer/{kid}/retire", owner(h.adminRetireKey))
 	r.Method(http.MethodGet, "/audit", owner(h.adminAudit))
 }
 
@@ -359,6 +362,41 @@ func (h *apiHandlers) adminRotateKey(w http.ResponseWriter, r *http.Request) {
 	}
 	h.audit(r, "issuer_key.rotate", kid)
 	respond.JSON(w, http.StatusOK, map[string]any{"new_kid": kid, "status": "active", "jwks_updated": true})
+}
+
+// adminRetireKey removes a single rotating key from the JWKS overlap set once
+// the owner judges its short-lived tokens have all expired (manual cleanup;
+// owner + step-up). Only rotating keys are eligible — the active signing key
+// cannot be retired.
+func (h *apiHandlers) adminRetireKey(w http.ResponseWriter, r *http.Request) {
+	if h.d.Keys == nil {
+		notImplemented(w, r)
+		return
+	}
+	kid := chi.URLParam(r, "kid")
+	var body struct {
+		CoseKey         string `json:"cose_key"`
+		StepUpNonce     string `json:"step_up_nonce"`
+		StepUpSignature string `json:"step_up_signature"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if err := h.requireStepUp(r, struct{ CoseKey, Nonce, Signature string }{body.CoseKey, body.StepUpNonce, body.StepUpSignature}); err != nil {
+		writeAdminErr(w, err)
+		return
+	}
+	switch err := h.d.Keys.Retire(r.Context(), kid); {
+	case errors.Is(err, domain.ErrNotFound):
+		respond.Error(w, http.StatusNotFound, "not_found", "no such signing key")
+		return
+	case errors.Is(err, keys.ErrNotRotating):
+		respond.Error(w, http.StatusConflict, "invalid_state", "only rotating keys can be retired")
+		return
+	case err != nil:
+		serverError(w, r, err)
+		return
+	}
+	h.audit(r, "issuer_key.retire", kid)
+	respond.JSON(w, http.StatusOK, map[string]any{"kid": kid, "status": "retired"})
 }
 
 // ---- audit ----

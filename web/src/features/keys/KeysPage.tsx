@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchJwks, generateKey, rotateKey } from "@/api/admin";
+import { fetchJwks, generateKey, retireKey, rotateKey } from "@/api/admin";
 import { PageHeader, QueryState } from "@/app/page";
 import { StepUpDialog } from "@/features/auth/StepUpDialog";
 import { Badge } from "@/ui/badge";
@@ -65,6 +65,7 @@ export function KeysPage() {
               <TH>Type</TH>
               <TH>Curve</TH>
               <TH>Alg</TH>
+              <TH className="text-right">Actions</TH>
             </TR>
           </THead>
           <TBody>
@@ -81,6 +82,21 @@ export function KeysPage() {
                 <TD>{k.kty}</TD>
                 <TD>{k.crv ?? "—"}</TD>
                 <TD>{k.alg ?? "EdDSA"}</TD>
+                <TD className="text-right">
+                  {k.status === "rotating" && (
+                    <StepUpDialog
+                      trigger={
+                        <Button size="sm" variant="outline">Retire</Button>
+                      }
+                      title="Retire signing key"
+                      description="Remove this verify-only key from the JWKS. Only do this once tokens signed by it have expired — verification of those tokens will then fail."
+                      onConfirm={async (su) => {
+                        await retireKey(k.kid, su);
+                      }}
+                      onDone={refresh}
+                    />
+                  )}
+                </TD>
               </TR>
             ))}
           </TBody>

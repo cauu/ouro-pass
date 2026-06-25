@@ -122,7 +122,8 @@ interface WalletAdapter {
 - [x] p3-1-fix2 **fix**（验收发现）：Keys 页生成/轮换密钥后 JWKS 列表 ~60s 不更新（仍显示空/旧值）。根因——KeysPage 以公开 `GET /.well-known/ouropass/jwks.json` 为数据源，后端给它发 `Cache-Control: public, max-age=60`（面向 verifier 的有意缓存），而 admin client 的 `fetch` 未设 `cache`，react-query 失效后重取命中浏览器 HTTP 缓存返回过期空列表。修复——admin client GET 加 `cache: "no-store"` 绕过浏览器缓存（verifier 侧缓存保持不变）。后端 Rotate 逻辑无误；"两个 key"= active+rotating 正常重叠。
 - [x] p3-1-fix3 **fix**（验收发现）：Keys 页看不出哪个 key 在签名。后端 JWKS 每个 key 本已带 `status` 字段（`jose.BuildJWKS`，active|rotating|retired），但前端 `Jwk` 类型漏声明 `status`、表格也无 Status 列，把唯一可区分字段丢了。修复——`Jwk` 加 `status?`，表格加 Status 列徽章（`active`→`active (signing)` success 高亮，rotating/retired→muted）。澄清：当前签名 key = 唯一 `active`（`keys.ActiveSigner` 取最新 active），`rotating` 仅验证旧 token。
 - [x] p3-1-fix4 **fix**（UX，用户确认）：Keys 页 Generate / Rotate 两个按钮功能完全相同（同 handler），易误导。合并为单按钮：无 active key 时显示 "Generate"（bootstrap 首个 key），有 active key 时显示 "Rotate"（新 active + 旧降 rotating）；标题/说明同步切换，按意图调对应端点（功能等价）。后端两路由暂保留不动（前端仅暴露一个入口）。
-- [ ] p5-1 **（后端，延后）** rotating key 退役驱动器：`keys.RetireRotating(olderThan)` 目前无任何生产调用方，rotating key 永不退役、常驻 JWKS、随每次 rotate 累积。需后台 worker（仿 reconciliation/nonce-gc）按 token TTL 周期调用，把过老的 rotating→retired。用户确认：当前不影响功能，本 spec 内延后追加，暂不实现。
+- [ ] p5-1 **（后端，延后/不采用）** rotating key 退役**自动 worker**：`keys.RetireRotating(olderThan)` 无生产调用方，rotating key 随每次 rotate 累积。原拟后台 worker 周期退役。**决策（用户确认）**：不做自动 worker——① 现状判据 `RetireRotating` 以 `ValidFrom`（激活时刻）为 cutoff，而非降级时刻+TTL，可能在旧 token 仍有效时过早退役（潜在 bug，且 schema 无 `demoted_at` 列需迁移）；② rotate 稀有、JWKS 增长极慢、收益近零。改为手动退役（p5-2）。本项保留为"仅当 JWKS 真膨胀到困扰时再考虑，且需先补 `demoted_at` 并修判据"。
+- [x] p5-2 **（手动退役，用户确认采用）** owner 手动退役单个 rotating key：后端 `keys.Service.Retire(kid)`（仅 `rotating` 可退，`ErrNotRotating`/`ErrNotFound` 守卫）+ `POST /api/admin/keys/issuer/{kid}/retire`（owner + step-up，404/409 映射）+ 审计 `issuer_key.retire`；前端 `retireKey()` + Keys 表 rotating 行加 "Retire"（step-up 弹窗，含"仅在 token 过期后退役"警示）。绕开自动方案的时间启发式，由 owner 判时点。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 `WalletAdapter`：mock `window.cardano` 覆盖探测/enable/getRewardAddresses/signData；`signNonce` 返回 `{coseKeyHex, signatureHex}` 且**不在浏览器解 CBOR**；network guard 不匹配报错。
@@ -160,6 +161,8 @@ interface WalletAdapter {
 
 - 2026-06-25 p3-1-fix4 完成（UX 收敛，用户确认 fix3 遗留）：KeysPage 两按钮合一。`hasActiveKey = keys.some(status==="active")`：无→"Generate"（建首个 active）、有→"Rotate"；`StepUpDialog` 的 title/description/onConfirm 端点随之切换（generate vs rotate，后端等价）。后端两路由保留（前端只暴露一个入口），不动后端 scope。同时把"rotating 退役驱动器"记为延后项 p5-1（用户确认本 spec 内后补）。`pnpm build` 绿、lint 0 error。
 
+- 2026-06-25 p5-2 完成（手动退役，用户拍板"直接做手动 retire"）：后端 `keys.go` 加 `Retire(ctx,kid)`（`repo.Get` 查状态，非 `rotating`→`ErrNotRotating`，缺失→`ErrNotFound`，否则 `SetStatus(retired)`）；`handlers_admin_resources.go` 加 `adminRetireKey`（owner+step-up，`{kid}` path 参，错误映射 404/409，审计 `issuer_key.retire`）+ 路由 `POST /keys/issuer/{kid}/retire`。前端 `admin.ts` 加 `retireKey(kid,su)`；`KeysPage` 表加 Actions 列，仅 rotating 行显示 "Retire"（StepUpDialog，文案警示"仅在其 token 过期后退役，否则那些 token 验签将失败"）。新增 `TestRetire`（拒退 active、拒未知 kid、退 rotating 后 JWKS 掉该 key 且 active 仍可签、拒重复退）。决策：p5-1 自动 worker 不采用（判据/schema 隐患 + 收益近零），手动方案由 owner 判时点、最简且安全。
+
 ## 6. Validation Evidence (append-only)
 - 2026-06-25 TC-7（部分）| stack: ui | command: `pnpm install` + `pnpm build`（`tsc -b && vite build`） | result: pass | note: 工具链就绪，类型检查 + 生产打包绿（27 模块、JS 144KB/gzip 46KB、CSS 5.3KB）。
 
@@ -182,6 +185,9 @@ interface WalletAdapter {
 - 2026-06-25 p3-1-fix3 | stack: ui | command: `pnpm build`(tsc -b && vite build) | result: pass | note: `Jwk.status` + Keys 表 Status 列徽章打包绿（1745 模块、JS 463KB/gzip 145KB）；active key 显示"active (signing)"，rotating/retired muted。
 
 - 2026-06-25 p3-1-fix4 | stack: ui | command: `pnpm build`(tsc -b && vite build) + `pnpm lint` | result: pass | note: 单按钮按 `hasActiveKey` 切 Generate/Rotate；打包绿（1745 模块、JS 463KB/gzip 145KB），lint 0 error（仅 toast.tsx 既有 react-refresh warning ×2，与本改无关）。
+
+- 2026-06-25 p5-2 | stack: go | command: `go test ./internal/core/keys/ ./internal/httpapi/` + `go vet ./...` + `go build ./...` | result: pass | note: `TestRetire` 绿（拒 active/未知 kid、退 rotating 后 JWKS 掉 key 且 active 仍签、拒重复退）；keys+httpapi 全包绿；vet/build 0 error。
+- 2026-06-25 p5-2 | stack: ui | command: `pnpm build`(tsc -b && vite build) + `pnpm lint` | result: pass | note: `retireKey` + Keys 表 rotating 行 Retire 按钮（step-up）打包绿（JS 463KB/gzip 145KB），lint 0 error（仅 toast.tsx 既有 warning ×2）。
 
 ## 7. Change Requests (append-only)
 - 2026-06-24 选型：框架 React+Vite 纯 SPA（用户确认）；组件库 shadcn/ui（用户确认）；钱包 thin `window.cardano` 封装（用户质疑 Weld 成熟度：~550 下载/月、pre-1.0；且 CBOR 解码改放后端后前端只需转发，thin-wrapper 最契合，库藏 `WalletAdapter` 后可换）。
