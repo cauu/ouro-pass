@@ -22,7 +22,6 @@ type OAuthClient struct {
 	ClientSecretHash *string    // 🔒 confidential only
 	RedirectURIs     []string   // exact-match allowlist
 	AllowedAudiences []string
-	PKCERequired     bool
 	Status           string // active | disabled
 	CreatedAt        time.Time
 }

@@ -19,7 +19,7 @@ func issuedTokenPair(t *testing.T) (*harness, string, string) {
 		AllowedAudiences: []string{"app:ouro"}, Status: "active", CreatedAt: time.Now(),
 	})
 	code, _ := h.eligibleCode(t)
-	resp, err := h.srv.Token(ctx, TokenRequest{GrantType: "authorization_code", Code: code, ClientID: "c1", ClientSecret: "s", RedirectURI: "https://app/cb"})
+	resp, err := h.srv.Token(ctx, TokenRequest{GrantType: "authorization_code", Code: code, ClientID: "c1", ClientSecret: "s", CodeVerifier: testPKCEVerifier, RedirectURI: "https://app/cb"})
 	if err != nil {
 		t.Fatal(err)
 	}

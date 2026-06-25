@@ -28,7 +28,6 @@ interface ClientForm {
   client_type: "public" | "confidential";
   redirect_uris: string;
   allowed_audiences: string;
-  pkce_required: boolean;
 }
 
 const splitLines = (s: string) =>
@@ -51,7 +50,6 @@ function RegisterClientDialog({ onRegistered }: { onRegistered: () => void }) {
       client_type: "confidential",
       redirect_uris: "",
       allowed_audiences: "",
-      pkce_required: false,
     },
   });
 
@@ -78,7 +76,6 @@ function RegisterClientDialog({ onRegistered }: { onRegistered: () => void }) {
         client_type: v.client_type,
         redirect_uris: splitLines(v.redirect_uris),
         allowed_audiences: splitLines(v.allowed_audiences),
-        pkce_required: v.pkce_required,
       };
       const res = await registerClient({ ...body, ...stepUp });
       onRegistered();
@@ -158,9 +155,9 @@ function RegisterClientDialog({ onRegistered }: { onRegistered: () => void }) {
               <Field label="Audiences (comma-sep)">
                 <Input {...register("allowed_audiences")} placeholder="app:ouro" />
               </Field>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" {...register("pkce_required")} /> Require PKCE
-              </label>
+              <p className="text-xs text-muted-foreground">
+                PKCE is required for all clients.
+              </p>
             </form>
             <p className="text-sm font-medium">Sign &amp; register with your owner wallet:</p>
             <WalletPicker onPick={(k) => void signAndRegister(k)} busy={busy} />

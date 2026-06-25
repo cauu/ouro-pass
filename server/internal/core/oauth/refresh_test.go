@@ -22,7 +22,7 @@ func confidentialHarness(t *testing.T) (*harness, string, string) {
 	})
 	code, sch := h.eligibleCode(t)
 	resp, err := h.srv.Token(ctx, TokenRequest{
-		GrantType: "authorization_code", Code: code, ClientID: "c1", ClientSecret: "s", RedirectURI: "https://app/cb",
+		GrantType: "authorization_code", Code: code, ClientID: "c1", ClientSecret: "s", CodeVerifier: testPKCEVerifier, RedirectURI: "https://app/cb",
 	})
 	if err != nil {
 		t.Fatalf("initial token: %v", err)

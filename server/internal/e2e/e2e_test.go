@@ -221,8 +221,10 @@ func TestE2E_ConfidentialAuthCodeLifecycle(t *testing.T) {
 		AllowedAudiences: []string{"app:ouro"},
 	})
 
-	// authorize → code
-	st, loc := e.authorize(w, "web", "https://web/cb", "app:ouro", "", "")
+	// authorize → code (PKCE is mandatory for all clients, confidential included)
+	verifier := "the-pkce-code-verifier-string-e2e-web"
+	challenge := pkceS256(verifier)
+	st, loc := e.authorize(w, "web", "https://web/cb", "app:ouro", challenge, "")
 	if st != http.StatusFound {
 		t.Fatalf("authorize status = %d, want 302 (loc=%s)", st, loc)
 	}
@@ -231,9 +233,9 @@ func TestE2E_ConfidentialAuthCodeLifecycle(t *testing.T) {
 		t.Fatalf("no code in %s", loc)
 	}
 
-	// token (authorization_code)
+	// token (authorization_code) — confidential client presents secret AND verifier
 	st, tok := e.post("/api/oauth/token",
-		`{"grant_type":"authorization_code","code":"`+code+`","client_id":"web","client_secret":"`+secret+`","redirect_uri":"https://web/cb"}`)
+		`{"grant_type":"authorization_code","code":"`+code+`","client_id":"web","client_secret":"`+secret+`","code_verifier":"`+verifier+`","redirect_uri":"https://web/cb"}`)
 	if st != 200 {
 		t.Fatalf("token = %d (%v)", st, tok)
 	}
@@ -283,7 +285,6 @@ func TestE2E_PublicPKCEDevicePoP(t *testing.T) {
 	e.seedClient(domain.OAuthClient{
 		ClientID: "spa", Name: "SPA", ClientType: domain.ClientPublic,
 		RedirectURIs: []string{"https://spa/cb"}, AllowedAudiences: []string{"app:ouro"},
-		PKCERequired: true,
 	})
 	verifier := "the-pkce-code-verifier-string-e2e"
 	challenge := pkceS256(verifier)
@@ -327,10 +328,13 @@ func TestE2E_IneligibleAndAdminRevoke(t *testing.T) {
 		AllowedAudiences: []string{"app:ouro"},
 	})
 
+	verifier := "the-pkce-code-verifier-string-e2e-revoke"
+	challenge := pkceS256(verifier)
+
 	// Member is eligible → gets a token.
-	_, loc := e.authorize(member, "web", "https://web/cb", "app:ouro", "", "")
+	_, loc := e.authorize(member, "web", "https://web/cb", "app:ouro", challenge, "")
 	code := codeFromLocation(t, loc)
-	if st, _ := e.post("/api/oauth/token", `{"grant_type":"authorization_code","code":"`+code+`","client_id":"web","client_secret":"s","redirect_uri":"https://web/cb"}`); st != 200 {
+	if st, _ := e.post("/api/oauth/token", `{"grant_type":"authorization_code","code":"`+code+`","client_id":"web","client_secret":"s","code_verifier":"`+verifier+`","redirect_uri":"https://web/cb"}`); st != 200 {
 		t.Fatalf("eligible token = %d", st)
 	}
 
@@ -343,7 +347,7 @@ func TestE2E_IneligibleAndAdminRevoke(t *testing.T) {
 	}
 
 	// Now blacklisted → a fresh authorize is not_eligible.
-	_, loc2 := e.authorize(member, "web", "https://web/cb", "app:ouro", "", "")
+	_, loc2 := e.authorize(member, "web", "https://web/cb", "app:ouro", challenge, "")
 	if !strings.Contains(loc2, "error=not_eligible") {
 		t.Fatalf("revoked member authorize = %s, want error=not_eligible", loc2)
 	}
@@ -351,7 +355,7 @@ func TestE2E_IneligibleAndAdminRevoke(t *testing.T) {
 	// An ineligible (non-delegating) wallet is rejected too.
 	other := newWallet(t)
 	e.chain.Put(&chain.Snapshot{StakeCredentialHash: other.sch, Epoch: 480, DelegatedPoolID: "pool1other", ActiveStakeLovelace: "5000000"})
-	_, loc3 := e.authorize(other, "web", "https://web/cb", "app:ouro", "", "")
+	_, loc3 := e.authorize(other, "web", "https://web/cb", "app:ouro", challenge, "")
 	if !strings.Contains(loc3, "error=not_eligible") {
 		t.Fatalf("non-delegator authorize = %s, want error=not_eligible", loc3)
 	}

@@ -286,7 +286,6 @@ func (h *apiHandlers) adminRegisterClient(w http.ResponseWriter, r *http.Request
 		ClientType   string   `json:"client_type"`
 		RedirectURIs []string `json:"redirect_uris"`
 		Audiences    []string `json:"allowed_audiences"`
-		PKCERequired bool     `json:"pkce_required"`
 		// Registering a client issues credentials → require a fresh step-up
 		// signature like key rotation (p12-11/D19).
 		CoseKey         string `json:"cose_key"`
@@ -312,8 +311,8 @@ func (h *apiHandlers) adminRegisterClient(w http.ResponseWriter, r *http.Request
 	c := domain.OAuthClient{
 		ClientID: clientID, Name: body.Name, ClientType: domain.ClientType(body.ClientType),
 		RedirectURIs:     body.RedirectURIs,
-		AllowedAudiences: body.Audiences, PKCERequired: body.PKCERequired,
-		Status: "active", CreatedAt: time.Now(),
+		AllowedAudiences: body.Audiences,
+		Status:           "active", CreatedAt: time.Now(),
 	}
 	// Confidential clients get a one-time secret (returned once, stored hashed).
 	var plainSecret string

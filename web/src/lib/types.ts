@@ -68,7 +68,6 @@ export interface OAuthClient {
   ClientSecretHash: string | null;
   RedirectURIs: string[] | null;
   AllowedAudiences: string[] | null;
-  PKCERequired: boolean;
   Status: string;
   CreatedAt: string;
 }
@@ -107,7 +106,6 @@ export interface ClientRegister {
   client_type: "public" | "confidential";
   redirect_uris: string[];
   allowed_audiences: string[];
-  pkce_required: boolean;
 }
 
 export interface PushCreate {

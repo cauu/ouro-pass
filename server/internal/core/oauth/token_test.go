@@ -40,7 +40,7 @@ func TestToken_AuthCodeConfidential(t *testing.T) {
 
 	resp, err := h.srv.Token(ctx, TokenRequest{
 		GrantType: "authorization_code", Code: code, ClientID: "c1",
-		ClientSecret: secret, RedirectURI: "https://app/cb",
+		ClientSecret: secret, CodeVerifier: testPKCEVerifier, RedirectURI: "https://app/cb",
 	})
 	if err != nil {
 		t.Fatalf("token: %v", err)
@@ -71,7 +71,7 @@ func TestToken_AuthCodeConfidential(t *testing.T) {
 
 	// Wrong secret rejected.
 	code2, _ := h.eligibleCode(t)
-	if _, err := h.srv.Token(ctx, TokenRequest{GrantType: "authorization_code", Code: code2, ClientID: "c1", ClientSecret: "wrong", RedirectURI: "https://app/cb"}); err != ErrInvalidClientCreds {
+	if _, err := h.srv.Token(ctx, TokenRequest{GrantType: "authorization_code", Code: code2, ClientID: "c1", ClientSecret: "wrong", CodeVerifier: testPKCEVerifier, RedirectURI: "https://app/cb"}); err != ErrInvalidClientCreds {
 		t.Errorf("wrong secret: %v, want invalid_client", err)
 	}
 }
@@ -82,7 +82,7 @@ func TestToken_AuthCodePublicPKCE(t *testing.T) {
 	h.st.OAuthClients().Upsert(ctx, domain.OAuthClient{
 		ClientID: "spa", Name: "SPA", ClientType: domain.ClientPublic,
 		RedirectURIs: []string{"https://spa/cb"}, AllowedAudiences: []string{"app:ouro"},
-		PKCERequired: true, Status: "active", CreatedAt: time.Now(),
+		Status: "active", CreatedAt: time.Now(),
 	})
 	sch := hex.EncodeToString(crypto.Blake2b224(h.pub))
 	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakeLovelace: "5000000"})
@@ -137,7 +137,7 @@ func TestToken_PublicDevicePoP(t *testing.T) {
 	h.st.OAuthClients().Upsert(ctx, domain.OAuthClient{
 		ClientID: "spa", Name: "SPA", ClientType: domain.ClientPublic,
 		RedirectURIs: []string{"https://spa/cb"}, AllowedAudiences: []string{"app:ouro"},
-		PKCERequired: true, Status: "active", CreatedAt: time.Now(),
+		Status: "active", CreatedAt: time.Now(),
 	})
 	sch := hex.EncodeToString(crypto.Blake2b224(h.pub))
 	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakeLovelace: "5000000"})
@@ -197,7 +197,7 @@ func TestToken_ReusedCodeRejected(t *testing.T) {
 		AllowedAudiences: []string{"app:ouro"}, Status: "active", CreatedAt: time.Now(),
 	})
 	code, _ := h.eligibleCode(t)
-	r := TokenRequest{GrantType: "authorization_code", Code: code, ClientID: "c1", ClientSecret: "s", RedirectURI: "https://app/cb"}
+	r := TokenRequest{GrantType: "authorization_code", Code: code, ClientID: "c1", ClientSecret: "s", CodeVerifier: testPKCEVerifier, RedirectURI: "https://app/cb"}
 	if _, err := h.srv.Token(ctx, r); err != nil {
 		t.Fatalf("first exchange: %v", err)
 	}

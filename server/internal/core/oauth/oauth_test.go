@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"path/filepath"
@@ -20,6 +22,15 @@ import (
 )
 
 const testPool = "pool1abc"
+
+// PKCE is mandatory for every client now, so tests authorize with this fixed
+// challenge and exchange the matching verifier.
+const testPKCEVerifier = "test-pkce-code-verifier-0123456789"
+
+func testPKCEChallenge() string {
+	sum := sha256.Sum256([]byte(testPKCEVerifier))
+	return base64.RawURLEncoding.EncodeToString(sum[:])
+}
 
 // harness wires a Server over a fresh store with a mock chain and one client.
 type harness struct {
@@ -110,6 +121,7 @@ func (h *harness) authorizeAs(t *testing.T, sch string) (string, error) {
 	return h.srv.Authorize(ctx, AuthorizeRequest{
 		ClientID: "c1", RedirectURI: "https://app/cb", State: "xyz", Aud: "app:ouro",
 		Scope: []string{"read"}, Nonce: nonce, CoseKey: h.coseKey, Signature: h.sign(t, nonce),
+		CodeChallenge: testPKCEChallenge(),
 	})
 }
 

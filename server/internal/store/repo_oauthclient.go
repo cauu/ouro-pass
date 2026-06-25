@@ -8,13 +8,6 @@ import (
 	"ouro-pass/server/internal/domain"
 )
 
-func boolToInt(b bool) int {
-	if b {
-		return 1
-	}
-	return 0
-}
-
 // OAuthClientRepo persists registered clients (§5.1).
 type OAuthClientRepo struct{ s *Store }
 
@@ -24,15 +17,15 @@ func (s *Store) OAuthClients() *OAuthClientRepo { return &OAuthClientRepo{s} }
 // Upsert inserts or replaces a client registration.
 func (r *OAuthClientRepo) Upsert(ctx context.Context, c domain.OAuthClient) error {
 	_, err := r.s.DB.ExecContext(ctx, r.s.Rebind(`
-		INSERT INTO OAuthClient (client_id, name, client_type, client_secret_hash, redirect_uris, allowed_audiences, pkce_required, status, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO OAuthClient (client_id, name, client_type, client_secret_hash, redirect_uris, allowed_audiences, status, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (client_id) DO UPDATE SET
 			name=excluded.name, client_type=excluded.client_type, client_secret_hash=excluded.client_secret_hash,
 			redirect_uris=excluded.redirect_uris, allowed_audiences=excluded.allowed_audiences,
-			pkce_required=excluded.pkce_required, status=excluded.status`),
+			status=excluded.status`),
 		c.ClientID, c.Name, string(c.ClientType), nullStr(c.ClientSecretHash),
 		encodeStrings(c.RedirectURIs), encodeStrings(c.AllowedAudiences),
-		boolToInt(c.PKCERequired), c.Status, ts(c.CreatedAt))
+		c.Status, ts(c.CreatedAt))
 	return err
 }
 
@@ -41,11 +34,10 @@ func (r *OAuthClientRepo) Get(ctx context.Context, clientID string) (*domain.OAu
 	var c domain.OAuthClient
 	var clientType, redirects, auds, status, created string
 	var secretHash sql.NullString
-	var pkce int
 	err := r.s.DB.QueryRowContext(ctx, r.s.Rebind(`
-		SELECT client_id, name, client_type, client_secret_hash, redirect_uris, allowed_audiences, pkce_required, status, created_at
+		SELECT client_id, name, client_type, client_secret_hash, redirect_uris, allowed_audiences, status, created_at
 		FROM OAuthClient WHERE client_id = ?`), clientID).
-		Scan(&c.ClientID, &c.Name, &clientType, &secretHash, &redirects, &auds, &pkce, &status, &created)
+		Scan(&c.ClientID, &c.Name, &clientType, &secretHash, &redirects, &auds, &status, &created)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -53,7 +45,7 @@ func (r *OAuthClientRepo) Get(ctx context.Context, clientID string) (*domain.OAu
 		return nil, err
 	}
 	c.ClientType, c.Status = domain.ClientType(clientType), status
-	c.ClientSecretHash, c.PKCERequired = strPtr(secretHash), pkce != 0
+	c.ClientSecretHash = strPtr(secretHash)
 	if c.RedirectURIs, err = decodeStrings(redirects); err != nil {
 		return nil, err
 	}
@@ -69,7 +61,7 @@ func (r *OAuthClientRepo) Get(ctx context.Context, clientID string) (*domain.OAu
 // List returns all registered clients (secret hashes omitted by callers).
 func (r *OAuthClientRepo) List(ctx context.Context) ([]domain.OAuthClient, error) {
 	rows, err := r.s.DB.QueryContext(ctx, r.s.Rebind(`
-		SELECT client_id, name, client_type, client_secret_hash, redirect_uris, allowed_audiences, pkce_required, status, created_at
+		SELECT client_id, name, client_type, client_secret_hash, redirect_uris, allowed_audiences, status, created_at
 		FROM OAuthClient ORDER BY created_at`))
 	if err != nil {
 		return nil, err
@@ -80,12 +72,10 @@ func (r *OAuthClientRepo) List(ctx context.Context) ([]domain.OAuthClient, error
 		var c domain.OAuthClient
 		var clientType, redirects, auds, status, created string
 		var secretHash sql.NullString
-		var pkce int
-		if err := rows.Scan(&c.ClientID, &c.Name, &clientType, &secretHash, &redirects, &auds, &pkce, &status, &created); err != nil {
+		if err := rows.Scan(&c.ClientID, &c.Name, &clientType, &secretHash, &redirects, &auds, &status, &created); err != nil {
 			return nil, err
 		}
 		c.ClientType, c.Status = domain.ClientType(clientType), status
-		c.PKCERequired = pkce != 0
 		// Propagate decode errors instead of silently yielding empty fields
 		// (consistency with Get, p12-9).
 		if c.RedirectURIs, err = decodeStrings(redirects); err != nil {

@@ -121,6 +121,7 @@ func TestConnectAuthorize_FormPost(t *testing.T) {
 	form := url.Values{
 		"client_id": {"c1"}, "redirect_uri": {"https://app/cb"}, "state": {"xyz"}, "aud": {"app:ouro"},
 		"scope": {"read"}, "nonce": {nonce}, "cose_key": {coseKeyOf(vkey)}, "signature": {signNonce(t, priv, nonce)},
+		"code_challenge": {"E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"}, // PKCE mandatory for all
 	}
 	resp, err := client.PostForm(srv.URL+"/api/connect/authorize", form)
 	if err != nil {

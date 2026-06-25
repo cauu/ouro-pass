@@ -18,7 +18,7 @@ func TestOAuthClientRepo_RoundTrip(t *testing.T) {
 		ClientID: "c1", Name: "Ouro App", ClientType: domain.ClientConfidential,
 		ClientSecretHash: ptr("hash"),
 		RedirectURIs:     []string{"https://app/cb"}, AllowedAudiences: []string{"app:ouro"},
-		PKCERequired: false, Status: "active", CreatedAt: now,
+		Status: "active", CreatedAt: now,
 	}
 	if err := st.OAuthClients().Upsert(ctx, c); err != nil {
 		t.Fatal(err)
@@ -27,21 +27,20 @@ func TestOAuthClientRepo_RoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.ClientType != domain.ClientConfidential ||
-		len(got.AllowedAudiences) != 1 || got.PKCERequired {
+	if got.ClientType != domain.ClientConfidential || len(got.AllowedAudiences) != 1 {
 		t.Fatalf("mismatch: %+v", got)
 	}
 
-	// Public client with PKCE required.
+	// Public client (no secret).
 	pub := domain.OAuthClient{
 		ClientID: "spa", Name: "SPA", ClientType: domain.ClientPublic,
 		RedirectURIs: []string{"https://spa/cb"}, AllowedAudiences: []string{"app:ouro"},
-		PKCERequired: true, Status: "active", CreatedAt: now,
+		Status: "active", CreatedAt: now,
 	}
 	st.OAuthClients().Upsert(ctx, pub)
 	got, _ = st.OAuthClients().Get(ctx, "spa")
-	if !got.PKCERequired || got.ClientSecretHash != nil {
-		t.Fatalf("public client: pkce=%v secret=%v", got.PKCERequired, got.ClientSecretHash)
+	if got.ClientType != domain.ClientPublic || got.ClientSecretHash != nil {
+		t.Fatalf("public client: type=%v secret=%v", got.ClientType, got.ClientSecretHash)
 	}
 }
 

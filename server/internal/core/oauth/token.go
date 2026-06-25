@@ -197,20 +197,21 @@ func (s *Server) tokenAuthCode(ctx context.Context, req TokenRequest) (*TokenRes
 	})
 }
 
-// authenticateClient enforces confidential client_secret or public PKCE.
+// authenticateClient enforces PKCE S256 for every client (OAuth 2.1) and, for
+// confidential clients, additionally verifies the client_secret.
 func (s *Server) authenticateClient(client *domain.OAuthClient, code *domain.AuthorizationCode, req TokenRequest) error {
-	if client.ClientType == domain.ClientConfidential {
-		if client.ClientSecretHash == nil || crypto.HashToken(req.ClientSecret) != *client.ClientSecretHash {
-			return ErrInvalidClientCreds
-		}
-		return nil
-	}
-	// Public client → PKCE S256 (D7).
+	// PKCE binds the code to the verifier presented here (D7) — required for all.
 	if code.CodeChallenge == nil || req.CodeVerifier == "" {
 		return ErrInvalidGrant
 	}
 	if pkceS256(req.CodeVerifier) != *code.CodeChallenge {
 		return ErrInvalidGrant
+	}
+	// Confidential clients also authenticate with their secret.
+	if client.ClientType == domain.ClientConfidential {
+		if client.ClientSecretHash == nil || crypto.HashToken(req.ClientSecret) != *client.ClientSecretHash {
+			return ErrInvalidClientCreds
+		}
 	}
 	return nil
 }

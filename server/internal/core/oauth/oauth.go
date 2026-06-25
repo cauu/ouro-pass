@@ -112,11 +112,12 @@ func (s *Server) ValidateClient(ctx context.Context, clientID, redirectURI, aud 
 // snapshot, and on success issues a one-time authorization code bound to the
 // request context. The returned code is plaintext (stored hashed).
 func (s *Server) Authorize(ctx context.Context, req AuthorizeRequest) (code string, err error) {
-	client, err := s.ValidateClient(ctx, req.ClientID, req.RedirectURI, req.Aud)
-	if err != nil {
+	if _, err := s.ValidateClient(ctx, req.ClientID, req.RedirectURI, req.Aud); err != nil {
 		return "", err
 	}
-	if (client.ClientType == domain.ClientPublic || client.PKCERequired) && req.CodeChallenge == "" {
+	// PKCE is mandatory for every client (OAuth 2.1): the authorization code is
+	// bound to a code_challenge that must be proven at token exchange.
+	if req.CodeChallenge == "" {
 		return "", ErrInvalidRequest
 	}
 
@@ -138,10 +139,8 @@ func (s *Server) Authorize(ctx context.Context, req AuthorizeRequest) (code stri
 	rec := domain.AuthorizationCode{
 		Code: crypto.HashToken(plain), ClientID: req.ClientID, StakeCredentialHash: sch,
 		Aud: req.Aud, Scope: req.Scope, RedirectURI: req.RedirectURI,
-		ExpiresAt: now.Add(s.cfg.CodeTTL), CreatedAt: now,
-	}
-	if req.CodeChallenge != "" {
-		rec.CodeChallenge = &req.CodeChallenge
+		CodeChallenge: &req.CodeChallenge, // always set — PKCE is mandatory
+		ExpiresAt:     now.Add(s.cfg.CodeTTL), CreatedAt: now,
 	}
 	if err := s.authCodes.Create(ctx, rec); err != nil {
 		return "", err

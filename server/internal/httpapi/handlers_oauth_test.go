@@ -125,6 +125,7 @@ func TestConnectAuthorize_RedirectsWithCode(t *testing.T) {
 	body, _ := json.Marshal(map[string]any{
 		"client_id": "c1", "redirect_uri": "https://app/cb", "state": "xyz", "aud": "app:ouro",
 		"nonce": nonce, "cose_key": coseKeyOf(vkey), "signature": signNonce(t, priv, nonce),
+		"code_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", // PKCE mandatory for all
 	})
 	resp, err := client.Post(srv.URL+"/api/connect/authorize", "application/json", strings.NewReader(string(body)))
 	if err != nil {
@@ -144,6 +145,7 @@ func TestConnectAuthorize_RedirectsWithCode(t *testing.T) {
 	body2, _ := json.Marshal(map[string]any{
 		"client_id": "c1", "redirect_uri": "https://app/cb", "state": "s2", "aud": "app:ouro",
 		"nonce": nonce2, "cose_key": coseKeyOf(vkey), "signature": signNonce(t, priv, nonce2),
+		"code_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", // PKCE mandatory for all
 	})
 	resp2, _ := client.Post(srv.URL+"/api/connect/authorize", "application/json", strings.NewReader(string(body2)))
 	loc2, _ := url.Parse(resp2.Header.Get("Location"))
