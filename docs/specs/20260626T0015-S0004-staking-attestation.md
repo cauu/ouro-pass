@@ -151,7 +151,7 @@ e = currentEpoch(now()); row = cache.Get(sch)
 - [x] p3-1 token claims:签发/刷新写 state/active_stake/epochs/since(+可选 tier);薄 issuer 闸;e2e。
 - [x] p4-1 rules 删除:删 `MembershipRule`/Rules 端点/引擎 tier 判定;`PoolConfig.tier_rules` + 第一方 tier 映射(渠道/push);迁移既有测试;(S0002 删 Rules 页另计)。
 - [x] p5-1 (可选/可延后) delegator 枚举:`chain.Delegators(poolID,page)` + `GET /api/admin/delegators`(**透传 Koios 分页、不缓存**)+ 测试。
-- [ ] p6-1 全量 `go test ./...` + 二进制 smoke + 文档(链数据架构/口径/claims/tier)。
+- [x] p6-1 全量 `go test ./...` + 二进制 smoke + 文档(链数据架构/口径/claims/tier)。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 Koios:`account_stake_history` 取真 active_stake + epochs_active;`account_info` 取 live pool/status;仅本池委托才二次拉。
@@ -188,6 +188,9 @@ e = currentEpoch(now()); row = cache.Get(sch)
 
 - 2026-06-26 p5-1 完成（可选 track C）：delegator 枚举。**决策**：用**能力接口** `chain.DelegatorLister`（非塞进 `Source`）——冷只读 admin 查询，不强迫 mock/node_lsq/db_sync 实现；koios 实现真 `/pool_delegators`（GET `_pool_bech32`+offset/limit 透传分页、不缓存，stake 地址→hash），`CachedSource` 透传（inner 不支持→`ErrNotImplemented`），`MockSource` 加可配 `DelegatorsByPool` 供测试。`httpapi.Deps` 加 `Chain`，main 注入 CachedSource。`GET /api/admin/delegators?page=N`（viewer，源不支持→501）。口径：delegators=链上全量委托者（superset），members=活跃订阅者（subset）。
 - 2026-06-26 p5-1 | stack: go | command: `go test ./internal/httpapi/ ./internal/utils/chain/ ./...` + `go vet ./...` | result: pass | note: `TestAdminDelegators` viewer 列全量集（mock 注入）；全仓绿。
+
+- 2026-06-26 p6-1 完成：全量验证 + 二进制 smoke + 文档。`go test ./...` 23 包 0 FAIL、`go vet ./...` + integration vet 干净。二进制 smoke：`OUROPASS_CHAIN_KIND=mock` 启动→`/healthz` 200、jwks 501（无 FIELD_KEY 正常降级）、迁移在新库正确落地（`PoolConfig.tier_rules` ✓、`StakeSnapshotCache.epochs_active` ✓、`MembershipRule` 表已 DROP 不存在）、干净关停。新增文档 `docs/staking-attestation.md`（角色/链数据映射/三态/只缓 active 缓存/claims/tier_rules/delegators/迁移清单）。
+- 2026-06-26 p6-1 | stack: go | command: `go test ./...`(23 ok/0 FAIL) + `go vet ./...` + 二进制 boot smoke + `sqlite3` 迁移核验 | result: pass | note: 全仓绿；smoke 启动→healthz200→迁移列/表核对通过→关停。
 
 ## 7. Change Requests (append-only)
 - 2026-06-25 核心决策(累积,用户拍板):① issuer = 质押身份证明提供方,业务策略下沉 RP;② token 带精确事实(state/active_stake/epochs/since),**不分桶**;③ **删除 rules 子系统**,薄第一方 tier 映射进 `PoolConfig.tier_rules`(仅自家渠道用);④ 有效质押 = epoch active_stake 口径,pending 仅入场过渡,leaving 由 epoch 自然收敛、grace 下沉 RP;⑤ 缓存**只缓 `active`**(epoch 稳定;命中 iff snapshot_epoch==当前、本地算 epoch),pending/none 现算不缓(onboarding/bail 即时对称);⑥ Koios 失败 D8 分场景(登录 fail-closed / reconciler 软 fail-open);⑦ epoch 常量内置 per-network;⑧ **砍掉 owner 链上校验 / operator-viewer 管理(原 B)**——owner 沿用 env 配置信任;⑨ delegator 枚举(C)解耦、可延后/单独排期。
