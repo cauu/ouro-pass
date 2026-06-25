@@ -28,11 +28,11 @@ export function DashboardPage() {
     <>
       <PageHeader title="Dashboard" description={`Signed in as ${role ?? "—"}.`} />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <StatCard label="Members" value={members.data?.members.length ?? "…"} />
+        <StatCard label="Members" value={members.data?.members?.length ?? "…"} />
         <StatCard label="Active subscriptions" value={subs.isLoading ? "…" : activeSubs} />
         <StatCard
           label="Signing keys (JWKS)"
-          value={jwks.data?.keys.length ?? "…"}
+          value={jwks.data?.keys?.length ?? "…"}
           hint="Keys currently advertised at /.well-known/ouropass/jwks.json"
         />
       </div>

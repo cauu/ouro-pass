@@ -118,6 +118,7 @@ interface WalletAdapter {
 - [x] p2-1 登录/会话/RBAC/step-up + 布局/导航（TC-2）。
 - [x] p3-1 业务页一批：Dashboard、名册+撤销(step-up)、订阅+取消、规则编辑器、渠道+telegram 测试、推送+日志、客户端注册(一次性 secret)、密钥轮换(step-up)+JWKS、审计、初始化向导（TC-3）。
 - [x] p4-1 构建/部署：静态产物、可 embed/静态托管、env(issuer base URL/network)、CI 增 web job（TC-7/TC-8）。
+- [x] p3-1-fix1 **fix**（验收发现）：Setup/Dashboard 的 `data?.X.length` 只对 `data` 可选链、未对数组 `X`，接口返回缺 `keys`/`members` 等字段时 `undefined.length` 崩页；改为 `data?.X?.length`（全仓扫净同类）。Setup 页 = owner 首次配置就绪清单（其"规则"步将随 S0004 删 rules 改写）。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 `WalletAdapter`：mock `window.cardano` 覆盖探测/enable/getRewardAddresses/signData；`signNonce` 返回 `{coseKeyHex, signatureHex}` 且**不在浏览器解 CBOR**；network guard 不匹配报错。
@@ -147,6 +148,8 @@ interface WalletAdapter {
 
 - 2026-06-25 验收支持工具：`make dev` 增 `DEV_OWNER_KEYS` 透传 `OUROPASS_OWNER_KEYS`（设置后可用该 owner 钱包登录 /admin）；新增 `cmd/stakehash` + `make stake-hash ADDR=stake1...` 从钱包 stake 地址算出 owner key hash（复用 `chain.StakeHashFromRewardAddress`）。验收登录链路：钱包复制 stake 地址 → `make stake-hash` → `make web` → `make dev DEV_OWNER_KEYS=<hash>` → 开 `http://localhost:8080/admin/` 用同一钱包登录。
 
+- 2026-06-25 p3-1-fix1 完成（fix，验收发现）：Setup 页报错。根因——`(jwks.data?.keys.length ?? 0)` 只可选链 `data`、未链数组 `keys`，接口返回不含 `keys` 的形状时 `undefined.length` 崩页；Setup 三处(keys/rules/clients)+ Dashboard 两处(members/keys)同患。改为 `data?.X?.length`，全仓扫净同类不安全访问；`pnpm build` 绿。
+
 ## 6. Validation Evidence (append-only)
 - 2026-06-25 TC-7（部分）| stack: ui | command: `pnpm install` + `pnpm build`（`tsc -b && vite build`） | result: pass | note: 工具链就绪，类型检查 + 生产打包绿（27 模块、JS 144KB/gzip 46KB、CSS 5.3KB）。
 
@@ -161,6 +164,8 @@ interface WalletAdapter {
 - 2026-06-25 TC-3 | stack: ui | command: `pnpm build`（tsc+vite）+ `pnpm lint`（0 error）+ `pnpm typecheck` + `pnpm test` | result: pass | note: 10 页全量类型检查 + 打包绿（1745 模块、JS 463KB/gzip 145KB、CSS 17KB）；lint 0 error（2 个 react-refresh warning，hook 与 provider 同文件，无害）；11 单测绿。各页消费契约：members 按 sch、rules rule_config(JSON)、push target 过滤、client 一次性 secret、keys step-up、audit 只读。
 
 - 2026-06-25 TC-7/TC-8 | stack: ui+go | command: `make web`+`go build`+二进制 smoke / `pnpm {lint,typecheck,test,build}` / `go build vet test ./...` / CI `yaml.safe_load` | result: pass | note: `make web` 出静态产物并 stage，issuer 二进制 `/admin/` 返回真 index.html（引 `/admin/assets`）、hashed JS 200+immutable、`/admin/dashboard` SPA fallback 200、`/admin`→301；未构建时占位 200。web 全绿(lint 0 error/typecheck/11 测/打包)；后端 build+vet+全测 0 FAIL；CI 3 job(test/integration/web) yaml 合法。network 经 `VITE_ISSUER_NETWORK` env 注入。
+
+- 2026-06-25 p3-1-fix1 | stack: ui | command: `pnpm build`(tsc+vite) + grep 扫描数组可选链 | result: pass | note: 修复后打包绿;无残留 `data?.X.length` 类不安全访问。
 
 ## 7. Change Requests (append-only)
 - 2026-06-24 选型：框架 React+Vite 纯 SPA（用户确认）；组件库 shadcn/ui（用户确认）；钱包 thin `window.cardano` 封装（用户质疑 Weld 成熟度：~550 下载/月、pre-1.0；且 CBOR 解码改放后端后前端只需转发，thin-wrapper 最契合，库藏 `WalletAdapter` 后可换）。

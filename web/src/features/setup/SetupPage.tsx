@@ -28,9 +28,9 @@ export function SetupPage() {
   const rules = useQuery({ queryKey: ["rules"], queryFn: listRules });
   const clients = useQuery({ queryKey: ["clients"], queryFn: listClients });
 
-  const hasKey = (jwks.data?.keys.length ?? 0) > 0;
-  const hasRule = (rules.data?.rules.length ?? 0) > 0;
-  const hasClient = (clients.data?.clients.length ?? 0) > 0;
+  const hasKey = (jwks.data?.keys?.length ?? 0) > 0;
+  const hasRule = (rules.data?.rules?.length ?? 0) > 0;
+  const hasClient = (clients.data?.clients?.length ?? 0) > 0;
 
   return (
     <>
