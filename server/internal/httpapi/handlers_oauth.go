@@ -17,7 +17,7 @@ import (
 // client) and returns the full HTML page; the embedded JS drives the CIP-30
 // flow and posts the signed nonce to /api/connect/authorize.
 //
-//	GET /connect?client_id&redirect_uri&state&aud&response_type=code&scope?&code_challenge?&device_pubkey?
+//	GET /connect?client_id&redirect_uri&state&aud&response_type=code&code_challenge&scope?&device_pubkey?
 func (h *apiHandlers) connect(w http.ResponseWriter, r *http.Request) {
 	if h.d.OAuth == nil {
 		notImplemented(w, r)

@@ -124,7 +124,7 @@ func TestRevoke_DropsKeyFromJWKS(t *testing.T) {
 	}
 }
 
-// TestRetire covers the owner-driven manual retire (p5-1): only a rotating key
+// TestRetire covers the owner-driven manual retire (p5-2): only a rotating key
 // is eligible — the active signing key and unknown kids are rejected — and a
 // retired key drops from the JWKS while the active signer is untouched.
 func TestRetire(t *testing.T) {

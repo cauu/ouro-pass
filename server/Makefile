@@ -86,15 +86,23 @@ dev-stop:
 	@pkill -f '\.dev/issuer' && echo "stopped dev issuer" || echo "no dev issuer running"
 
 ## dev-seed-client: insert a test OAuth client into the dev DB so /connect works,
-## then print the authorization URL. Needs sqlite3 and a prior `make dev` (to
-## create/migrate .dev/ouro.db). Run `make dev` once, stop it, then this, then `make dev` again.
+## then print the authorization URL + PKCE verifier. Seeds a PUBLIC client so the
+## flow completes with PKCE alone (no secret); PKCE is mandatory for all clients.
+## Needs sqlite3 + openssl and a prior `make dev` (to create/migrate .dev/ouro.db).
+## Run `make dev` once, stop it, then this, then `make dev` again.
 dev-seed-client:
 	@command -v sqlite3 >/dev/null || { echo "sqlite3 not found"; exit 1; }
+	@command -v openssl >/dev/null || { echo "openssl not found"; exit 1; }
 	@test -f .dev/ouro.db || { echo "run 'make dev' once first to create .dev/ouro.db"; exit 1; }
-	sqlite3 .dev/ouro.db "INSERT OR REPLACE INTO OAuthClient (client_id,name,client_type,client_secret_hash,party,redirect_uris,allowed_audiences,allowed_scopes,pkce_required,status,created_at) VALUES ('testcli','Test','confidential',NULL,'first_party','[\"$(DEV_REDIRECT)\"]','[\"app:test\"]','[\"read\"]',0,'active','2026-01-01T00:00:00Z');"
-	@echo ""
-	@echo "Seeded client 'testcli'. Authorization URL:"
-	@echo "  http://localhost$(DEV_ADDR)/connect?response_type=code&client_id=testcli&redirect_uri=$(DEV_REDIRECT)&aud=app:test&state=xyz"
+	sqlite3 .dev/ouro.db "INSERT OR REPLACE INTO OAuthClient (client_id,name,client_type,client_secret_hash,redirect_uris,allowed_audiences,status,created_at) VALUES ('testcli','Test','public',NULL,'[\"$(DEV_REDIRECT)\"]','[\"app:test\"]','active','2026-01-01T00:00:00Z');"
+	@verifier="dev-pkce-verifier-please-change-0123456789"; \
+	challenge=$$(printf '%s' "$$verifier" | openssl dgst -binary -sha256 | openssl base64 -A | tr '+/' '-_' | tr -d '='); \
+	echo ""; \
+	echo "Seeded public client 'testcli' (PKCE is required for all clients)."; \
+	echo "Authorization URL:"; \
+	echo "  http://localhost$(DEV_ADDR)/connect?response_type=code&client_id=testcli&redirect_uri=$(DEV_REDIRECT)&aud=app:test&state=xyz&code_challenge=$$challenge"; \
+	echo ""; \
+	echo "At /api/oauth/token, send code_verifier=$$verifier"
 
 ## web: build the Admin SPA (../web) and stage it into the issuer embed dir, so a
 ## subsequent `go build`/`make build` bakes the UI into the binary (served at /admin).

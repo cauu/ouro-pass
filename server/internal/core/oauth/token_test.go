@@ -74,6 +74,14 @@ func TestToken_AuthCodeConfidential(t *testing.T) {
 	if _, err := h.srv.Token(ctx, TokenRequest{GrantType: "authorization_code", Code: code2, ClientID: "c1", ClientSecret: "wrong", CodeVerifier: testPKCEVerifier, RedirectURI: "https://app/cb"}); err != ErrInvalidClientCreds {
 		t.Errorf("wrong secret: %v, want invalid_client", err)
 	}
+
+	// PKCE is mandatory for confidential clients too (p6-3): a correct secret but
+	// NO code_verifier must be rejected. Guards against regressing to the old
+	// secret-only path that skipped PKCE.
+	code3, _ := h.eligibleCode(t)
+	if _, err := h.srv.Token(ctx, TokenRequest{GrantType: "authorization_code", Code: code3, ClientID: "c1", ClientSecret: secret, RedirectURI: "https://app/cb"}); err != ErrInvalidGrant {
+		t.Errorf("confidential without code_verifier: %v, want invalid_grant", err)
+	}
 }
 
 func TestToken_AuthCodePublicPKCE(t *testing.T) {
