@@ -16,16 +16,24 @@ import (
 // ErrNotImplemented marks a source whose real backend is not wired in this build.
 var ErrNotImplemented = errors.New("chain: source not implemented")
 
-// Snapshot is the raw on-chain stake view for one credential (not an
-// eligibility conclusion — that is the rule engine's job). Lovelace amounts are
-// decimal strings to preserve values beyond 2^53 (C4).
+// Snapshot is the raw on-chain stake view for one credential (raw facts, not an
+// eligibility/membership conclusion — that is derived against the pool by
+// DeriveState, S0004 §2.2). Lovelace amounts are decimal strings to preserve
+// values beyond 2^53 (C4).
+//
+// Two distinct delegation signals (S0004 §2.4) must not be conflated:
+//   - DelegatedPoolID is the *live* delegation (account_info) — drives `pending`.
+//   - ActiveStakePoolID is the pool whose *effective active stake* snapshot
+//     currently counts this credential (account_stake_history latest entry) —
+//     drives `active`, and lags live delegation by ~2 epochs (the leaving tail).
 type Snapshot struct {
 	StakeCredentialHash string
 	Epoch               uint64
-	DelegatedPoolID     string // "" if undelegated
-	ActiveStakeLovelace string // "" if the source cannot provide per-credential stake
+	DelegatedPoolID     string // live delegation (account_info); "" if undelegated/unregistered
+	ActiveStakePoolID   string // pool of the latest active-stake snapshot; "" if no active stake
+	ActiveStakeLovelace string // exact effective active stake (account_stake_history); "" if none
 	RewardsLovelace     string
-	EpochsDelegated     int    // epochs continuously delegated; -1 if the source can't tell
+	EpochsDelegated     int    // trailing consecutive epochs active with ActiveStakePoolID; -1 if the source can't tell
 	AccountStatus       string // registered | not_registered | ""(unknown)
 	Source              string
 	FetchedAt           time.Time

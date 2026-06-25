@@ -144,7 +144,7 @@ e = currentEpoch(now()); row = cache.Get(sch)
 - server/internal/core/rules/engine.go(待删/重塑)、utils/chain/{chain,koios}.go、store/repo_stakesnapshotcache.go、repo_poolconfig.go、worker/reconciliation
 
 ## 3. Execution Plan
-- [ ] p1-1 Koios 升级:`account_info` + `account_stake_history`,`Snapshot` 扩展(live/active pool、真 active_stake、epochs_active、status);单测(滞后向量)。
+- [x] p1-1 Koios 升级:`account_info` + `account_stake_history`,`Snapshot` 扩展(live/active pool、真 active_stake、epochs_active、status);单测(滞后向量)。
 - [ ] p2-1 三态状态机:`State` 派生 + leaving 收敛;纯函数单测(入场/晋升/离场尾巴/金额跌破)。
 - [ ] p2-2 `CachedSource`:本地算 current_epoch(内置 epoch 常量);命中 iff `snapshot_epoch==当前`;**只缓 active**(pending/none 现算);single-flight + 超时 + D8;接入 `StakeSnapshotCache`。
 - [ ] p2-3 reconciler:epoch 边界刷活跃集合 + state 重算 + 不活跃退休;集成测试。
@@ -168,6 +168,8 @@ e = currentEpoch(now()); row = cache.Get(sch)
 - 2026-06-25 范围收窄(用户拍板):①不分桶(token 给精确金额);②薄 tier 进 `PoolConfig.tier_rules`,**删 rules 表/端点/Rules 页**;③**砍掉原 B**(owner 不查链、沿用 env 配置;operator/viewer 暂不加);④epoch 常量内置(本地算 epoch);⑤delegator 枚举(C)与 A 解耦、可延后。
 
 ## 6. Validation Evidence (append-only)
+- 2026-06-26 p1-1 完成：`chain.Snapshot` 加 `ActiveStakePoolID`（active 来源池）；`ActiveStakeLovelace`/`EpochsDelegated` 改由 `account_stake_history` 真值驱动（替 total_balance 近似 / -1 失效）。Koios `Snapshot` 增 `/account_stake_history` 拉取 + 纯函数 `koiosToSnapshot`/`latestStakeEntry`/`trailingActiveEpochs`。**决策**：① 为最小化 churn 保留既有字段名 `DelegatedPoolID`(=live 委托) / `EpochsDelegated`(=trailing active epochs)，仅加一个新字段，rules `InputFromSnapshot` 与 node_lsq/db_sync/mock 零改动即编译通过；② **对任何 registered 账户都拉 stake_history**（不按 live 池剪枝）——否则会漏掉"live 已移走、active stake 仍在本池"的 leaving 尾巴（§2.2 正确性 > §2.4 调用优化）；③ Source 保持 pool-agnostic，池比较留给 p2-1 的 `DeriveState`；④ node_lsq/db_sync 无 active-stake 历史 → 仅能产 pending/none（生产路径用 Koios），属已知降级；⑤ 端点名 `/account_stake_history` 依 §2.4，行/响应形状待 live Koios 核（R1）。
+- 2026-06-26 p1-1 | stack: go | command: `go build ./...` + `go test ./internal/utils/chain/` + `go test ./...` | result: pass | note: 新增 `TestKoiosToSnapshot_Vectors`（pending 无史 / leaving 尾巴 live≠active / 换池 trailing 重置）+ 改 `TestKoiosSource_ParsesAccountInfoAndTip`（active_stake 取 history 最新、epochs=3、big lovelace C4 精确）；chain 包绿；全仓 build+test 0 FAIL（rules 引擎沿用字段，行为升级为真 active_stake）。
 
 ## 7. Change Requests (append-only)
 - 2026-06-25 核心决策(累积,用户拍板):① issuer = 质押身份证明提供方,业务策略下沉 RP;② token 带精确事实(state/active_stake/epochs/since),**不分桶**;③ **删除 rules 子系统**,薄第一方 tier 映射进 `PoolConfig.tier_rules`(仅自家渠道用);④ 有效质押 = epoch active_stake 口径,pending 仅入场过渡,leaving 由 epoch 自然收敛、grace 下沉 RP;⑤ 缓存**只缓 `active`**(epoch 稳定;命中 iff snapshot_epoch==当前、本地算 epoch),pending/none 现算不缓(onboarding/bail 即时对称);⑥ Koios 失败 D8 分场景(登录 fail-closed / reconciler 软 fail-open);⑦ epoch 常量内置 per-network;⑧ **砍掉 owner 链上校验 / operator-viewer 管理(原 B)**——owner 沿用 env 配置信任;⑨ delegator 枚举(C)解耦、可延后/单独排期。

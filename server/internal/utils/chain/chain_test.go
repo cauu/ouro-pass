@@ -32,7 +32,11 @@ func TestKoiosSource_ParsesAccountInfoAndTip(t *testing.T) {
 		case "/tip":
 			_, _ = w.Write([]byte(`[{"epoch_no":481}]`))
 		case "/account_info":
-			_, _ = w.Write([]byte(`[{"stake_address":"stake1xyz","status":"registered","delegated_pool":"pool1abc","total_balance":"45000000000000000","rewards_available":"123"}]`))
+			_, _ = w.Write([]byte(`[{"stake_address":"stake1xyz","status":"registered","delegated_pool":"pool1abc","rewards_available":"123"}]`))
+		case "/account_stake_history":
+			// Active stake comes from history now, not total_balance: 3 consecutive
+			// epochs with pool1abc, latest = 479 = exact active stake (C4).
+			_, _ = w.Write([]byte(`[{"pool_id":"pool1abc","epoch_no":477,"active_stake":"44000000000000000"},{"pool_id":"pool1abc","epoch_no":478,"active_stake":"44500000000000000"},{"pool_id":"pool1abc","epoch_no":479,"active_stake":"45000000000000000"}]`))
 		default:
 			http.NotFound(w, r)
 		}
@@ -52,16 +56,52 @@ func TestKoiosSource_ParsesAccountInfoAndTip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Big lovelace preserved exactly (C4).
-	if s.ActiveStakeLovelace != "45000000000000000" || s.DelegatedPoolID != "pool1abc" || s.Epoch != 481 {
+	// Active stake = latest history entry (exact, big value preserved, C4); the
+	// active pool + trailing epoch count come from history; live pool from info.
+	if s.ActiveStakeLovelace != "45000000000000000" || s.ActiveStakePoolID != "pool1abc" ||
+		s.DelegatedPoolID != "pool1abc" || s.EpochsDelegated != 3 || s.Epoch != 481 {
 		t.Fatalf("snapshot: %+v", s)
 	}
 }
 
 func TestKoiosToSnapshot_UnregisteredClearsPool(t *testing.T) {
-	s := koiosToSnapshot("h1", 480, koiosAccountInfo{Status: "not_registered", DelegatedPool: "pool1abc"})
+	s := koiosToSnapshot("h1", 480, koiosAccountInfo{Status: "not_registered", DelegatedPool: "pool1abc"}, nil)
 	if s.DelegatedPoolID != "" {
 		t.Errorf("unregistered account should have no delegated pool, got %q", s.DelegatedPoolID)
+	}
+}
+
+func TestKoiosToSnapshot_Vectors(t *testing.T) {
+	// Pending: registered + live delegation to us, but no active-stake history yet
+	// (entered, ~2 epochs from effective). No ActiveStakePoolID; 0 epochs active.
+	pending := koiosToSnapshot("h", 500, koiosAccountInfo{Status: "registered", DelegatedPool: "poolUS"}, nil)
+	if pending.DelegatedPoolID != "poolUS" || pending.ActiveStakePoolID != "" ||
+		pending.ActiveStakeLovelace != "" || pending.EpochsDelegated != 0 {
+		t.Fatalf("pending: %+v", pending)
+	}
+
+	// Leaving tail: live delegation already moved to poolOTHER, but active stake
+	// still counts for poolUS (history latest). ActiveStakePoolID stays poolUS.
+	leavingHist := []koiosStakeHistory{
+		{PoolID: "poolUS", Epoch: 498, ActiveStake: "100"},
+		{PoolID: "poolUS", Epoch: 499, ActiveStake: "100"},
+	}
+	leaving := koiosToSnapshot("h", 500, koiosAccountInfo{Status: "registered", DelegatedPool: "poolOTHER"}, leavingHist)
+	if leaving.DelegatedPoolID != "poolOTHER" || leaving.ActiveStakePoolID != "poolUS" ||
+		leaving.ActiveStakeLovelace != "100" || leaving.EpochsDelegated != 2 {
+		t.Fatalf("leaving: %+v", leaving)
+	}
+
+	// Switched pools: trailing count resets at the pool change (poolUS for the
+	// latest 2 epochs after an earlier poolOLD epoch).
+	switched := []koiosStakeHistory{
+		{PoolID: "poolOLD", Epoch: 497, ActiveStake: "1"},
+		{PoolID: "poolUS", Epoch: 498, ActiveStake: "2"},
+		{PoolID: "poolUS", Epoch: 499, ActiveStake: "3"},
+	}
+	s := koiosToSnapshot("h", 500, koiosAccountInfo{Status: "registered", DelegatedPool: "poolUS"}, switched)
+	if s.ActiveStakePoolID != "poolUS" || s.EpochsDelegated != 2 {
+		t.Fatalf("switched: %+v", s)
 	}
 }
 
