@@ -219,6 +219,27 @@ func TestAdminOwner_RegisterClientAndRotateKey(t *testing.T) {
 	if gotID == "c1" || !strings.HasPrefix(gotID, "op-client-") {
 		t.Fatalf("client_id = %q, want a generated op-client-… id (supplied id ignored)", gotID)
 	}
+	origSecret, _ := resp["client_secret"].(string)
+
+	// Regenerate the client secret: without step-up → rejected.
+	secretURL := srv.URL + "/api/admin/oauth-clients/" + gotID + "/secret"
+	if code := postCode(t, client, secretURL, `{}`); code != http.StatusUnauthorized && code != http.StatusForbidden {
+		t.Fatalf("regenerate without step-up = %d, want 401/403", code)
+	}
+	// With step-up → a fresh secret, different from the original.
+	rsNonce := stepUpNonce(t, st, vkey)
+	rsBody := `{"cose_key":"` + coseKeyOf(vkey) + `","step_up_nonce":"` + rsNonce + `","step_up_signature":"` + signNonce(t, priv, rsNonce) + `"}`
+	rs := postJSON(t, client, secretURL, rsBody)
+	newSecret, _ := rs["client_secret"].(string)
+	if newSecret == "" || newSecret == origSecret {
+		t.Fatalf("regenerate: new secret %q must be non-empty and differ from original", newSecret)
+	}
+	// Regenerating an unknown client → 404.
+	rsNonce2 := stepUpNonce(t, st, vkey)
+	rsBody2 := `{"cose_key":"` + coseKeyOf(vkey) + `","step_up_nonce":"` + rsNonce2 + `","step_up_signature":"` + signNonce(t, priv, rsNonce2) + `"}`
+	if code := postCode(t, client, srv.URL+"/api/admin/oauth-clients/op-client-nope/secret", rsBody2); code != http.StatusNotFound {
+		t.Fatalf("regenerate unknown client = %d, want 404", code)
+	}
 
 	// Rotate key WITHOUT step-up → unauthorized.
 	if code := postCode(t, client, srv.URL+"/api/admin/keys/issuer/rotate", `{}`); code != http.StatusUnauthorized && code != http.StatusForbidden {

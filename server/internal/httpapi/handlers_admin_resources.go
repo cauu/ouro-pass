@@ -32,6 +32,7 @@ func (h *apiHandlers) mountAdminResources(r chi.Router) {
 	r.Method(http.MethodPost, "/push/jobs", operator(h.adminCreatePushJob))
 	r.Method(http.MethodGet, "/oauth-clients", owner(h.adminListClients))
 	r.Method(http.MethodPost, "/oauth-clients", owner(h.adminRegisterClient))
+	r.Method(http.MethodPost, "/oauth-clients/{client_id}/secret", owner(h.adminRegenerateClientSecret))
 	r.Method(http.MethodPost, "/keys/issuer/generate", owner(h.adminRotateKey))
 	r.Method(http.MethodPost, "/keys/issuer/rotate", owner(h.adminRotateKey))
 	r.Method(http.MethodPost, "/keys/issuer/{kid}/retire", owner(h.adminRetireKey))
@@ -331,6 +332,44 @@ func (h *apiHandlers) adminRegisterClient(w http.ResponseWriter, r *http.Request
 		resp["client_secret"] = plainSecret // shown once
 	}
 	respond.JSON(w, http.StatusOK, resp)
+}
+
+// adminRegenerateClientSecret issues a fresh client_secret for a confidential
+// client (owner + step-up), invalidating the previous one. Secrets are stored
+// hashed and never recoverable, so the new plaintext is returned exactly once.
+func (h *apiHandlers) adminRegenerateClientSecret(w http.ResponseWriter, r *http.Request) {
+	clientID := chi.URLParam(r, "client_id")
+	var body struct {
+		CoseKey         string `json:"cose_key"`
+		StepUpNonce     string `json:"step_up_nonce"`
+		StepUpSignature string `json:"step_up_signature"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if err := h.requireStepUp(r, struct{ CoseKey, Nonce, Signature string }{body.CoseKey, body.StepUpNonce, body.StepUpSignature}); err != nil {
+		writeAdminErr(w, err)
+		return
+	}
+	c, err := h.d.Store.OAuthClients().Get(r.Context(), clientID)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		respond.Error(w, http.StatusNotFound, "not_found", "no such client")
+		return
+	case err != nil:
+		serverError(w, r, err)
+		return
+	case c.ClientType != domain.ClientConfidential:
+		respond.Error(w, http.StatusConflict, "invalid_state", "public clients have no secret")
+		return
+	}
+	plainSecret := crypto.RandomToken(32)
+	hash := crypto.HashToken(plainSecret)
+	c.ClientSecretHash = &hash
+	if err := h.d.Store.OAuthClients().Upsert(r.Context(), *c); err != nil {
+		serverError(w, r, err)
+		return
+	}
+	h.audit(r, "oauth_client.secret_regenerate", clientID)
+	respond.JSON(w, http.StatusOK, map[string]any{"client_id": clientID, "client_secret": plainSecret})
 }
 
 // ---- signing keys (owner + step-up) ----

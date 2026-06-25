@@ -67,6 +67,13 @@ export const createPushJob = (body: PushCreate) =>
 export const listClients = () => api.get<{ clients: OAuthClient[] }>("/api/admin/oauth-clients");
 export const registerClient = (body: ClientRegister & StepUpBody) =>
   api.post<{ client_id: string; client_secret?: string }>("/api/admin/oauth-clients", body);
+// Regenerate a confidential client's secret (owner + step-up). The old secret is
+// invalidated; the new plaintext is returned once (secrets are stored hashed).
+export const regenerateClientSecret = (clientId: string, stepUp: StepUpBody) =>
+  api.post<{ client_id: string; client_secret: string }>(
+    `/api/admin/oauth-clients/${encodeURIComponent(clientId)}/secret`,
+    stepUp,
+  );
 
 // ---- signing keys ----
 export const rotateKey = (stepUp: StepUpBody) =>

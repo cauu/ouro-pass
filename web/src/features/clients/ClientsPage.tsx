@@ -1,10 +1,11 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { listClients, registerClient } from "@/api/admin";
+import { listClients, regenerateClientSecret, registerClient } from "@/api/admin";
 import { ApiError } from "@/api/client";
 import { PageHeader, QueryState } from "@/app/page";
 import { useStepUp } from "@/auth/useStepUp";
+import { StepUpDialog } from "@/features/auth/StepUpDialog";
 import { WalletPicker } from "@/features/auth/WalletPicker";
 import type { ClientRegister } from "@/lib/types";
 import { Badge } from "@/ui/badge";
@@ -168,17 +169,73 @@ function RegisterClientDialog({ onRegistered }: { onRegistered: () => void }) {
   );
 }
 
+// CopyButton copies a value to the clipboard (used to reveal/copy the public
+// client_id straight from the roster).
+function CopyButton({ value, label = "Copy" }: { value: string; label?: string }) {
+  const { toast } = useToast();
+  return (
+    <Button
+      size="sm"
+      variant="ghost"
+      onClick={() => {
+        void navigator.clipboard?.writeText(value);
+        toast({ title: "Copied", variant: "success" });
+      }}
+    >
+      {label}
+    </Button>
+  );
+}
+
+// RegenerateSecretAction issues a fresh secret for a confidential client (step-up)
+// and reveals it once — secrets are stored hashed, so the old one is gone.
+function RegenerateSecretAction({ clientId, onDone }: { clientId: string; onDone: () => void }) {
+  const [secret, setSecret] = useState<string | null>(null);
+  return (
+    <>
+      <StepUpDialog
+        trigger={<Button size="sm" variant="outline">Regenerate secret</Button>}
+        title="Regenerate client secret"
+        description="Issues a new secret and immediately invalidates the current one. The new secret is shown only once — update the client before closing."
+        onConfirm={async (su) => {
+          const res = await regenerateClientSecret(clientId, su);
+          setSecret(res.client_secret);
+        }}
+        onDone={onDone}
+      />
+      <Dialog open={!!secret} onOpenChange={(o) => !o && setSecret(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New client secret</DialogTitle>
+            <DialogDescription>
+              Copy it now — it is shown only once and cannot be retrieved later.
+            </DialogDescription>
+          </DialogHeader>
+          <code className="block break-all rounded-md border bg-muted p-3 text-sm">{secret}</code>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => secret && navigator.clipboard?.writeText(secret)}>
+              Copy
+            </Button>
+            <Button onClick={() => setSecret(null)}>Done</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 export function ClientsPage() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["clients"], queryFn: listClients });
   const clients = q.data?.clients ?? [];
+  const refresh = () => qc.invalidateQueries({ queryKey: ["clients"] });
 
   return (
     <>
       <PageHeader
         title="OAuth Clients"
         description="Applications that may request staking-identity logins."
-        action={<RegisterClientDialog onRegistered={() => qc.invalidateQueries({ queryKey: ["clients"] })} />}
+        action={<RegisterClientDialog onRegistered={refresh} />}
       />
       <QueryState isLoading={q.isLoading} error={q.error} empty={clients.length === 0} emptyText="No clients yet.">
         <Table>
@@ -188,6 +245,7 @@ export function ClientsPage() {
               <TH>Type</TH>
               <TH>Audiences</TH>
               <TH>Status</TH>
+              <TH className="text-right">Actions</TH>
             </TR>
           </THead>
           <TBody>
@@ -195,12 +253,20 @@ export function ClientsPage() {
               <TR key={c.ClientID}>
                 <TD>
                   <div className="font-medium">{c.Name}</div>
-                  <div className="font-mono text-xs text-muted-foreground">{c.ClientID}</div>
+                  <div className="flex items-center gap-1">
+                    <span className="font-mono text-xs text-muted-foreground">{c.ClientID}</span>
+                    <CopyButton value={c.ClientID} label="Copy ID" />
+                  </div>
                 </TD>
                 <TD>{c.ClientType}</TD>
                 <TD className="text-xs text-muted-foreground">{(c.AllowedAudiences ?? []).join(", ") || "—"}</TD>
                 <TD>
                   <Badge variant={c.Status === "active" ? "success" : "muted"}>{c.Status}</Badge>
+                </TD>
+                <TD className="text-right">
+                  {c.ClientType === "confidential" && (
+                    <RegenerateSecretAction clientId={c.ClientID} onDone={refresh} />
+                  )}
                 </TD>
               </TR>
             ))}
