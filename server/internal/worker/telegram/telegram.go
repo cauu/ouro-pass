@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"ouro-pass/server/internal/core/rules"
+	"ouro-pass/server/internal/core/membership"
 	"ouro-pass/server/internal/domain"
 	"ouro-pass/server/internal/store"
 	"ouro-pass/server/internal/utils/crypto"
@@ -37,9 +37,10 @@ type Transport interface {
 	SendMessage(ctx context.Context, chatID, text string) error
 }
 
-// Eligibilizer re-evaluates a credential's eligibility at bind time (D8).
-type Eligibilizer interface {
-	Eligibility(ctx context.Context, stakeCredentialHash string) (bool, rules.Decision, error)
+// Attester re-derives a credential's membership state + first-party tier at bind
+// time (D8): only members may subscribe, and the tier seeds channel targeting.
+type Attester interface {
+	Attest(ctx context.Context, stakeCredentialHash string) (membership.State, string, error)
 }
 
 // Processor handles the command grammar; it is transport-agnostic.
@@ -47,12 +48,12 @@ type Processor struct {
 	poolID     string
 	activation *store.ActivationCodeRepo
 	subs       *store.SubscriptionRepo
-	elig       Eligibilizer
+	elig       Attester
 	now        func() time.Time
 }
 
 // NewProcessor builds a command processor.
-func NewProcessor(st *store.Store, elig Eligibilizer, poolID string) *Processor {
+func NewProcessor(st *store.Store, elig Attester, poolID string) *Processor {
 	return &Processor{
 		poolID:     poolID,
 		activation: st.ActivationCodes(),
@@ -96,25 +97,25 @@ func (p *Processor) activate(ctx context.Context, up Update, code string) string
 			return "Invalid activation code."
 		}
 	}
-	// Re-evaluate eligibility to populate the session tier/entitlements (D8).
-	eligible, decision, err := p.elig.Eligibility(ctx, rec.StakeCredentialHash)
+	// Re-derive membership + first-party tier to seed the subscription (D8).
+	state, tier, err := p.elig.Attest(ctx, rec.StakeCredentialHash)
 	if err != nil {
 		return "Could not verify membership right now. Please try again later."
 	}
-	if !eligible {
-		return "Your stake no longer meets the membership requirements."
+	if state == membership.StateNone {
+		return "Your stake no longer qualifies for membership."
 	}
 	now := p.now()
 	sess := domain.SubscriptionSession{
 		SessionID: crypto.RandomID(), PoolID: p.poolID, StakeCredentialHash: rec.StakeCredentialHash,
-		ChannelType: "telegram", ChannelUserID: up.UserID, Status: domain.SubActive, Tier: decision.Tier,
-		Topics: decision.Entitlements, Entitlements: decision.Entitlements,
+		ChannelType: "telegram", ChannelUserID: up.UserID, Status: domain.SubActive, Tier: tier,
+		Topics: nil, Entitlements: nil,
 		CreatedAt: now, LastVerifiedAt: now, ExpiresAt: now.Add(sessionTTL),
 	}
 	if err := p.subs.Upsert(ctx, sess); err != nil {
 		return "Could not save your subscription. Please try again later."
 	}
-	return fmt.Sprintf("Subscribed! Tier: %s. You'll receive updates here. (zero on-chain lookup at delivery)", decision.Tier)
+	return fmt.Sprintf("Subscribed! Tier: %s. You'll receive updates here. (zero on-chain lookup at delivery)", tier)
 }
 
 func (p *Processor) status(ctx context.Context, up Update) string {

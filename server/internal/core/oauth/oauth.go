@@ -14,7 +14,6 @@ import (
 
 	"ouro-pass/server/internal/core/keys"
 	"ouro-pass/server/internal/core/membership"
-	"ouro-pass/server/internal/core/rules"
 	"ouro-pass/server/internal/core/walletauth"
 	"ouro-pass/server/internal/domain"
 	"ouro-pass/server/internal/store"
@@ -50,7 +49,6 @@ type Server struct {
 	cfg          Config
 	clients      *store.OAuthClientRepo
 	authCodes    *store.AuthCodeRepo
-	rules        *store.MembershipRuleRepo
 	issuedTokens *store.IssuedTokenRepo
 	grants       *store.RefreshGrantRepo
 	blacklist    *store.BlacklistRepo
@@ -66,7 +64,6 @@ func New(cfg Config) *Server {
 		cfg:          cfg,
 		clients:      cfg.Store.OAuthClients(),
 		authCodes:    cfg.Store.AuthCodes(),
-		rules:        cfg.Store.Rules(),
 		issuedTokens: cfg.Store.IssuedTokens(),
 		grants:       cfg.Store.RefreshGrants(),
 		blacklist:    cfg.Store.Blacklist(),
@@ -152,27 +149,6 @@ func (s *Server) Authorize(ctx context.Context, req AuthorizeRequest) (code stri
 	return plain, nil
 }
 
-// evaluate recomputes eligibility for a stake credential from the live snapshot
-// and active rules (shared by authorize and token). Blacklisted credentials are
-// never eligible.
-func (s *Server) evaluate(ctx context.Context, sch string) (bool, rules.Decision, error) {
-	if blocked, err := s.blacklist.Has(ctx, sch); err != nil {
-		return false, rules.Decision{}, err
-	} else if blocked {
-		return false, rules.Decision{Reason: "blacklisted"}, nil
-	}
-	snap, err := s.cfg.Chain.Snapshot(ctx, sch)
-	if err != nil {
-		return false, rules.Decision{}, err
-	}
-	ruleset, err := s.rules.ListActive(ctx)
-	if err != nil {
-		return false, rules.Decision{}, err
-	}
-	in := rules.InputFromSnapshot(s.cfg.PoolID, snap)
-	d := rules.Evaluate(in, ruleset, snap.Epoch)
-	return d.Eligible, d, nil
-}
 
 // attestation is the issuance-time view of a credential: membership state, the
 // exact staking facts for claims, and the optional first-party tier. Tier is
@@ -222,21 +198,31 @@ func (s *Server) attest(ctx context.Context, sch string) (*attestation, error) {
 		a.memberSince = s.memberSince(snap)
 	}
 	if st != membership.StateNone {
-		a.tier = s.firstPartyTier(ctx, snap)
+		a.tier = s.firstPartyTier(ctx, st, snap)
 	}
 	return a, nil
 }
 
-// firstPartyTier is the transitional rules-engine tier (p4-1 replaces this with
-// PoolConfig.tier_rules). Errors degrade to no tier (the optional opinion is
-// simply absent).
-func (s *Server) firstPartyTier(ctx context.Context, snap *chain.Snapshot) string {
-	ruleset, err := s.rules.ListActive(ctx)
+// Attest exposes the issuance-time state + first-party tier for the issuer's own
+// channels (Telegram). External relying parties never call this — they read the
+// raw token facts and apply their own policy.
+func (s *Server) Attest(ctx context.Context, sch string) (membership.State, string, error) {
+	a, err := s.attest(ctx, sch)
+	if err != nil {
+		return membership.StateNone, "", err
+	}
+	return a.state, a.tier, nil
+}
+
+// firstPartyTier maps (state, active stake) to the issuer's thin first-party tier
+// via PoolConfig.tier_rules (S0004 §2.6). Errors / no match degrade to no tier
+// (the optional opinion is simply absent).
+func (s *Server) firstPartyTier(ctx context.Context, state membership.State, snap *chain.Snapshot) string {
+	pc, err := s.cfg.Store.PoolConfig().Get(ctx, s.cfg.PoolID)
 	if err != nil {
 		return ""
 	}
-	d := rules.Evaluate(rules.InputFromSnapshot(s.cfg.PoolID, snap), ruleset, snap.Epoch)
-	return d.Tier
+	return membership.TierFor(state, snap.ActiveStakeLovelace, pc.TierRules)
 }
 
 // memberSince stamps when the credential's current active run began: the start of

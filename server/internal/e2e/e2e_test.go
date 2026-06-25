@@ -190,10 +190,9 @@ func codeFromLocation(t *testing.T, loc string) string {
 func (e *env) eligible(w wallet) {
 	e.t.Helper()
 	ctx := context.Background()
-	_ = e.st.Rules().Upsert(ctx, domain.MembershipRule{
-		RuleID: "gold", Name: "gold", Tier: "gold", Priority: 10, Status: domain.RuleActive,
-		RuleConfig: json.RawMessage(`{"min_active_stake_lovelace":"1000000"}`), Entitlements: []string{"read"},
-		CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	_ = e.st.PoolConfig().Upsert(ctx, domain.PoolConfig{
+		PoolID: testPool, Network: "preview", CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		TierRules: json.RawMessage(`[{"tier":"gold","min_state":"active","min_active_stake":"1000000"}]`),
 	})
 	e.chain.Put(&chain.Snapshot{
 		StakeCredentialHash: w.sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakePoolID: testPool,

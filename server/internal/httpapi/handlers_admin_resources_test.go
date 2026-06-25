@@ -72,12 +72,12 @@ func adminResourceEnv(t *testing.T, role domain.AdminRole) (*httptest.Server, *h
 func TestAdminRBAC_Matrix(t *testing.T) {
 	srv, client, _, _, _ := adminResourceEnv(t, domain.RoleViewer)
 
-	// viewer can read members but not write rules or register clients.
+	// viewer can read members but not register clients.
 	if code := getCode(t, client, srv.URL+"/api/admin/members"); code != 200 {
 		t.Errorf("viewer GET members = %d, want 200", code)
 	}
-	if code := postCode(t, client, srv.URL+"/api/admin/rules", `{"rule_id":"r","tier":"gold"}`); code != http.StatusForbidden {
-		t.Errorf("viewer POST rules = %d, want 403", code)
+	if code := postCode(t, client, srv.URL+"/api/admin/push/jobs", `{"title":"x"}`); code != http.StatusForbidden {
+		t.Errorf("viewer POST push = %d, want 403", code)
 	}
 	if code := getCode(t, client, srv.URL+"/api/admin/oauth-clients"); code != http.StatusForbidden {
 		t.Errorf("viewer GET clients = %d, want 403 (owner only)", code)
@@ -129,11 +129,8 @@ func TestAdminRevokeMember_BlacklistAndCascade(t *testing.T) {
 }
 
 func TestAdminF2_RejectsInvalidEnums(t *testing.T) {
-	// operator can hit rules/push/channels; owner needed for clients.
+	// operator can hit push/channels; owner needed for clients.
 	srvOp, op, _, _, _ := adminResourceEnv(t, domain.RoleOperator)
-	if c := postCode(t, op, srvOp.URL+"/api/admin/rules", `{"rule_id":"r","tier":"gold","status":"bogus"}`); c != http.StatusBadRequest {
-		t.Errorf("bad rule status = %d, want 400", c)
-	}
 	if c := postCode(t, op, srvOp.URL+"/api/admin/push/jobs", `{"title":"hi","channel_type":"carrier-pigeon"}`); c != http.StatusBadRequest {
 		t.Errorf("bad push channel_type = %d, want 400", c)
 	}
@@ -149,10 +146,6 @@ func TestAdminF2_RejectsInvalidEnums(t *testing.T) {
 	// required human field now).
 	if c := postCode(t, own, srvOwn.URL+"/api/admin/oauth-clients", `{"client_type":"public"}`); c != http.StatusBadRequest {
 		t.Errorf("missing name = %d, want 400", c)
-	}
-	// Valid values still pass.
-	if c := postCode(t, op, srvOp.URL+"/api/admin/rules", `{"rule_id":"ok","tier":"gold","status":"disabled"}`); c != 200 {
-		t.Errorf("valid rule = %d, want 200", c)
 	}
 }
 
@@ -178,23 +171,15 @@ func TestServerError_GenericNoLeak(t *testing.T) {
 	}
 }
 
-func TestAdminOperator_RulesAndPush(t *testing.T) {
+func TestAdminOperator_Push(t *testing.T) {
 	srv, client, _, _, st := adminResourceEnv(t, domain.RoleOperator)
-	// Upsert a rule.
-	if code := postCode(t, client, srv.URL+"/api/admin/rules", `{"rule_id":"gold","tier":"gold","priority":10,"entitlements":["read"],"rule_config":{"min_active_stake_lovelace":"1000000"}}`); code != 200 {
-		t.Fatalf("operator POST rules = %d", code)
-	}
-	rules, _ := st.Rules().ListActive(context.Background())
-	if len(rules) != 1 || rules[0].Tier != "gold" {
-		t.Fatalf("rule not stored: %+v", rules)
-	}
 	// Create a push job → audit recorded.
 	if code := postCode(t, client, srv.URL+"/api/admin/push/jobs", `{"title":"hi","content":"x","channel_type":"telegram","target":{"tier":"gold"}}`); code != 200 {
 		t.Fatalf("operator POST push = %d", code)
 	}
 	entries, _ := st.Audit().Recent(context.Background(), 10)
-	if len(entries) < 2 {
-		t.Fatalf("expected audit entries for rule + push, got %d", len(entries))
+	if len(entries) < 1 {
+		t.Fatalf("expected an audit entry for push, got %d", len(entries))
 	}
 }
 
@@ -349,7 +334,7 @@ func TestAdminListClients_NoSecretLeak(t *testing.T) {
 // 200 for an owner (covers route wiring + SQL scan paths) (p14-3).
 func TestAdminListEndpoints_Smoke(t *testing.T) {
 	srv, client, _, _, _ := adminResourceEnv(t, domain.RoleOwner)
-	for _, path := range []string{"/api/admin/subscriptions", "/api/admin/rules", "/api/admin/push/jobs", "/api/admin/audit"} {
+	for _, path := range []string{"/api/admin/subscriptions", "/api/admin/push/jobs", "/api/admin/audit"} {
 		if code := getCode(t, client, srv.URL+path); code != 200 {
 			t.Errorf("GET %s = %d, want 200", path, code)
 		}

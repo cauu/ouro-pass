@@ -7,23 +7,22 @@ import (
 	"testing"
 	"time"
 
-	"ouro-pass/server/internal/core/rules"
+	"ouro-pass/server/internal/core/membership"
 	"ouro-pass/server/internal/domain"
 	"ouro-pass/server/internal/store"
 	"ouro-pass/server/internal/utils/crypto"
 )
 
 type mockElig struct {
-	eligible bool
-	tier     string
-	ents     []string
+	state membership.State
+	tier  string
 }
 
-func (m mockElig) Eligibility(context.Context, string) (bool, rules.Decision, error) {
-	return m.eligible, rules.Decision{Eligible: m.eligible, Tier: m.tier, Entitlements: m.ents}, nil
+func (m mockElig) Attest(context.Context, string) (membership.State, string, error) {
+	return m.state, m.tier, nil
 }
 
-func newProc(t *testing.T, elig Eligibilizer) (*Processor, *store.Store) {
+func newProc(t *testing.T, elig Attester) (*Processor, *store.Store) {
 	t.Helper()
 	ctx := context.Background()
 	st, err := store.Open(ctx, store.SQLite, "file:"+filepath.Join(t.TempDir(), "t.db"))
@@ -49,7 +48,7 @@ func seedCode(t *testing.T, st *store.Store, code, sch string) {
 
 func TestActivate_BindsSubscription(t *testing.T) {
 	ctx := context.Background()
-	proc, st := newProc(t, mockElig{eligible: true, tier: "gold", ents: []string{"news"}})
+	proc, st := newProc(t, mockElig{state: membership.StateActive, tier: "gold"})
 	seedCode(t, st, "abc123", "sch-1")
 
 	reply := proc.Handle(ctx, Update{UserID: "tg-42", ChatID: "tg-42", Text: "/start abc123"})
@@ -71,7 +70,7 @@ func TestActivate_BindsSubscription(t *testing.T) {
 func TestActivate_InvalidAndIneligible(t *testing.T) {
 	ctx := context.Background()
 	// Invalid code.
-	proc, _ := newProc(t, mockElig{eligible: true, tier: "gold"})
+	proc, _ := newProc(t, mockElig{state: membership.StateActive, tier: "gold"})
 	if r := proc.Handle(ctx, Update{UserID: "u", Text: "/start nope"}); !strings.Contains(r, "Invalid") {
 		t.Errorf("invalid code: %q", r)
 	}
@@ -79,16 +78,16 @@ func TestActivate_InvalidAndIneligible(t *testing.T) {
 		t.Errorf("missing arg: %q", r)
 	}
 	// Ineligible at bind time.
-	proc2, st2 := newProc(t, mockElig{eligible: false})
+	proc2, st2 := newProc(t, mockElig{state: membership.StateNone})
 	seedCode(t, st2, "code2", "sch-2")
-	if r := proc2.Handle(ctx, Update{UserID: "u", Text: "/start code2"}); !strings.Contains(r, "no longer meets") {
+	if r := proc2.Handle(ctx, Update{UserID: "u", Text: "/start code2"}); !strings.Contains(r, "no longer qualifies") {
 		t.Errorf("ineligible: %q", r)
 	}
 }
 
 func TestStatusAndUnsubscribe(t *testing.T) {
 	ctx := context.Background()
-	proc, st := newProc(t, mockElig{eligible: true, tier: "silver", ents: []string{"news"}})
+	proc, st := newProc(t, mockElig{state: membership.StateActive, tier: "silver"})
 
 	// Not subscribed yet.
 	if r := proc.Handle(ctx, Update{UserID: "u", Text: "/status"}); !strings.Contains(r, "not subscribed") {
@@ -146,7 +145,7 @@ func (f *fakeTransport) SendMessage(_ context.Context, chatID, text string) erro
 }
 
 func TestWorker_RunDispatchesAndReplies(t *testing.T) {
-	proc, st := newProc(t, mockElig{eligible: true, tier: "gold", ents: []string{"news"}})
+	proc, st := newProc(t, mockElig{state: membership.StateActive, tier: "gold"})
 	seedCode(t, st, "wc", "sch")
 	ft := &fakeTransport{updates: []Update{{UpdateID: 5, UserID: "u1", ChatID: "u1", Text: "/start wc"}}}
 	w := NewWorker(proc, ft)

@@ -95,16 +95,9 @@ func TestRefresh_ReEvaluatesEligibility(t *testing.T) {
 func TestRefresh_TierDowngrade(t *testing.T) {
 	h, refresh1, sch := confidentialHarness(t)
 	ctx := context.Background()
-	// Add a lower silver tier (the harness's gold rule needs ≥1_000_000).
-	if err := h.st.Rules().Upsert(ctx, domain.MembershipRule{
-		RuleID: "silver", Name: "silver", Tier: "silver", Priority: 5, Status: domain.RuleActive,
-		RuleConfig: []byte(`{"min_active_stake_lovelace":"100"}`), Entitlements: []string{"read"},
-		CreatedAt: time.Now(), UpdatedAt: time.Now(),
-	}); err != nil {
-		t.Fatal(err)
-	}
-	// Stake now satisfies silver but not gold, still delegating to the pool.
-	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 481, DelegatedPoolID: testPool, ActiveStakePoolID: testPool, AccountStatus: "registered", ActiveStakeLovelace: "5000"})
+	// Stake now satisfies silver (≥100k) but not gold (≥1M) per the harness's
+	// PoolConfig.tier_rules, still active with the pool → refresh re-mints silver.
+	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 481, DelegatedPoolID: testPool, ActiveStakePoolID: testPool, AccountStatus: "registered", ActiveStakeLovelace: "500000"})
 
 	resp, err := h.srv.Token(ctx, TokenRequest{GrantType: "refresh_token", RefreshToken: refresh1, ClientID: "c1", ClientSecret: "s"})
 	if err != nil {

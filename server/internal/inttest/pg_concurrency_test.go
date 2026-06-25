@@ -196,23 +196,6 @@ func TestPG_ReposRoundTrip(t *testing.T) {
 		t.Fatalf("snapshot roundtrip lost the big number: %v %+v", err, snap)
 	}
 
-	// MembershipRule: rule_config is jsonb on PG; entitlements a TEXT/JSON array.
-	rid := uk("rule")
-	if err := st.Rules().Upsert(ctx, domain.MembershipRule{
-		RuleID: rid, Name: "gold", Tier: "gold", Priority: 9, Status: domain.RuleActive,
-		RuleConfig: []byte(`{"min_active_stake_lovelace":"1000000","min_active_epochs":5}`),
-		Entitlements: []string{"read", "vip"}, CreatedAt: now, UpdatedAt: now,
-	}); err != nil {
-		t.Fatalf("rule upsert: %v", err)
-	}
-	rules, err := st.Rules().ListActive(ctx)
-	if err != nil {
-		t.Fatalf("rules ListActive on PG: %v", err)
-	}
-	if !containsRule(rules, rid) {
-		t.Fatalf("rule %s not round-tripped via ListActive", rid)
-	}
-
 	// SubscriptionSession: ListActive (0% on PG in unit), with Topics/Entitlements arrays.
 	sid, user := uk("sess"), uk("u")
 	if err := st.Subscriptions().Upsert(ctx, domain.SubscriptionSession{
@@ -243,15 +226,6 @@ func TestPG_ReposRoundTrip(t *testing.T) {
 	if err != nil || !containsJob(due, jid) {
 		t.Fatalf("ListScheduled on PG missing %s: %v", jid, err)
 	}
-}
-
-func containsRule(rs []domain.MembershipRule, id string) bool {
-	for _, r := range rs {
-		if r.RuleID == id && len(r.Entitlements) == 2 {
-			return true
-		}
-	}
-	return false
 }
 
 func containsSession(ss []domain.SubscriptionSession, id string) bool {

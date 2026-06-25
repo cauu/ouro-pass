@@ -51,10 +51,9 @@ func oauthDeps(t *testing.T) (Deps, *chain.MockSource, ed25519.PrivateKey, strin
 		RedirectURIs: []string{"https://app/cb"}, AllowedAudiences: []string{"app:ouro"},
 		Status: "active", CreatedAt: time.Now(),
 	})
-	st.Rules().Upsert(ctx, domain.MembershipRule{
-		RuleID: "gold", Tier: "gold", Priority: 10, Status: domain.RuleActive,
-		RuleConfig: json.RawMessage(`{"min_active_stake_lovelace":"1000000"}`), Entitlements: []string{"read"},
-		CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	st.PoolConfig().Upsert(ctx, domain.PoolConfig{
+		PoolID: "pool1abc", Network: "preview", CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		TierRules: json.RawMessage(`[{"tier":"gold","min_state":"active","min_active_stake":"1000000"}]`),
 	})
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	return Deps{Wallet: wallet, Keys: ks, OAuth: srv}, mock, priv, hex.EncodeToString(pub)

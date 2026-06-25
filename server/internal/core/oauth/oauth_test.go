@@ -78,10 +78,15 @@ func newHarness(t *testing.T) *harness {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := st.Rules().Upsert(ctx, domain.MembershipRule{
-		RuleID: "gold", Name: "gold", Tier: "gold", Priority: 10, Status: domain.RuleActive,
-		RuleConfig: json.RawMessage(`{"min_active_stake_lovelace":"1000000"}`), Entitlements: []string{"read"},
-		CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	// First-party tier mapping (replaces the rules engine): active≥1M → gold,
+	// active≥100k → silver, any active → basic.
+	if err := st.PoolConfig().Upsert(ctx, domain.PoolConfig{
+		PoolID: testPool, Network: "preview", CreatedAt: time.Now(), UpdatedAt: time.Now(),
+		TierRules: json.RawMessage(`[
+			{"tier":"gold","min_state":"active","min_active_stake":"1000000"},
+			{"tier":"silver","min_state":"active","min_active_stake":"100000"},
+			{"tier":"basic","min_state":"active"}
+		]`),
 	}); err != nil {
 		t.Fatal(err)
 	}

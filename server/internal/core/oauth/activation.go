@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"ouro-pass/server/internal/core/rules"
+	"ouro-pass/server/internal/core/membership"
 	"ouro-pass/server/internal/domain"
 	"ouro-pass/server/internal/utils/crypto"
 )
@@ -30,11 +30,12 @@ func (s *Server) CreateActivation(ctx context.Context, channelType, nonce, coseK
 	if err != nil {
 		return nil, ErrAccessDenied
 	}
-	eligible, _, err := s.evaluate(ctx, sch)
+	// Thin issuer gate: only pool members (pending/active) may bind a channel.
+	state, err := s.Membership(ctx, sch)
 	if err != nil {
 		return nil, err
 	}
-	if !eligible {
+	if state == membership.StateNone {
 		return nil, ErrNotEligible
 	}
 
@@ -53,11 +54,4 @@ func (s *Server) CreateActivation(ctx context.Context, channelType, nonce, coseK
 		deepLink = "https://t.me/" + botUsername + "?start=" + short
 	}
 	return &ActivationResult{ActivationCode: short, DeepLink: deepLink, ExpiresAt: exp}, nil
-}
-
-// Eligibility is the exported eligibility check used by the Telegram worker when
-// redeeming an activation code (it re-evaluates to populate the session tier /
-// entitlements; D8).
-func (s *Server) Eligibility(ctx context.Context, sch string) (bool, rules.Decision, error) {
-	return s.evaluate(ctx, sch)
 }

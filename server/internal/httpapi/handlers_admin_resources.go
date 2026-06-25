@@ -25,8 +25,6 @@ func (h *apiHandlers) mountAdminResources(r chi.Router) {
 	r.Method(http.MethodPost, "/members/{sch}/revoke", operator(h.adminRevokeMember))
 	r.Method(http.MethodGet, "/subscriptions", viewer(h.adminSubscriptions))
 	r.Method(http.MethodPost, "/subscriptions/{id}/cancel", operator(h.adminCancelSub))
-	r.Method(http.MethodGet, "/rules", operator(h.adminListRules))
-	r.Method(http.MethodPost, "/rules", operator(h.adminUpsertRule))
 	r.Method(http.MethodPost, "/channels/{type}/configure", operator(h.adminConfigureChannel))
 	r.Method(http.MethodGet, "/push/jobs", operator(h.adminListPushJobs))
 	r.Method(http.MethodPost, "/push/jobs", operator(h.adminCreatePushJob))
@@ -152,47 +150,6 @@ func (h *apiHandlers) adminCancelSub(w http.ResponseWriter, r *http.Request) {
 
 // ---- rules ----
 
-func (h *apiHandlers) adminListRules(w http.ResponseWriter, r *http.Request) {
-	rules, err := h.d.Store.Rules().ListActive(r.Context())
-	if err != nil {
-		serverError(w, r, err)
-		return
-	}
-	respond.JSON(w, http.StatusOK, map[string]any{"rules": rules})
-}
-
-func (h *apiHandlers) adminUpsertRule(w http.ResponseWriter, r *http.Request) {
-	var body struct {
-		RuleID       string          `json:"rule_id"`
-		Name         string          `json:"name"`
-		RuleConfig   json.RawMessage `json:"rule_config"`
-		Tier         string          `json:"tier"`
-		Entitlements []string        `json:"entitlements"`
-		Priority     int             `json:"priority"`
-		Status       string          `json:"status"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.RuleID == "" || body.Tier == "" {
-		respond.Error(w, http.StatusBadRequest, "invalid_request", "rule_id and tier required")
-		return
-	}
-	status := domain.RuleStatus(body.Status)
-	if status == "" {
-		status = domain.RuleActive
-	} else if !status.Valid() {
-		respond.Error(w, http.StatusBadRequest, "invalid_request", "status must be active or disabled")
-		return
-	}
-	now := time.Now()
-	if err := h.d.Store.Rules().Upsert(r.Context(), domain.MembershipRule{
-		RuleID: body.RuleID, Name: body.Name, RuleConfig: body.RuleConfig, Tier: body.Tier,
-		Entitlements: body.Entitlements, Priority: body.Priority, Status: status, CreatedAt: now, UpdatedAt: now,
-	}); err != nil {
-		serverError(w, r, err)
-		return
-	}
-	h.audit(r, "rule.upsert", body.RuleID)
-	respond.JSON(w, http.StatusOK, map[string]string{"rule_id": body.RuleID})
-}
 
 // ---- channels ----
 
