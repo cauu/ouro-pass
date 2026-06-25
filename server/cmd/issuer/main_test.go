@@ -46,8 +46,9 @@ func TestBuildServices_FullVsDegraded(t *testing.T) {
 	if !deps.TrustedProxy || deps.SecureCookies {
 		t.Errorf("edge flags not propagated: TrustedProxy=%v SecureCookies=%v", deps.TrustedProxy, deps.SecureCookies)
 	}
-	if src == nil || src.Name() != "mock" {
-		t.Errorf("chain source = %v", src)
+	// The chain source is wrapped with the active-membership cache (S0004 §2.3).
+	if src == nil || src.Name() != "mock+cache" {
+		t.Errorf("chain source = %v (want mock wrapped by +cache)", src)
 	}
 
 	// Degraded: no field key → OAuth/Keys nil (routes degrade to 501) but the

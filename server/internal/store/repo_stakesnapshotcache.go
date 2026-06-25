@@ -8,23 +8,23 @@ import (
 	"ouro-pass/server/internal/domain"
 )
 
-// SnapshotCacheRepo persists optional raw stake snapshots (§3.3).
+// SnapshotCacheRepo persists the active-membership snapshot cache (S0004 §2.3).
 type SnapshotCacheRepo struct{ s *Store }
 
 // SnapshotCache returns a repo bound to this store.
 func (s *Store) SnapshotCache() *SnapshotCacheRepo { return &SnapshotCacheRepo{s} }
 
-// Upsert stores a raw snapshot row.
+// Upsert stores an active-membership snapshot row.
 func (r *SnapshotCacheRepo) Upsert(ctx context.Context, c domain.StakeSnapshotCache) error {
 	_, err := r.s.DB.ExecContext(ctx, r.s.Rebind(`
-		INSERT INTO StakeSnapshotCache (stake_credential_hash, snapshot_epoch, delegated_pool_id, active_stake_lovelace, rewards_lovelace, source, fetched_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO StakeSnapshotCache (stake_credential_hash, snapshot_epoch, delegated_pool_id, active_stake_lovelace, rewards_lovelace, epochs_active, source, fetched_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT (stake_credential_hash) DO UPDATE SET
 			snapshot_epoch=excluded.snapshot_epoch, delegated_pool_id=excluded.delegated_pool_id,
 			active_stake_lovelace=excluded.active_stake_lovelace, rewards_lovelace=excluded.rewards_lovelace,
-			source=excluded.source, fetched_at=excluded.fetched_at`),
+			epochs_active=excluded.epochs_active, source=excluded.source, fetched_at=excluded.fetched_at`),
 		c.StakeCredentialHash, c.SnapshotEpoch, nullStr(c.DelegatedPoolID),
-		nullStr(c.ActiveStakeLovelace), nullStr(c.RewardsLovelace), c.Source, ts(c.FetchedAt))
+		nullStr(c.ActiveStakeLovelace), nullStr(c.RewardsLovelace), c.EpochsActive, c.Source, ts(c.FetchedAt))
 	return err
 }
 
@@ -34,9 +34,9 @@ func (r *SnapshotCacheRepo) Get(ctx context.Context, stakeCredentialHash string)
 	var pool, active, rewards sql.NullString
 	var fetched string
 	err := r.s.DB.QueryRowContext(ctx, r.s.Rebind(`
-		SELECT stake_credential_hash, snapshot_epoch, delegated_pool_id, active_stake_lovelace, rewards_lovelace, source, fetched_at
+		SELECT stake_credential_hash, snapshot_epoch, delegated_pool_id, active_stake_lovelace, rewards_lovelace, epochs_active, source, fetched_at
 		FROM StakeSnapshotCache WHERE stake_credential_hash = ?`), stakeCredentialHash).
-		Scan(&c.StakeCredentialHash, &c.SnapshotEpoch, &pool, &active, &rewards, &c.Source, &fetched)
+		Scan(&c.StakeCredentialHash, &c.SnapshotEpoch, &pool, &active, &rewards, &c.EpochsActive, &c.Source, &fetched)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, domain.ErrNotFound
 	}
@@ -48,4 +48,12 @@ func (r *SnapshotCacheRepo) Get(ctx context.Context, stakeCredentialHash string)
 		return nil, err
 	}
 	return &c, nil
+}
+
+// Delete removes a credential's cached row (called on bail: active → pending/none,
+// S0004 §2.3). Idempotent — deleting an absent row is not an error.
+func (r *SnapshotCacheRepo) Delete(ctx context.Context, stakeCredentialHash string) error {
+	_, err := r.s.DB.ExecContext(ctx,
+		r.s.Rebind(`DELETE FROM StakeSnapshotCache WHERE stake_credential_hash = ?`), stakeCredentialHash)
+	return err
 }

@@ -19,6 +19,7 @@ import (
 	"ouro-pass/server/internal/config"
 	"ouro-pass/server/internal/core/admin"
 	"ouro-pass/server/internal/core/keys"
+	"ouro-pass/server/internal/core/membership"
 	"ouro-pass/server/internal/core/oauth"
 	"ouro-pass/server/internal/core/walletauth"
 	"ouro-pass/server/internal/httpapi"
@@ -185,13 +186,17 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, chain.Sou
 		slog.Warn("OUROPASS_FIELD_KEY not set; signing-key/JWKS routes disabled")
 	}
 
-	chainSrc, err := chain.NewSource(chain.Config{
+	rawChain, err := chain.NewSource(chain.Config{
 		Kind: cfg.ChainKind, KoiosBaseURL: cfg.KoiosBaseURL, APIKey: cfg.ChainAPIKey,
 		NodeSocket: cfg.NodeSocket, CardanoCLI: cfg.CardanoCLI, Network: cfg.Network,
 	})
 	if err != nil {
 		return httpapi.Deps{}, nil, err
 	}
+	// Wrap with the active-membership cache (S0004 §2.3): same-epoch `active`
+	// lookups skip the chain; pending/none stay live. Both the issuance path and
+	// the reconciler share it (the reconciler warms it across epoch boundaries).
+	chainSrc := membership.NewCachedSource(rawChain, st.SnapshotCache(), cfg.PoolID, cfg.Network, 10*time.Second)
 	if deps.Keys != nil && len(serverSalt) > 0 {
 		deps.OAuth = oauth.New(oauth.Config{
 			Store: st, Wallet: deps.Wallet, Keys: deps.Keys, Chain: chainSrc,
