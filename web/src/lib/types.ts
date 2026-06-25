@@ -104,7 +104,7 @@ export interface RuleUpsert {
 }
 
 export interface ClientRegister {
-  client_id: string;
+  // client_id is system-generated server-side; not part of the request.
   name: string;
   client_type: "public" | "confidential";
   party: string;

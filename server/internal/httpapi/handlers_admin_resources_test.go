@@ -142,11 +142,16 @@ func TestAdminF2_RejectsInvalidEnums(t *testing.T) {
 	}
 
 	srvOwn, own, _, _, _ := adminResourceEnv(t, domain.RoleOwner)
-	if c := postCode(t, own, srvOwn.URL+"/api/admin/oauth-clients", `{"client_id":"c","client_type":"weird","party":"first_party"}`); c != http.StatusBadRequest {
+	if c := postCode(t, own, srvOwn.URL+"/api/admin/oauth-clients", `{"name":"x","client_type":"weird","party":"first_party"}`); c != http.StatusBadRequest {
 		t.Errorf("bad client_type = %d, want 400", c)
 	}
-	if c := postCode(t, own, srvOwn.URL+"/api/admin/oauth-clients", `{"client_id":"c","client_type":"public","party":"nobody"}`); c != http.StatusBadRequest {
+	if c := postCode(t, own, srvOwn.URL+"/api/admin/oauth-clients", `{"name":"x","client_type":"public","party":"nobody"}`); c != http.StatusBadRequest {
 		t.Errorf("bad party = %d, want 400", c)
+	}
+	// Missing name → 400 (client_id is system-generated, so name is the only
+	// required human field now).
+	if c := postCode(t, own, srvOwn.URL+"/api/admin/oauth-clients", `{"client_type":"public","party":"first_party"}`); c != http.StatusBadRequest {
+		t.Errorf("missing name = %d, want 400", c)
 	}
 	// Valid values still pass.
 	if c := postCode(t, op, srvOp.URL+"/api/admin/rules", `{"rule_id":"ok","tier":"gold","status":"disabled"}`); c != 200 {
@@ -200,6 +205,7 @@ func TestAdminOwner_RegisterClientAndRotateKey(t *testing.T) {
 	srv, client, priv, vkey, st := adminResourceEnv(t, domain.RoleOwner)
 
 	// Registering a client requires step-up (p12-11): without it → rejected.
+	// A supplied "client_id":"c1" must be ignored — the server generates its own.
 	const regFields = `"client_id":"c1","name":"App","client_type":"confidential","party":"first_party","redirect_uris":["https://app/cb"],"allowed_audiences":["app:ouro"],"allowed_scopes":["read"]`
 	if code := postCode(t, client, srv.URL+"/api/admin/oauth-clients", `{`+regFields+`}`); code != http.StatusUnauthorized && code != http.StatusForbidden {
 		t.Fatalf("register without step-up = %d, want 401/403", code)
@@ -210,6 +216,11 @@ func TestAdminOwner_RegisterClientAndRotateKey(t *testing.T) {
 	resp := postJSON(t, client, srv.URL+"/api/admin/oauth-clients", regBody)
 	if resp["client_secret"] == "" || resp["client_secret"] == nil {
 		t.Fatalf("expected one-time client_secret: %v", resp)
+	}
+	// client_id is system-generated (op-client-… prefix), not the supplied "c1".
+	gotID, _ := resp["client_id"].(string)
+	if gotID == "c1" || !strings.HasPrefix(gotID, "op-client-") {
+		t.Fatalf("client_id = %q, want a generated op-client-… id (supplied id ignored)", gotID)
 	}
 
 	// Rotate key WITHOUT step-up → unauthorized.

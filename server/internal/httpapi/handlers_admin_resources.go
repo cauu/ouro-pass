@@ -282,7 +282,6 @@ func (h *apiHandlers) adminListClients(w http.ResponseWriter, r *http.Request) {
 
 func (h *apiHandlers) adminRegisterClient(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		ClientID     string   `json:"client_id"`
 		Name         string   `json:"name"`
 		ClientType   string   `json:"client_type"`
 		Party        string   `json:"party"`
@@ -296,8 +295,10 @@ func (h *apiHandlers) adminRegisterClient(w http.ResponseWriter, r *http.Request
 		StepUpNonce     string `json:"step_up_nonce"`
 		StepUpSignature string `json:"step_up_signature"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.ClientID == "" {
-		respond.Error(w, http.StatusBadRequest, "invalid_request", "client_id required")
+	// The client_id is system-generated (like the secret) — opaque and unique, so
+	// callers can't pick a guessable or colliding id; `name` is the human label.
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+		respond.Error(w, http.StatusBadRequest, "invalid_request", "name required")
 		return
 	}
 	if ct := domain.ClientType(body.ClientType); !ct.Valid() {
@@ -313,8 +314,9 @@ func (h *apiHandlers) adminRegisterClient(w http.ResponseWriter, r *http.Request
 		writeAdminErr(w, err)
 		return
 	}
+	clientID := "op-client-" + crypto.RandomToken(9)
 	c := domain.OAuthClient{
-		ClientID: body.ClientID, Name: body.Name, ClientType: domain.ClientType(body.ClientType),
+		ClientID: clientID, Name: body.Name, ClientType: domain.ClientType(body.ClientType),
 		Party: domain.ClientParty(body.Party), RedirectURIs: body.RedirectURIs,
 		AllowedAudiences: body.Audiences, AllowedScopes: body.Scopes, PKCERequired: body.PKCERequired,
 		Status: "active", CreatedAt: time.Now(),
@@ -330,8 +332,8 @@ func (h *apiHandlers) adminRegisterClient(w http.ResponseWriter, r *http.Request
 		serverError(w, r, err)
 		return
 	}
-	h.audit(r, "oauth_client.register", body.ClientID)
-	resp := map[string]any{"client_id": body.ClientID}
+	h.audit(r, "oauth_client.register", clientID)
+	resp := map[string]any{"client_id": clientID}
 	if plainSecret != "" {
 		resp["client_secret"] = plainSecret // shown once
 	}

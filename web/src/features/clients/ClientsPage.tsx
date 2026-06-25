@@ -24,7 +24,6 @@ import { Table, TBody, TD, TH, THead, TR } from "@/ui/table";
 import { useToast } from "@/ui/toast";
 
 interface ClientForm {
-  client_id: string;
   name: string;
   client_type: "public" | "confidential";
   party: string;
@@ -42,13 +41,14 @@ const splitLines = (s: string) =>
 
 function RegisterClientDialog({ onRegistered }: { onRegistered: () => void }) {
   const [open, setOpen] = useState(false);
-  const [secret, setSecret] = useState<string | null>(null);
+  // After registration the server returns the generated client_id (always) and a
+  // one-time client_secret (confidential only) — both shown once here.
+  const [result, setResult] = useState<{ clientId: string; secret?: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const runStepUp = useStepUp();
   const { toast } = useToast();
   const { register, getValues, reset } = useForm<ClientForm>({
     defaultValues: {
-      client_id: "",
       name: "",
       client_type: "confidential",
       party: "first_party",
@@ -61,7 +61,7 @@ function RegisterClientDialog({ onRegistered }: { onRegistered: () => void }) {
 
   function close() {
     setOpen(false);
-    setSecret(null);
+    setResult(null);
     setBusy(null);
     reset();
   }
@@ -70,15 +70,14 @@ function RegisterClientDialog({ onRegistered }: { onRegistered: () => void }) {
   // sign -> POST with the form body. confidential clients get a one-time secret.
   async function signAndRegister(walletKey: string) {
     const v = getValues();
-    if (!v.client_id || !v.name) {
-      toast({ title: "client_id and name are required", variant: "destructive" });
+    if (!v.name) {
+      toast({ title: "name is required", variant: "destructive" });
       return;
     }
     setBusy(walletKey);
     try {
       const stepUp = await runStepUp(walletKey);
       const body: ClientRegister = {
-        client_id: v.client_id,
         name: v.name,
         client_type: v.client_type,
         party: v.party,
@@ -89,12 +88,7 @@ function RegisterClientDialog({ onRegistered }: { onRegistered: () => void }) {
       };
       const res = await registerClient({ ...body, ...stepUp });
       onRegistered();
-      if (res.client_secret) {
-        setSecret(res.client_secret);
-      } else {
-        toast({ title: "Client registered", variant: "success" });
-        close();
-      }
+      setResult({ clientId: res.client_id, secret: res.client_secret });
     } catch (e) {
       toast({
         title: "Register failed",
@@ -112,19 +106,32 @@ function RegisterClientDialog({ onRegistered }: { onRegistered: () => void }) {
         <Button size="sm">Register client</Button>
       </DialogTrigger>
       <DialogContent>
-        {secret ? (
+        {result ? (
           <>
             <DialogHeader>
-              <DialogTitle>Client secret</DialogTitle>
+              <DialogTitle>Client registered</DialogTitle>
               <DialogDescription>
-                Copy it now — it is shown only once and cannot be retrieved later.
+                {result.secret
+                  ? "Save the client ID and secret now — the secret is shown only once and cannot be retrieved later."
+                  : "Save the client ID — your application uses it to identify itself."}
               </DialogDescription>
             </DialogHeader>
-            <code className="block break-all rounded-md border bg-muted p-3 text-sm">{secret}</code>
+            <Field label="Client ID">
+              <code className="block break-all rounded-md border bg-muted p-3 text-sm">{result.clientId}</code>
+            </Field>
+            {result.secret && (
+              <Field label="Client secret">
+                <code className="block break-all rounded-md border bg-muted p-3 text-sm">{result.secret}</code>
+              </Field>
+            )}
             <div className="flex justify-end gap-2">
               <Button
                 variant="outline"
-                onClick={() => navigator.clipboard?.writeText(secret)}
+                onClick={() =>
+                  navigator.clipboard?.writeText(
+                    result.secret ? `${result.clientId}\n${result.secret}` : result.clientId,
+                  )
+                }
               >
                 Copy
               </Button>
@@ -141,9 +148,6 @@ function RegisterClientDialog({ onRegistered }: { onRegistered: () => void }) {
             </DialogHeader>
             <form className="grid gap-3">
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Client ID">
-                  <Input {...register("client_id")} placeholder="web-app" />
-                </Field>
                 <Field label="Name">
                   <Input {...register("name")} placeholder="Web App" />
                 </Field>
