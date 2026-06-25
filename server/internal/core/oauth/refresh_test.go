@@ -104,7 +104,7 @@ func TestRefresh_TierDowngrade(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Stake now satisfies silver but not gold, still delegating to the pool.
-	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 481, DelegatedPoolID: testPool, ActiveStakeLovelace: "5000"})
+	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 481, DelegatedPoolID: testPool, ActiveStakePoolID: testPool, AccountStatus: "registered", ActiveStakeLovelace: "5000"})
 
 	resp, err := h.srv.Token(ctx, TokenRequest{GrantType: "refresh_token", RefreshToken: refresh1, ClientID: "c1", ClientSecret: "s"})
 	if err != nil {

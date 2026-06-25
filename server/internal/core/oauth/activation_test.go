@@ -19,7 +19,7 @@ func TestCreateActivation_BlacklistedRejected(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	sch := hex.EncodeToString(crypto.Blake2b224(h.pub))
-	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakeLovelace: "5000000"})
+	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakePoolID: testPool, AccountStatus: "registered", ActiveStakeLovelace: "5000000"})
 	if err := h.st.Blacklist().Add(ctx, domain.Blacklist{StakeCredentialHash: sch, CreatedAt: time.Now()}); err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +33,7 @@ func TestCreateActivation_EligibleIssuesCodeAndLink(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	sch := hex.EncodeToString(crypto.Blake2b224(h.pub))
-	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakeLovelace: "5000000"})
+	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakePoolID: testPool, AccountStatus: "registered", ActiveStakeLovelace: "5000000"})
 
 	nonce, _, _ := h.srv.cfg.Wallet.Challenge(ctx, domain.NonceActivation, h.rewardAddr)
 	res, err := h.srv.CreateActivation(ctx, "telegram", nonce, h.coseKey, h.sign(t, nonce), "PaoBot")
@@ -69,7 +69,7 @@ func TestCreateActivation_BadSignature(t *testing.T) {
 	h := newHarness(t)
 	ctx := context.Background()
 	sch := hex.EncodeToString(crypto.Blake2b224(h.pub))
-	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakeLovelace: "5000000"})
+	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakePoolID: testPool, AccountStatus: "registered", ActiveStakeLovelace: "5000000"})
 	// Use an issue-purpose nonce → activation verify should fail (purpose mismatch).
 	nonce, _, _ := h.srv.cfg.Wallet.Challenge(ctx, domain.NonceIssue, h.rewardAddr)
 	if _, err := h.srv.CreateActivation(ctx, "telegram", nonce, h.coseKey, h.sign(t, nonce), "PaoBot"); err != ErrAccessDenied {

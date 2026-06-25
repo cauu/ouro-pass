@@ -66,7 +66,7 @@ func newHarness(t *testing.T) *harness {
 	mock := chain.NewMockSource(480)
 	srv := New(Config{
 		Store: st, Wallet: walletauth.New(st, time.Minute), Keys: ks, Chain: mock,
-		PoolID: testPool, Issuer: "ouropass:" + testPool, ServerSalt: []byte("salt"),
+		PoolID: testPool, Network: "preview", Issuer: "ouropass:" + testPool, ServerSalt: []byte("salt"),
 		AccessTTL: time.Hour, RefreshTTL: 24 * time.Hour,
 	})
 
@@ -128,7 +128,7 @@ func (h *harness) authorizeAs(t *testing.T, sch string) (string, error) {
 func TestAuthorize_EligibleIssuesCode(t *testing.T) {
 	h := newHarness(t)
 	sch := hex.EncodeToString(crypto.Blake2b224(h.pub))
-	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakeLovelace: "5000000"})
+	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakePoolID: testPool, AccountStatus: "registered", ActiveStakeLovelace: "5000000"})
 
 	code, err := h.authorizeAs(t, sch)
 	if err != nil || code == "" {
@@ -155,7 +155,7 @@ func TestAuthorize_IneligibleRejected(t *testing.T) {
 func TestAuthorize_BlacklistedRejected(t *testing.T) {
 	h := newHarness(t)
 	sch := hex.EncodeToString(crypto.Blake2b224(h.pub))
-	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakeLovelace: "5000000"})
+	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakePoolID: testPool, AccountStatus: "registered", ActiveStakeLovelace: "5000000"})
 	h.st.Blacklist().Add(context.Background(), domain.Blacklist{StakeCredentialHash: sch, CreatedAt: time.Now()})
 
 	if _, err := h.authorizeAs(t, sch); err != ErrNotEligible {

@@ -19,18 +19,27 @@ import (
 // TypAccessToken is the JOSE `typ` header for access tokens.
 const TypAccessToken = "at+jwt"
 
-// AccessClaims is the payload of an access token (detailed §9.2).
+// AccessClaims is the payload of an access token: a staking-identity attestation
+// (S0004 §2.5). It carries the issuer's *interpreted facts* — membership state
+// and the exact active stake — so relying parties apply their own policy; `tier`
+// is an optional first-party opinion RPs may ignore.
 type AccessClaims struct {
-	Issuer       string
-	Subject      string // pseudonymous sub
-	Audience     string
-	IssuedAt     time.Time
-	NotBefore    time.Time
-	Expiry       time.Time
-	JTI          string
-	Tier         string
-	Entitlements []string
-	Cnf          map[string]string // optional PoP confirmation, e.g. {"jkt": "..."}
+	Issuer    string
+	Subject   string // pseudonymous sub
+	Audience  string
+	IssuedAt  time.Time
+	NotBefore time.Time
+	Expiry    time.Time
+	JTI       string
+
+	// Staking attestation (S0004 §2.5).
+	MembershipState     string    // "active" | "pending" (none is never issued)
+	ActiveStakeLovelace string    // exact effective active stake (decimal string); "" if none
+	EpochsActive        int       // trailing consecutive active epochs
+	MemberSince         time.Time // start of the current active run; zero → omitted
+	Tier                string    // optional first-party opinion (PoolConfig.tier_rules); "" → omitted
+
+	Cnf map[string]string // optional PoP confirmation, e.g. {"jkt": "..."}
 }
 
 // SignAccessToken produces a compact JWS access token signed by (kid, priv).
@@ -43,8 +52,17 @@ func SignAccessToken(kid string, priv ed25519.PrivateKey, c AccessClaims) (strin
 		NotBefore(c.NotBefore).
 		Expiration(c.Expiry).
 		JwtID(c.JTI).
-		Claim("tier", c.Tier).
-		Claim("entitlements", c.Entitlements)
+		Claim("pool_membership_state", c.MembershipState).
+		Claim("epochs_active", c.EpochsActive)
+	if c.ActiveStakeLovelace != "" {
+		b = b.Claim("active_stake_lovelace", c.ActiveStakeLovelace)
+	}
+	if !c.MemberSince.IsZero() {
+		b = b.Claim("member_since", c.MemberSince.UTC().Format(time.RFC3339))
+	}
+	if c.Tier != "" {
+		b = b.Claim("tier", c.Tier)
+	}
 	if len(c.Cnf) > 0 {
 		b = b.Claim("cnf", c.Cnf)
 	}

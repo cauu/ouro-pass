@@ -22,10 +22,12 @@ func TestSignAccessToken_VerifiableViaJWKS(t *testing.T) {
 		IssuedAt:     now,
 		NotBefore:    now,
 		Expiry:       now.Add(24 * time.Hour),
-		JTI:          "jti-1",
-		Tier:         "gold",
-		Entitlements: []string{"read", "push"},
-		Cnf:          map[string]string{"jkt": "thumb"},
+		JTI:                 "jti-1",
+		MembershipState:     "active",
+		ActiveStakeLovelace: "5000000",
+		EpochsActive:        17,
+		Tier:                "gold",
+		Cnf:                 map[string]string{"jkt": "thumb"},
 	})
 	if err != nil {
 		t.Fatalf("sign: %v", err)
@@ -63,6 +65,12 @@ func TestSignAccessToken_VerifiableViaJWKS(t *testing.T) {
 	tier, _ := tok.Get("tier")
 	if tier != "gold" {
 		t.Errorf("tier = %v", tier)
+	}
+	if st, _ := tok.Get("pool_membership_state"); st != "active" {
+		t.Errorf("pool_membership_state = %v, want active", st)
+	}
+	if as, _ := tok.Get("active_stake_lovelace"); as != "5000000" {
+		t.Errorf("active_stake_lovelace = %v, want 5000000", as)
 	}
 
 	// Wrong key → verification fails.

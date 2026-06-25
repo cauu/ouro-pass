@@ -111,7 +111,7 @@ func TestConnectAuthorize_FormPost(t *testing.T) {
 	ctx := context.Background()
 	pubRaw, _ := hex.DecodeString(vkey)
 	sch := hex.EncodeToString(crypto.Blake2b224(pubRaw))
-	mock.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: "pool1abc", ActiveStakeLovelace: "5000000"})
+	mock.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: "pool1abc", ActiveStakePoolID: "pool1abc", AccountStatus: "registered", ActiveStakeLovelace: "5000000"})
 
 	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	srv := httptest.NewServer(NewRouter(deps))

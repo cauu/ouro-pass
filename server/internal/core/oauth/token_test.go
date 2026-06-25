@@ -17,7 +17,7 @@ import (
 // authCodeFor runs authorize and returns the plaintext code for the given sch.
 func (h *harness) eligibleCode(t *testing.T) (string, string) {
 	sch := hex.EncodeToString(crypto.Blake2b224(h.pub))
-	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakeLovelace: "5000000"})
+	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakePoolID: testPool, AccountStatus: "registered", ActiveStakeLovelace: "5000000", EpochsDelegated: 5})
 	code, err := h.authorizeAs(t, sch)
 	if err != nil {
 		t.Fatalf("authorize: %v", err)
@@ -63,6 +63,17 @@ func TestToken_AuthCodeConfidential(t *testing.T) {
 	if tier, _ := tok.Get("tier"); tier != "gold" {
 		t.Errorf("tier claim = %v", tier)
 	}
+	// Staking-attestation claims (S0004 §2.5): state + exact active stake + epochs
+	// + member_since (epoch 480, 5 epochs active → member_since = start of epoch 476).
+	if st, _ := tok.Get("pool_membership_state"); st != "active" {
+		t.Errorf("pool_membership_state = %v, want active", st)
+	}
+	if as, _ := tok.Get("active_stake_lovelace"); as != "5000000" {
+		t.Errorf("active_stake_lovelace = %v, want exact 5000000", as)
+	}
+	if ms, ok := tok.Get("member_since"); !ok || ms == "" {
+		t.Errorf("member_since missing: %v", ms)
+	}
 
 	// Ledger row + active refresh grant recorded.
 	if _, err := h.st.RefreshGrants().Get(ctx, crypto.HashToken(resp.RefreshToken)); err != nil {
@@ -93,7 +104,7 @@ func TestToken_AuthCodePublicPKCE(t *testing.T) {
 		Status: "active", CreatedAt: time.Now(),
 	})
 	sch := hex.EncodeToString(crypto.Blake2b224(h.pub))
-	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakeLovelace: "5000000"})
+	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakePoolID: testPool, AccountStatus: "registered", ActiveStakeLovelace: "5000000"})
 
 	verifier := "the-pkce-code-verifier-string"
 	sum := sha256.Sum256([]byte(verifier))
@@ -148,7 +159,7 @@ func TestToken_PublicDevicePoP(t *testing.T) {
 		Status: "active", CreatedAt: time.Now(),
 	})
 	sch := hex.EncodeToString(crypto.Blake2b224(h.pub))
-	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakeLovelace: "5000000"})
+	h.chain.Put(&chain.Snapshot{StakeCredentialHash: sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakePoolID: testPool, AccountStatus: "registered", ActiveStakeLovelace: "5000000"})
 	verifier := "the-pkce-code-verifier-string"
 	sum := sha256.Sum256([]byte(verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(sum[:])

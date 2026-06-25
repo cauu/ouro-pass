@@ -12,6 +12,7 @@ import (
 	"errors"
 	"time"
 
+	"ouro-pass/server/internal/core/membership"
 	"ouro-pass/server/internal/domain"
 	"ouro-pass/server/internal/store"
 	"ouro-pass/server/internal/utils/crypto"
@@ -109,13 +110,13 @@ func (s *Server) tokenRefresh(ctx context.Context, req TokenRequest) (*TokenResp
 		}
 	}
 
-	// Re-evaluate eligibility; a lower-tier match naturally downgrades, full
-	// ineligibility is denied.
-	eligible, decision, err := s.evaluate(ctx, grant.StakeCredentialHash)
+	// Re-derive the attestation on refresh so state transitions (pending→active,
+	// leaving→none) and the latest facts are reflected; `none` is denied.
+	att, err := s.attest(ctx, grant.StakeCredentialHash)
 	if err != nil {
 		return nil, err
 	}
-	if !eligible {
+	if att.state == membership.StateNone {
 		return nil, ErrNotEligible
 	}
 
@@ -144,7 +145,7 @@ func (s *Server) tokenRefresh(ctx context.Context, req TokenRequest) (*TokenResp
 		}
 		r, err := s.mint(ctx, tx, mintParams{
 			sch: grant.StakeCredentialHash, aud: grant.Audience, clientType: grant.ClientType,
-			clientID: grant.ClientID, tier: decision.Tier, entitlements: decision.Entitlements,
+			clientID: grant.ClientID, att: att,
 			devicePubkey: devHex, rotatedFrom: &grant.RefreshGrantID,
 			signerKID: signer.KID, signerPriv: signer.Priv,
 		})
@@ -177,12 +178,12 @@ func (s *Server) tokenAuthCode(ctx context.Context, req TokenRequest) (*TokenRes
 		return nil, err
 	}
 
-	// Re-evaluate eligibility at token time (single rule path with refresh).
-	eligible, decision, err := s.evaluate(ctx, code.StakeCredentialHash)
+	// Re-derive the attestation at token time (state + facts), thin-gating none.
+	att, err := s.attest(ctx, code.StakeCredentialHash)
 	if err != nil {
 		return nil, err
 	}
-	if !eligible {
+	if att.state == membership.StateNone {
 		return nil, ErrNotEligible
 	}
 
@@ -192,7 +193,7 @@ func (s *Server) tokenAuthCode(ctx context.Context, req TokenRequest) (*TokenRes
 	}
 	return s.mint(ctx, nil, mintParams{
 		sch: code.StakeCredentialHash, aud: code.Aud, clientType: client.ClientType,
-		clientID: &client.ClientID, tier: decision.Tier, entitlements: decision.Entitlements,
+		clientID: &client.ClientID, att: att,
 		devicePubkey: req.DevicePubkey, signerKID: signer.KID, signerPriv: signer.Priv,
 	})
 }
@@ -227,8 +228,7 @@ type mintParams struct {
 	aud          string
 	clientType   domain.ClientType
 	clientID     *string
-	tier         string
-	entitlements []string
+	att          *attestation // membership state + staking facts + first-party tier
 	devicePubkey string
 	rotatedFrom  *string // set on refresh rotation
 	signerKID    string  // active signing key, fetched by the caller before any tx
@@ -255,7 +255,11 @@ func (s *Server) mint(ctx context.Context, q store.Querier, p mintParams) (*Toke
 	claims := jose.AccessClaims{
 		Issuer: s.cfg.Issuer, Subject: sub, Audience: p.aud,
 		IssuedAt: now, NotBefore: now, Expiry: exp, JTI: jti,
-		Tier: p.tier, Entitlements: p.entitlements,
+		MembershipState:     string(p.att.state),
+		ActiveStakeLovelace: p.att.activeStake,
+		EpochsActive:        p.att.epochsActive,
+		MemberSince:         p.att.memberSince,
+		Tier:                p.att.tier,
 	}
 	var boundDevice []byte
 	if p.clientType == domain.ClientPublic && p.devicePubkey != "" {
@@ -295,6 +299,6 @@ func (s *Server) mint(ctx context.Context, q store.Querier, p mintParams) (*Toke
 
 	return &TokenResponse{
 		AccessToken: accessToken, TokenType: "Bearer", RefreshToken: refreshPlain,
-		ExpiresAt: exp, Status: "eligible_member", Tier: p.tier,
+		ExpiresAt: exp, Status: "eligible_member", Tier: p.att.tier,
 	}, nil
 }

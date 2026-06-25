@@ -37,6 +37,7 @@ type Config struct {
 	Keys       *keys.Service
 	Chain      chain.Source
 	PoolID     string
+	Network    string // mainnet | preprod | preview (for epoch→time, member_since)
 	Issuer     string // token `iss`
 	ServerSalt []byte // HMAC salt for `sub` derivation
 	AccessTTL  time.Duration
@@ -127,11 +128,13 @@ func (s *Server) Authorize(ctx context.Context, req AuthorizeRequest) (code stri
 		return "", ErrAccessDenied
 	}
 
-	eligible, _, err := s.evaluate(ctx, sch)
+	// Thin issuer gate (S0004 §2.5): only pool members (pending/active) get a code;
+	// `none` is denied. Business policy (thresholds → access) is the RP's.
+	state, _, err := s.classify(ctx, sch)
 	if err != nil {
 		return "", err
 	}
-	if !eligible {
+	if state == membership.StateNone {
 		return "", ErrNotEligible
 	}
 
@@ -171,21 +174,83 @@ func (s *Server) evaluate(ctx context.Context, sch string) (bool, rules.Decision
 	return d.Eligible, d, nil
 }
 
-// Membership derives a credential's current pool-membership state (S0004 §2.2):
-// the live-snapshot three-state classification, with blacklisted credentials
-// forced to `none`. It is the membership signal used by the reconciler (and, from
-// p3-1, the issuance gate), replacing the rules-based eligibility verdict.
-func (s *Server) Membership(ctx context.Context, sch string) (membership.State, error) {
+// attestation is the issuance-time view of a credential: membership state, the
+// exact staking facts for claims, and the optional first-party tier. Tier is
+// transitionally sourced from the rules engine; p4-1 moves it to
+// PoolConfig.tier_rules and deletes rules.
+type attestation struct {
+	state        membership.State
+	activeStake  string
+	epochsActive int
+	memberSince  time.Time
+	tier         string
+}
+
+// classify resolves a credential's membership state from the live snapshot, with
+// blacklisted credentials forced to `none` (snap is nil then).
+func (s *Server) classify(ctx context.Context, sch string) (membership.State, *chain.Snapshot, error) {
 	if blocked, err := s.blacklist.Has(ctx, sch); err != nil {
-		return membership.StateNone, err
+		return membership.StateNone, nil, err
 	} else if blocked {
-		return membership.StateNone, nil
+		return membership.StateNone, nil, nil
 	}
 	snap, err := s.cfg.Chain.Snapshot(ctx, sch)
 	if err != nil {
-		return membership.StateNone, err
+		return membership.StateNone, nil, err
 	}
-	return membership.DeriveState(snap, s.cfg.PoolID), nil
+	return membership.DeriveState(snap, s.cfg.PoolID), snap, nil
+}
+
+// Membership derives a credential's current pool-membership state (S0004 §2.2):
+// the reconciler's signal. Blacklisted credentials are `none`.
+func (s *Server) Membership(ctx context.Context, sch string) (membership.State, error) {
+	st, _, err := s.classify(ctx, sch)
+	return st, err
+}
+
+// attest builds the issuance-time attestation (state + staking facts + first-party
+// tier). The thin issuer gate is the caller's: state `none` → deny.
+func (s *Server) attest(ctx context.Context, sch string) (*attestation, error) {
+	st, snap, err := s.classify(ctx, sch)
+	if err != nil {
+		return nil, err
+	}
+	a := &attestation{state: st}
+	if snap != nil {
+		a.activeStake = snap.ActiveStakeLovelace
+		a.epochsActive = snap.EpochsDelegated
+		a.memberSince = s.memberSince(snap)
+	}
+	if st != membership.StateNone {
+		a.tier = s.firstPartyTier(ctx, snap)
+	}
+	return a, nil
+}
+
+// firstPartyTier is the transitional rules-engine tier (p4-1 replaces this with
+// PoolConfig.tier_rules). Errors degrade to no tier (the optional opinion is
+// simply absent).
+func (s *Server) firstPartyTier(ctx context.Context, snap *chain.Snapshot) string {
+	ruleset, err := s.rules.ListActive(ctx)
+	if err != nil {
+		return ""
+	}
+	d := rules.Evaluate(rules.InputFromSnapshot(s.cfg.PoolID, snap), ruleset, snap.Epoch)
+	return d.Tier
+}
+
+// memberSince stamps when the credential's current active run began: the start of
+// epoch (snapshotEpoch - epochsActive + 1). Zero for non-active / unknown network.
+func (s *Server) memberSince(snap *chain.Snapshot) time.Time {
+	if snap.EpochsDelegated <= 0 {
+		return time.Time{}
+	}
+	start := snap.Epoch - uint64(snap.EpochsDelegated) + 1
+	t, ok := chain.EpochStart(s.cfg.Network, start)
+	if !ok {
+		return time.Time{}
+	}
+	return t
 }
 
 func contains(xs []string, v string) bool { return slices.Contains(xs, v) }

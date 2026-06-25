@@ -200,7 +200,7 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, chain.Sou
 	if deps.Keys != nil && len(serverSalt) > 0 {
 		deps.OAuth = oauth.New(oauth.Config{
 			Store: st, Wallet: deps.Wallet, Keys: deps.Keys, Chain: chainSrc,
-			PoolID: cfg.PoolID, Issuer: cfg.Issuer, ServerSalt: serverSalt,
+			PoolID: cfg.PoolID, Network: cfg.Network, Issuer: cfg.Issuer, ServerSalt: serverSalt,
 			AccessTTL: accessTTL, RefreshTTL: refreshTTL,
 		})
 	} else {

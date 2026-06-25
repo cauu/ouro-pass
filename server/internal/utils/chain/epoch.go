@@ -38,3 +38,14 @@ func CurrentEpoch(network string, now time.Time) (uint64, bool) {
 	}
 	return uint64((t - p.genesisUnix) / p.lengthSec), true
 }
+
+// EpochStart returns the UTC start time of an epoch for a network (the inverse of
+// CurrentEpoch). ok=false for an unknown network. Used to stamp member_since from
+// the epoch a credential's current active run began (S0004 §2.5).
+func EpochStart(network string, epoch uint64) (time.Time, bool) {
+	p, ok := epochByNetwork[network]
+	if !ok {
+		return time.Time{}, false
+	}
+	return time.Unix(p.genesisUnix+int64(epoch)*p.lengthSec, 0).UTC(), true
+}

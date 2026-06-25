@@ -196,8 +196,8 @@ func (e *env) eligible(w wallet) {
 		CreatedAt: time.Now(), UpdatedAt: time.Now(),
 	})
 	e.chain.Put(&chain.Snapshot{
-		StakeCredentialHash: w.sch, Epoch: 480, DelegatedPoolID: testPool,
-		ActiveStakeLovelace: "5000000", AccountStatus: "registered",
+		StakeCredentialHash: w.sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakePoolID: testPool,
+		ActiveStakeLovelace: "5000000", EpochsDelegated: 5, AccountStatus: "registered",
 	})
 }
 

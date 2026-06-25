@@ -148,7 +148,7 @@ e = currentEpoch(now()); row = cache.Get(sch)
 - [x] p2-1 三态状态机:`State` 派生 + leaving 收敛;纯函数单测(入场/晋升/离场尾巴/金额跌破)。
 - [x] p2-2 `CachedSource`:本地算 current_epoch(内置 epoch 常量);命中 iff `snapshot_epoch==当前`;**只缓 active**(pending/none 现算);single-flight + 超时 + D8;接入 `StakeSnapshotCache`。
 - [x] p2-3 reconciler:epoch 边界刷活跃集合 + state 重算 + 不活跃退休;集成测试。
-- [ ] p3-1 token claims:签发/刷新写 state/active_stake/epochs/since(+可选 tier);薄 issuer 闸;e2e。
+- [x] p3-1 token claims:签发/刷新写 state/active_stake/epochs/since(+可选 tier);薄 issuer 闸;e2e。
 - [ ] p4-1 rules 删除:删 `MembershipRule`/Rules 端点/引擎 tier 判定;`PoolConfig.tier_rules` + 第一方 tier 映射(渠道/push);迁移既有测试;(S0002 删 Rules 页另计)。
 - [ ] p5-1 (可选/可延后) delegator 枚举:`chain.Delegators(poolID,page)` + `GET /api/admin/delegators`(**透传 Koios 分页、不缓存**)+ 测试。
 - [ ] p6-1 全量 `go test ./...` + 二进制 smoke + 文档(链数据架构/口径/claims/tier)。
@@ -179,6 +179,9 @@ e = currentEpoch(now()); row = cache.Get(sch)
 
 - 2026-06-26 p2-3 完成：reconciler 由 rules 改为 state 驱动。`oauth.Server.Membership(ctx,sch)→(State,error)`（blacklist→none + chain.Snapshot + DeriveState）；reconciler 接口 `Eligibilizer`→`StateEvaluator`，逻辑：`none`→expire、active/pending→刷 LastVerifiedAt。**决策（rules→membership 渐进切换，记 §7）**：① reconciler **不再 reconcile tier**——tier 是第一方、在消费点（发 token/渠道激活）按 `PoolConfig.tier_rules` 现算（p4-1），不属 reconciler 职责（§2.3 只讲 state 重算/退休）；移除 `Downgraded` 计数与 tier 分支；② D8 软 fail-open 保留（链错→保留会话不误降）；③ 此阶段 `evaluate()`(rules) 仅剩 telegram 的 `Eligibility` 在用，p4-1 删；oauth 发证路径 p3-1 切。reconciler_test 重写为 state 版（ExpireKeep/FaultIsolation/Empty/Run），删 tier 升降级用例。
 - 2026-06-26 p2-3 | stack: go | command: `go build ./...` + `go test ./internal/worker/reconciliation/ ./internal/core/oauth/ ./...` | result: pass | note: state 版 reconciler + `Membership` 方法全仓绿；fault isolation 软 fail-open 验证。
+
+- 2026-06-26 p3-1 完成：token claims 改为质押证明（§2.5）。`jose.AccessClaims` 删 `Entitlements`，加 `pool_membership_state`/`active_stake_lovelace`/`epochs_active`/`member_since`，`tier` 转可选（空则省）。oauth 发证（Authorize/tokenAuthCode/tokenRefresh）改用 `attest()`：薄 issuer 闸 `state==none→deny`（pending/active 都发），mint 写 facts。新增 `chain.EpochStart`（epoch→time 算 member_since）；`oauth.Config` 加 `Network`。**决策（rules→membership 渐进切换，§7）**：① tier 在 p3-1 仍由 rules 引擎过渡供给（`firstPartyTier`），避免 tier 断言在 p3-1/p4-1 间反复改；p4-1 换 `PoolConfig.tier_rules` 并删 rules；② 抽 `classify`（blacklist→none + snapshot + DeriveState）供 `Membership`/`attest` 复用；③ refresh 重派生反映 pending→active / leaving→none；④ 测试快照补 `ActiveStakePoolID`/`AccountStatus` 匹配新三态。
+- 2026-06-26 p3-1 | stack: go | command: `go test ./internal/utils/jose/ ./internal/core/oauth/ ./...` + `go build ./...` | result: pass | note: `jose_test` 验 state/active_stake claims；`TestToken_AuthCodeConfidential` 验 token 带 `pool_membership_state=active`/精确 `active_stake_lovelace`/`member_since`；e2e/httpapi 快照升为 active；全仓绿。
 
 ## 7. Change Requests (append-only)
 - 2026-06-25 核心决策(累积,用户拍板):① issuer = 质押身份证明提供方,业务策略下沉 RP;② token 带精确事实(state/active_stake/epochs/since),**不分桶**;③ **删除 rules 子系统**,薄第一方 tier 映射进 `PoolConfig.tier_rules`(仅自家渠道用);④ 有效质押 = epoch active_stake 口径,pending 仅入场过渡,leaving 由 epoch 自然收敛、grace 下沉 RP;⑤ 缓存**只缓 `active`**(epoch 稳定;命中 iff snapshot_epoch==当前、本地算 epoch),pending/none 现算不缓(onboarding/bail 即时对称);⑥ Koios 失败 D8 分场景(登录 fail-closed / reconciler 软 fail-open);⑦ epoch 常量内置 per-network;⑧ **砍掉 owner 链上校验 / operator-viewer 管理(原 B)**——owner 沿用 env 配置信任;⑨ delegator 枚举(C)解耦、可延后/单独排期。
