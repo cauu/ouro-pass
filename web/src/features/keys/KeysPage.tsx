@@ -12,6 +12,11 @@ export function KeysPage() {
   const q = useQuery({ queryKey: ["jwks"], queryFn: fetchJwks });
   const keys = q.data?.keys ?? [];
   const refresh = () => qc.invalidateQueries({ queryKey: ["jwks"] });
+  // One action, two faces: with no active signing key it bootstraps the first
+  // one ("Generate"); once a key exists it rotates (new active, previous key
+  // demoted to rotating). Both call the same backend handler — the label/copy
+  // just reflects intent. (rotating keys are verify-only and don't count.)
+  const hasActiveKey = keys.some((k) => k.status === "active");
 
   return (
     <>
@@ -19,26 +24,21 @@ export function KeysPage() {
         title="Signing keys"
         description="EdDSA keys advertised at /.well-known/ouropass/jwks.json."
         action={
-          <div className="flex gap-2">
-            <StepUpDialog
-              trigger={<Button size="sm" variant="outline">Generate</Button>}
-              title="Generate signing key"
-              description="Create a new active signing key (re-sign as owner to confirm)."
-              onConfirm={async (su) => {
-                await generateKey(su);
-              }}
-              onDone={refresh}
-            />
-            <StepUpDialog
-              trigger={<Button size="sm">Rotate</Button>}
-              title="Rotate signing key"
-              description="Promote a fresh key to active; the previous key keeps verifying until it ages out."
-              onConfirm={async (su) => {
-                await rotateKey(su);
-              }}
-              onDone={refresh}
-            />
-          </div>
+          <StepUpDialog
+            trigger={
+              <Button size="sm">{hasActiveKey ? "Rotate" : "Generate"}</Button>
+            }
+            title={hasActiveKey ? "Rotate signing key" : "Generate signing key"}
+            description={
+              hasActiveKey
+                ? "Promote a fresh key to active; the previous key keeps verifying until it ages out."
+                : "Create the first active signing key (re-sign as owner to confirm)."
+            }
+            onConfirm={async (su) => {
+              await (hasActiveKey ? rotateKey(su) : generateKey(su));
+            }}
+            onDone={refresh}
+          />
         }
       />
       <Card className="mb-4 max-w-lg">
