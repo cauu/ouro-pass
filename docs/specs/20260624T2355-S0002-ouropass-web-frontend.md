@@ -120,6 +120,7 @@ interface WalletAdapter {
 - [x] p4-1 构建/部署：静态产物、可 embed/静态托管、env(issuer base URL/network)、CI 增 web job（TC-7/TC-8）。
 - [x] p3-1-fix1 **fix**（验收发现）：Setup/Dashboard 的 `data?.X.length` 只对 `data` 可选链、未对数组 `X`，接口返回缺 `keys`/`members` 等字段时 `undefined.length` 崩页；改为 `data?.X?.length`（全仓扫净同类）。Setup 页 = owner 首次配置就绪清单（其"规则"步将随 S0004 删 rules 改写）。
 - [x] p3-1-fix2 **fix**（验收发现）：Keys 页生成/轮换密钥后 JWKS 列表 ~60s 不更新（仍显示空/旧值）。根因——KeysPage 以公开 `GET /.well-known/ouropass/jwks.json` 为数据源，后端给它发 `Cache-Control: public, max-age=60`（面向 verifier 的有意缓存），而 admin client 的 `fetch` 未设 `cache`，react-query 失效后重取命中浏览器 HTTP 缓存返回过期空列表。修复——admin client GET 加 `cache: "no-store"` 绕过浏览器缓存（verifier 侧缓存保持不变）。后端 Rotate 逻辑无误；"两个 key"= active+rotating 正常重叠。
+- [x] p3-1-fix3 **fix**（验收发现）：Keys 页看不出哪个 key 在签名。后端 JWKS 每个 key 本已带 `status` 字段（`jose.BuildJWKS`，active|rotating|retired），但前端 `Jwk` 类型漏声明 `status`、表格也无 Status 列，把唯一可区分字段丢了。修复——`Jwk` 加 `status?`，表格加 Status 列徽章（`active`→`active (signing)` success 高亮，rotating/retired→muted）。澄清：当前签名 key = 唯一 `active`（`keys.ActiveSigner` 取最新 active），`rotating` 仅验证旧 token。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 `WalletAdapter`：mock `window.cardano` 覆盖探测/enable/getRewardAddresses/signData；`signNonce` 返回 `{coseKeyHex, signatureHex}` 且**不在浏览器解 CBOR**；network guard 不匹配报错。
@@ -153,6 +154,8 @@ interface WalletAdapter {
 
 - 2026-06-25 p3-1-fix2 完成（fix，验收发现）：Keys 页 generate/rotate 返回成功（`status:active`,`jwks_updated:true`）但 JWKS 列表 ~60s 不刷新、过后才显示（此时 active+rotating=2 key）。排查链：KeysPage(`fetchJwks`)→公开 `GET /.well-known/ouropass/jwks.json`，后端发 `Cache-Control: public, max-age=60`（`handlers_verifier.go:29`，verifier 缓存有意为之）；`client.ts` 的 `fetch` 未设 `cache`，故 `invalidateQueries(["jwks"])` 重取命中浏览器磁盘缓存返回 60s 内"新鲜"的空 `[]`。**决策**：不动后端缓存（保留对 verifier 的减压），仅在 admin client 的统一 `request()` 加 `cache:"no-store"`——admin SPA 恒取实时数据，覆盖此类及未来被缓存端点。后端 `keys.Rotate`/`PublicJWKSKeys` 逻辑核对无误。
 
+- 2026-06-25 p3-1-fix3 完成（fix，验收发现）：用户分不清哪个 key 在签名。核对：① Generate 与 Rotate 同一 handler（`handlers_admin_resources.go:33-34`→`adminRotateKey`→`Rotate()`），Generate 即"建新 active + 旧 active 降 rotating"——两按钮功能相同（待后续 UX 收敛）；② 签名 key=`keys.ActiveSigner` 取唯一/最新 `active`，rotating 仅验证旧 token；③ JWKS 本带 `status`（`jose.go:93`），但前端 `Jwk` 漏声明、表格无该列。修复——`Jwk` 加 `status?` + 表格 Status 列徽章（active 高亮"active (signing)"）。`pnpm build` 绿。
+
 ## 6. Validation Evidence (append-only)
 - 2026-06-25 TC-7（部分）| stack: ui | command: `pnpm install` + `pnpm build`（`tsc -b && vite build`） | result: pass | note: 工具链就绪，类型检查 + 生产打包绿（27 模块、JS 144KB/gzip 46KB、CSS 5.3KB）。
 
@@ -171,6 +174,8 @@ interface WalletAdapter {
 - 2026-06-25 p3-1-fix1 | stack: ui | command: `pnpm build`(tsc+vite) + grep 扫描数组可选链 | result: pass | note: 修复后打包绿;无残留 `data?.X.length` 类不安全访问。
 
 - 2026-06-25 p3-1-fix2 | stack: ui | command: `pnpm build`(tsc -b && vite build) | result: pass | note: admin client GET 加 `cache:"no-store"` 后打包绿（1745 模块、JS 463KB/gzip 145KB）；生成/轮换后 jwks 重取不再命中浏览器缓存。后端 jwks `Cache-Control` 保持不变（verifier 侧）。
+
+- 2026-06-25 p3-1-fix3 | stack: ui | command: `pnpm build`(tsc -b && vite build) | result: pass | note: `Jwk.status` + Keys 表 Status 列徽章打包绿（1745 模块、JS 463KB/gzip 145KB）；active key 显示"active (signing)"，rotating/retired muted。
 
 ## 7. Change Requests (append-only)
 - 2026-06-24 选型：框架 React+Vite 纯 SPA（用户确认）；组件库 shadcn/ui（用户确认）；钱包 thin `window.cardano` 封装（用户质疑 Weld 成熟度：~550 下载/月、pre-1.0；且 CBOR 解码改放后端后前端只需转发，thin-wrapper 最契合，库藏 `WalletAdapter` 后可换）。

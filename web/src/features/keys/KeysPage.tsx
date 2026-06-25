@@ -61,6 +61,7 @@ export function KeysPage() {
           <THead>
             <TR>
               <TH>Kid</TH>
+              <TH>Status</TH>
               <TH>Type</TH>
               <TH>Curve</TH>
               <TH>Alg</TH>
@@ -70,6 +71,13 @@ export function KeysPage() {
             {keys.map((k) => (
               <TR key={k.kid}>
                 <TD className="font-mono text-xs">{k.kid}</TD>
+                <TD>
+                  <Badge variant={k.status === "active" ? "success" : "muted"}>
+                    {k.status === "active"
+                      ? "active (signing)"
+                      : (k.status ?? "—")}
+                  </Badge>
+                </TD>
                 <TD>{k.kty}</TD>
                 <TD>{k.crv ?? "—"}</TD>
                 <TD>{k.alg ?? "EdDSA"}</TD>

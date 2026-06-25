@@ -90,5 +90,8 @@ export interface Jwk {
   crv?: string;
   alg?: string;
   x?: string;
+  // Lifecycle status published per-key (jose.BuildJWKS): "active" = current
+  // signing key; "rotating" = verify-only overlap; "retired".
+  status?: string;
 }
 export const fetchJwks = () => api.get<{ keys: Jwk[] }>("/.well-known/ouropass/jwks.json");
