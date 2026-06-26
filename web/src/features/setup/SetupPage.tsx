@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Check, Circle } from "lucide-react";
 import { Link } from "react-router-dom";
-import { fetchJwks, listClients } from "@/api/admin";
+import { fetchJwks, listChannels, listClients } from "@/api/admin";
 import { PageHeader } from "@/app/page";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 
@@ -26,9 +26,12 @@ function Step({ done, title, children }: { done: boolean; title: string; childre
 export function SetupPage() {
   const jwks = useQuery({ queryKey: ["jwks"], queryFn: fetchJwks });
   const clients = useQuery({ queryKey: ["clients"], queryFn: listClients });
+  const channels = useQuery({ queryKey: ["channels"], queryFn: listChannels });
 
   const hasKey = (jwks.data?.keys?.length ?? 0) > 0;
   const hasClient = (clients.data?.clients?.length ?? 0) > 0;
+  const hasTelegram =
+    channels.data?.channels.find((c) => c.channel_type === "telegram")?.configured ?? false;
 
   return (
     <>
@@ -58,9 +61,15 @@ export function SetupPage() {
               </>
             )}
           </Step>
-          <Step done={false} title="Telegram channel">
-            Configure the bot token on the <Link className="underline" to="/channels">Channels</Link> page to deliver
-            memberships.
+          <Step done={hasTelegram} title="Telegram channel">
+            {hasTelegram ? (
+              "The Telegram bot token is configured — memberships can be delivered."
+            ) : (
+              <>
+                Configure the bot token on the <Link className="underline" to="/channels">Channels</Link> page to
+                deliver memberships.
+              </>
+            )}
           </Step>
         </CardContent>
       </Card>

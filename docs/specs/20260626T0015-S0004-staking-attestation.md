@@ -155,7 +155,7 @@ e = currentEpoch(now()); row = cache.Get(sch)
 - [x] p7-1 **（tier_rules 配置入口，验收发现）** p4-1/p4-2 后 `tier_rules` 无配置入口（`PoolConfig` 生产零写、不 seed → tier 永远空，只能直接写库）。补：后端 `membership.ValidateTierRules`（形状/state/整数阈值校验）+ `GET /api/admin/pool`（viewer，无行时返回默认 `[]`）+ `POST /api/admin/pool/tier-rules`（operator，校验后 Get-or-create upsert PoolConfig，审计 `pool.tier_rules_set`）；前端 `getPool`/`setTierRules` + `TierRule`/`PoolInfo` 类型 + 新 **Tiers 页**（当前规则表 + JSON 编辑器 + 校验保存 + 示例）+ 路由/导航（operator，复用 SlidersHorizontal）。tier 仍仅自家渠道用；对外 RP 读 raw claims。
 - [x] p4-2 **（前端删 Rules 页，验收发现）** p4-1 删了后端 rules 端点但 Rules 前端页留着（"另计"），导致它调已删的 `/api/admin/rules`→404。端到端删除：`RulesPage.tsx`、`App.tsx` 路由、`Layout.tsx` 导航(+未用 `SlidersHorizontal` icon)、`admin.ts` `listRules`/`upsertRule`、`types.ts` `Rule`/`RuleUpsert`、`SetupPage` 的 rules 查询 + "Membership rules" 步。无替代 UI——tier 经 `PoolConfig.tier_rules` 配置，本期无专用编辑页（与 p4-1 决策一致；future spec 可加 tier_rules 编辑器）。
 - [x] p8-1 **（Telegram 渠道接通-后端，验收发现）** 根因：管理页把 bot token 写进 `ChannelConfig` 表,但 worker 只读环境变量 `OUROPASS_TELEGRAM_TOKEN`(且开机定死)、**没人读那张表** → 配了等于没配;且明文存(文案谎称加密)。修：① token **加密落库**(`telegram.EncodeToken`,field cipher,存 `bot_token_enc`),handler 校验 `bot_token` 非空;② transport 改**动态 token**(`tokenFn func()string`,每次调用解析),空 token 时 GetUpdates 静默 no-op、call 返 `ErrNotConfigured`;③ main worker **常驻**(去掉 env 门),`tokenFn`=env 优先、否则解密 DB ChannelConfig → **配置即热生效、无需重启**;④ `Deps.Cipher`;⑤ `GET /api/admin/channels` 状态端点(viewer,不回 secret)。
-- [ ] p8-2 **（Telegram 渠道接通-前端，验收发现）** Channels 页显示"已配置 ✓"状态 + Setup 页 Telegram 步真实反映;`listChannels` api。
+- [x] p8-2 **（Telegram 渠道接通-前端，验收发现）** Channels 页显示"已配置 ✓"状态 + Setup 页 Telegram 步真实反映;`listChannels` api。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 Koios:`account_stake_history` 取真 active_stake + epochs_active;`account_info` 取 live pool/status;仅本池委托才二次拉。
@@ -204,6 +204,9 @@ e = currentEpoch(now()); row = cache.Get(sch)
 
 - 2026-06-26 p8-1 完成（Telegram 后端接通，用户验收"存了 token 没反应"）：诊断=页写 ChannelConfig 表 / worker 只读 env / 无人读表 / 明文存。修：token 加密落库 + transport 动态 token（热加载）+ worker 常驻读 env-或-DB + `Deps.Cipher` + `GET /channels` 状态。**决策**：① env `OUROPASS_TELEGRAM_TOKEN` 仍优先（运维/兼容），否则解密 DB——配置即热生效无需重启；② 空 token 时 GetUpdates 静默 no-op（不刷日志）、call 返 ErrNotConfigured；③ 仅 telegram 加密（其它渠道暂存原样，目前无）。
 - 2026-06-26 p8-1 | stack: go | command: `go test ./internal/worker/telegram/ ./internal/httpapi/` + `go test ./...` + `go vet ./...` | result: pass | note: `TestTokenCodec_RoundTripAndEncrypted`（密文不含明文）+ `TestAdminConfigureChannel`（配置后 DB 密文存储、`GET /channels` 报 configured、缺 token→400）；全仓绿。
+
+- 2026-06-26 p8-2 完成（Telegram 前端状态）：`listChannels` api；Channels 页加 configured/not configured 徽章 + 保存后失效 `["channels"]` + 文案改"live、no restart / 提交新 token 替换"；Setup 页 Telegram 步由硬编码 `done={false}` 改为真实 `hasTelegram`。
+- 2026-06-26 p8-2 | stack: ui | command: `pnpm build`(tsc -b && vite build) + `pnpm lint` | result: pass | note: 打包绿（JS 408KB/gzip 132KB）、lint 0 error；Channels/Setup 反映渠道配置状态。
 
 ## 7. Change Requests (append-only)
 - 2026-06-25 核心决策(累积,用户拍板):① issuer = 质押身份证明提供方,业务策略下沉 RP;② token 带精确事实(state/active_stake/epochs/since),**不分桶**;③ **删除 rules 子系统**,薄第一方 tier 映射进 `PoolConfig.tier_rules`(仅自家渠道用);④ 有效质押 = epoch active_stake 口径,pending 仅入场过渡,leaving 由 epoch 自然收敛、grace 下沉 RP;⑤ 缓存**只缓 `active`**(epoch 稳定;命中 iff snapshot_epoch==当前、本地算 epoch),pending/none 现算不缓(onboarding/bail 即时对称);⑥ Koios 失败 D8 分场景(登录 fail-closed / reconciler 软 fail-open);⑦ epoch 常量内置 per-network;⑧ **砍掉 owner 链上校验 / operator-viewer 管理(原 B)**——owner 沿用 env 配置信任;⑨ delegator 枚举(C)解耦、可延后/单独排期。

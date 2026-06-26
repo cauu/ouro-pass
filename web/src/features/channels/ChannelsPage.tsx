@@ -1,8 +1,9 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
-import { configureChannel } from "@/api/admin";
+import { configureChannel, listChannels } from "@/api/admin";
 import { ApiError } from "@/api/client";
 import { PageHeader } from "@/app/page";
+import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Field } from "@/ui/field";
@@ -15,15 +16,18 @@ interface ChannelForm {
 
 export function ChannelsPage() {
   const { toast } = useToast();
+  const qc = useQueryClient();
+  const channels = useQuery({ queryKey: ["channels"], queryFn: listChannels });
+  const configured = channels.data?.channels.find((c) => c.channel_type === "telegram")?.configured ?? false;
   const { register, handleSubmit, reset } = useForm<ChannelForm>({ defaultValues: { botToken: "" } });
 
   const save = useMutation({
-    // The configure endpoint stores an opaque encrypted config blob; for Telegram
-    // that is the bot token.
+    // The configure endpoint stores the bot token encrypted at rest (field cipher).
     mutationFn: (v: ChannelForm) => configureChannel("telegram", { bot_token: v.botToken }),
     onSuccess: () => {
       toast({ title: "Telegram configured", variant: "success" });
       reset();
+      void qc.invalidateQueries({ queryKey: ["channels"] });
     },
     onError: (e) =>
       toast({
@@ -38,9 +42,15 @@ export function ChannelsPage() {
       <PageHeader title="Channels" description="Delivery channel configuration." />
       <Card className="max-w-lg">
         <CardHeader>
-          <CardTitle>Telegram</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Telegram</CardTitle>
+            <Badge variant={configured ? "success" : "muted"}>
+              {configured ? "configured" : "not configured"}
+            </Badge>
+          </div>
           <CardDescription>
-            Set the bot token. It is stored encrypted (field cipher) and never returned.
+            Set the bot token. It is stored encrypted (field cipher) and never returned. Saving takes
+            effect live — no restart. {configured ? "Submit a new token to replace the current one." : ""}
           </CardDescription>
         </CardHeader>
         <CardContent>

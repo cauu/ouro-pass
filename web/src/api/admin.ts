@@ -49,6 +49,8 @@ export const cancelSubscription = (id: string) =>
 
 
 // ---- channels ----
+export const listChannels = () =>
+  api.get<{ channels: { channel_type: string; configured: boolean }[] }>("/api/admin/channels");
 export const configureChannel = (type: string, config: unknown) =>
   api.post<{ channel_id: string }>(`/api/admin/channels/${encodeURIComponent(type)}/configure`, {
     config,
