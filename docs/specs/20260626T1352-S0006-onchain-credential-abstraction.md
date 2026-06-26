@@ -128,7 +128,7 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 - [x] p4-1 配置：删 `OUROPASS_POOL_ID` + 加 `OUROPASS_ISSUER`(=iss base URL);`network` 下放 attestor + `chain.Source` 按 network 工厂;冷启动未配置态;迁移既有部署。
 - [x] p5-1 新鲜度/缓存泛化：`CachedSource` per-attestor 策略;质押路径回归。
 - [x] p6-1 admin API + UI：attestor CRUD + 全局 tier_rules 编辑(扩展 Tiers 页);RBAC + 审计。
-- [ ] p7-1 全量 `go test ./...` + `pnpm build/lint` + 二进制 smoke + 文档(凭证模型/token/tier/迁移)。
+- [x] p7-1 全量 `go test ./...` + `pnpm build/lint` + 二进制 smoke + 文档(凭证模型/token/tier/迁移)。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 Attestor：`pool_stake` evaluator 对多池各自产出 Held/facts;注册表按 kind 实例化。
@@ -170,6 +170,9 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 
 - 2026-06-26 p6-1 完成（admin API + UI:attestor CRUD + tier 编辑）：**后端** `handlers_admin_attestors.go`——`GET /attestors`(viewer 列表,params 无密直返)、`POST /attestors`(operator 建,校验 kind+params、`pool_id` 必填、network 白名单、重复 (kind,label)→409、未支持 kind→400)、`POST /attestors/{id}`(operator 改 label/params/status,kind 不可变,坏 status→400)、`DELETE /attestors/{id}`(operator 删,缺→404);全部 `audit`(attestor.create/update/delete)。`adminGetPool`/`adminSetTierRules` 已于 p3-1 切到 IssuerConfig + tier DSL。**前端**:新 `AttestorsPage`(列表 + 加 pool_stake 表单[label/pool_id/network/ticker/name] + 启停 + 删,React Query 失效 `["attestors"]`)、路由 `/attestors`(operator)、侧栏导航项;`api/client.ts` 加 `del`;`api/admin.ts` 加 attestor CRUD;`lib/types.ts` 加 `TierCondition`/`Attestor`;`TiersPage` 改新布尔 DSL(SAMPLE/表格渲染 `when`/说明)。
 - 2026-06-26 p6-1 | stack: go+ui | command: `go test ./internal/httpapi/ ./...` + `pnpm build` + `pnpm lint` | result: pass | note: TC-8。`TestAdminAttestors_CRUD`(seed 1 + 建/列/重复 409/nft 400/缺 pool_id 400/改 status disabled/坏 status 400/删 200/再删 404)、`TestAdminAttestors_RBAC`(viewer GET 200、create/delete 403)绿;全仓 `go test ./...` 0 失败;前端 `tsc -b && vite build` 绿(JS 412KB/gzip 133KB)、`pnpm lint` 0 error(2 既有 warning,非本次文件)。
+
+- 2026-06-26 p7-1 完成（全量验证 + 文档）：文档新增 `docs/onchain-credentials.md`(凭证模型/token 形状/tier DSL/配置迁移/admin API)+ `docs/staking-attestation.md` 顶部加 S0006 承接说明;`server/Makefile` dev 目标 `OUROPASS_POOL_ID`→`OUROPASS_ISSUER`(+ DEV_ISSUER var)。顺带修一处既有 vet 告警(`handlers_admin_resources_test.go` channels GET 未查 err)使 vet 全净。
+- 2026-06-26 p7-1 | stack: go+ui | command: `go test ./... && go vet ./... && go build ./cmd/issuer` + `pnpm build && pnpm lint` + 二进制 smoke | result: pass | note: 全量收口。`go test ./...` 19 包全 ok / 0 fail;`go vet ./...` **全净**(无任何告警);`go build ./...` + 二进制绿;前端 `tsc -b && vite build` 绿、`pnpm lint` 0 error。**二进制 smoke**(全新 DB):仅 `OUROPASS_ISSUER`(无 POOL_ID)启动 → 13 个迁移全应用(末 `0013`)、`AttestorConfig`/`IssuerConfig`/`StakeSnapshotCache` 建表、`/healthz`+`/.well-known/ouropass/jwks.json`=200。`make -n dev` 解析通过。
 
 ## 7. Change Requests (append-only)
 - 2026-06-26 初始决策（草案，用户已认可主线）：① subject 不变=钱包 stake credential;② pool 降格为 `AttestorConfig` 的一个 `Kind`(pool_stake),多池=多条,NFT 预留;③ token=`credentials` 自描述数组;④ tier_rules 全局、对**聚合事实**求值(订阅判定+tier);⑤ 薄闸=持任一 attestor(ANY,可配);⑥ 去 `OUROPASS_POOL_ID`,全走后端配置,加部署级 `OUROPASS_ISSUER`(`iss` 来源)。

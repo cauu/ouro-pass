@@ -11,8 +11,8 @@ export OUROPASS_TEST_PG_DSN
 # These FIELD_KEY/SERVER_SALT values are fixed and INSECURE — dev only, so the
 # persistent .dev/ouro.db keeps working across runs. Never use them in production.
 DEV_ADDR         ?= :8080
-DEV_POOL_ID      ?= pool1abc
-DEV_NETWORK      ?=               # wallet network the page expects; blank → issuer default (a testnet) → use a testnet wallet, or set =mainnet
+DEV_ISSUER       ?= http://localhost:8080   # token iss / issuer identity (S0006; OUROPASS_POOL_ID removed — configure pools as attestors in the admin UI)
+DEV_NETWORK      ?= preview       # default network for NEW attestors created via the admin UI
 DEV_FIELD_KEY    ?= 0000000000000000000000000000000000000000000000000000000000000001
 DEV_SERVER_SALT  ?= 00000000000000000000000000000007
 DEV_TELEGRAM_BOT ?= ouro_dev_bot
@@ -71,7 +71,7 @@ dev:
 	@mkdir -p .dev
 	$(GO) build -o .dev/issuer ./cmd/issuer
 	@OUROPASS_ADDR=$(DEV_ADDR) \
-	OUROPASS_POOL_ID=$(DEV_POOL_ID) \
+	OUROPASS_ISSUER=$(DEV_ISSUER) \
 	OUROPASS_NETWORK=$(DEV_NETWORK) \
 	OUROPASS_CHAIN_KIND=mock \
 	OUROPASS_FIELD_KEY=$(DEV_FIELD_KEY) \

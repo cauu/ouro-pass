@@ -1,5 +1,13 @@
 # Staking-identity attestation — chain data architecture (S0004)
 
+> **Superseded in part by S0006.** The single-pool model below is now one *kind*
+> of a general **on-chain credential (Attestor)** abstraction — see
+> [`onchain-credentials.md`](onchain-credentials.md). The chain data / three-state
+> derivation here is unchanged; what changed: the issuer evaluates a *set* of
+> attestors (ANY-of gate), the token carries a `credentials[]` array (not flat
+> claims), `tier_rules` are issuer-global over aggregate facts, and
+> `OUROPASS_POOL_ID` is replaced by attestor config + required `OUROPASS_ISSUER`.
+
 This document describes the issuer's data model after the S0004 redesign: the
 issuer is a **staking-identity attestation provider**, not a membership-policy
 engine. It proves *facts* about a credential's relationship to the pool; business

@@ -115,7 +115,10 @@ func TestAdminConfigureChannel(t *testing.T) {
 	}
 
 	// Status endpoint reports telegram configured.
-	resp, _ := client.Get(srv.URL + "/api/admin/channels")
+	resp, err := client.Get(srv.URL + "/api/admin/channels")
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer resp.Body.Close()
 	var body struct {
 		Channels []struct {
