@@ -134,6 +134,7 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 - [x] p6-4 **（验收反馈）** Tiers 前端 UI 不支持新 DSL(原来只是裸 JSON 文本框):重写 `TiersPage` 为**结构化规则构建器**——fact 下拉(从已配置 attestor 自动列 `pool:<id>.*` + 静态 `any_active`/`any_held`/`total_active_stake`)、op 下拉、ALL/ANY 组合、叶条件增删、规则排序(首匹配优先级);嵌套 `not`/嵌套表达式落"JSON 高级模式"(双向切换)。
 - [x] p6-5 **（验收反馈）** value 按 fact 类型渲染:`factType` 映射 → `any_active`/`any_held`=布尔(true/false 下拉)、`*.state`=枚举(active/pending/none 下拉)、`total_active_stake`/`*.active_stake_lovelace`/`*.epochs_active`=数字(numeric 输入);op 按类型收窄(布尔/枚举仅 `== !=`,数字 6 个);切 fact 时自动重置 value 默认值 + 校正非法 op。
 - [x] p6-6 **（验收反馈）** 质押单位用 ADA 不用 lovelace:`factType` 拆出 `ada`(`total_active_stake`/`*.active_stake_lovelace`)vs `number`(`epochs_active`/`count`);UI 输入 ADA(带 "ADA" 后缀),在 load(`lovelaceToAda`)/save(`adaToLovelace`)边界与 DSL 的 lovelace 精确互转(BigInt,支持 6 位小数 + 超 2^53)。
+- [x] p6-7 **（验收反馈）** 配完看不到 tiers 列表:p6-4 重写时删掉了只读汇总,只剩编辑器。加回独立的只读 **"Configured tiers"** 卡片(读服务端已存 `tier_rules`,`describe()` 把 `when` 渲成人类可读条件、质押显示 ADA),放编辑器(改名 "Edit rules")上方。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 Attestor：`pool_stake` evaluator 对多池各自产出 Held/facts;注册表按 kind 实例化。
@@ -193,6 +194,9 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 
 - 2026-06-26 p6-6 完成（质押单位改 ADA）：新增 `adaToLovelace`/`lovelaceToAda`(BigInt,`1 ADA=1_000_000 lovelace`,支持 ≤6 位小数 + 超 2^53 精确)。`factType` 把质押类事实归 `ada`;value 输入框显示 ADA(右侧 "ADA" 后缀、placeholder `ADA, e.g. 100000`),`flatten`(load)对 ada 事实 lovelace→ADA、`toWhen`(save)对 ada 事实 ADA→lovelace;非质押计数(epochs/count)仍纯数字。JSON 高级模式仍展示真实 lovelace(序列化即转好)。**DSL 落库不变**(仍是 lovelace),后端零改动。
 - 2026-06-26 p6-6 | stack: ui | command: `pnpm build && pnpm lint` + `make web` + 换算自测 | result: pass | note: TC-8(UI)。`tsc -b && vite build` 绿(BigInt OK,JS 417KB/gzip 135KB)、`pnpm lint` 0 error;换算自测:`1→1000000`、`1.5→1500000`、`0.123456→123456`、`45000000000 ADA→4.5e16 lovelace`(超 2^53)、`1000000000000 lovelace→1000000 ADA` 全往返一致;UI 重 stage、二进制重 build。
+
+- 2026-06-26 p6-7 完成（加回 tiers 只读列表）：`TiersPage` 顶部加 "Configured tiers" 卡片——读 `pool.data.tier_rules`(服务端已存态),`describe(when)` 递归把 DSL 渲成可读式(`all`→AND、`any`→OR、`not`→NOT(...)、叶→`fact op value`,ada 事实显示 ADA,空→always);表格 `# / Tier(badge) / Condition`。编辑器卡片改名 "Edit rules"。保存后 `invalidate(["pool"])` 刷新该列表。
+- 2026-06-26 p6-7 | stack: ui | command: `pnpm build && pnpm lint` + `make web` | result: pass | note: TC-8(UI)。`tsc -b && vite build` 绿(JS 418KB/gzip 135KB)、`pnpm lint` 0 error;嵌入 bundle 含 `Configured tiers`/`Edit rules`;UI 重 stage、二进制重 build。
 
 ## 7. Change Requests (append-only)
 - 2026-06-26 初始决策（草案，用户已认可主线）：① subject 不变=钱包 stake credential;② pool 降格为 `AttestorConfig` 的一个 `Kind`(pool_stake),多池=多条,NFT 预留;③ token=`credentials` 自描述数组;④ tier_rules 全局、对**聚合事实**求值(订阅判定+tier);⑤ 薄闸=持任一 attestor(ANY,可配);⑥ 去 `OUROPASS_POOL_ID`,全走后端配置,加部署级 `OUROPASS_ISSUER`(`iss` 来源)。

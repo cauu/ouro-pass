@@ -4,10 +4,12 @@ import { getPool, listAttestors, setTierRules } from "@/api/admin";
 import { ApiError } from "@/api/client";
 import { PageHeader, QueryState } from "@/app/page";
 import type { Attestor, TierCondition, TierRule } from "@/lib/types";
+import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Input } from "@/ui/input";
 import { Select } from "@/ui/select";
+import { Table, TBody, TD, TH, THead, TR } from "@/ui/table";
 import { Textarea } from "@/ui/textarea";
 import { useToast } from "@/ui/toast";
 
@@ -53,6 +55,26 @@ function lovelaceToAda(lov: string): string {
   const v = BigInt(s);
   const frac = (v % LOVELACE).toString().padStart(6, "0").replace(/0+$/, "");
   return frac ? `${v / LOVELACE}.${frac}` : (v / LOVELACE).toString();
+}
+
+// describe renders a condition as a human-readable line for the read-only summary
+// (stake shown in ADA). Mirrors the DSL's all/any/not + leaf shapes.
+function describe(when?: TierCondition, top = true): string {
+  if (!when || Object.keys(when).length === 0) return "always";
+  if (when.all) {
+    const s = when.all.map((c) => describe(c, false)).join(" AND ");
+    return top ? s : `(${s})`;
+  }
+  if (when.any) {
+    const s = when.any.map((c) => describe(c, false)).join(" OR ");
+    return top ? s : `(${s})`;
+  }
+  if (when.not) return `NOT (${describe(when.not, false)})`;
+  if (when.fact) {
+    const v = factType(when.fact) === "ada" ? `${lovelaceToAda(when.value ?? "")} ADA` : when.value ?? "";
+    return `${when.fact} ${when.op ?? "=="} ${v}`;
+  }
+  return JSON.stringify(when);
 }
 
 interface Leaf {
@@ -222,10 +244,43 @@ export function TiersPage() {
         description="First-party tier mapping over the aggregate of all configured attestors. Ordered, first match wins; no match → no tier. Used only by the issuer's own channels — external apps read raw token facts."
       />
       <QueryState isLoading={pool.isLoading} error={pool.error}>
+        <Card className="mb-4">
+          <CardHeader>
+            <CardTitle>Configured tiers</CardTitle>
+            <CardDescription>
+              {(pool.data?.tier_rules ?? []).length === 0
+                ? "No tiers configured — tokens carry no tier opinion until you add a rule below."
+                : `${(pool.data?.tier_rules ?? []).length} rule(s), evaluated top-down (first match wins).`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <THead>
+                <TR>
+                  <TH>#</TH>
+                  <TH>Tier</TH>
+                  <TH>Condition</TH>
+                </TR>
+              </THead>
+              <TBody>
+                {(pool.data?.tier_rules ?? []).map((r, i) => (
+                  <TR key={`${r.tier}-${i}`}>
+                    <TD className="text-muted-foreground">{i + 1}</TD>
+                    <TD>
+                      <Badge variant="success">{r.tier}</Badge>
+                    </TD>
+                    <TD className="font-mono text-xs">{describe(r.when)}</TD>
+                  </TR>
+                ))}
+              </TBody>
+            </Table>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
-              <CardTitle>Tier rules</CardTitle>
+              <CardTitle>Edit rules</CardTitle>
               <Button variant="ghost" size="sm" onClick={mode === "builder" ? switchToJson : switchToBuilder}>
                 {mode === "builder" ? "Edit as JSON" : "Back to builder"}
               </Button>
