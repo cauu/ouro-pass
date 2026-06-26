@@ -20,6 +20,7 @@ import (
 	"ouro-pass/server/internal/core/admin"
 	"ouro-pass/server/internal/core/attestor"
 	"ouro-pass/server/internal/core/keys"
+	"ouro-pass/server/internal/core/membership"
 	"ouro-pass/server/internal/core/oauth"
 	"ouro-pass/server/internal/core/walletauth"
 	"ouro-pass/server/internal/httpapi"
@@ -207,8 +208,9 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, chain.Sou
 	}
 
 	// Per-network chain source factory (S0006 D4): each attestor declares its own
-	// network, so build and cache one source per network. The active-membership
-	// cache (S0004 §2.3) is re-introduced, generalized per attestor, in p5-1.
+	// network, so build and cache one source per network. Each is wrapped with the
+	// pool-agnostic active-membership cache (S0006 p5-1): same-epoch `active` lookups
+	// skip the chain; pending/none stay live.
 	srcCache := map[string]chain.Source{}
 	var srcMu sync.Mutex
 	srcFor := func(network string) (chain.Source, error) {
@@ -220,13 +222,14 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, chain.Sou
 		if s, ok := srcCache[network]; ok {
 			return s, nil
 		}
-		s, err := chain.NewSource(chain.Config{
+		raw, err := chain.NewSource(chain.Config{
 			Kind: cfg.ChainKind, KoiosBaseURL: cfg.KoiosBaseURL, APIKey: cfg.ChainAPIKey,
 			NodeSocket: cfg.NodeSocket, CardanoCLI: cfg.CardanoCLI, Network: network,
 		})
 		if err != nil {
 			return nil, err
 		}
+		s := membership.NewCachedSource(raw, st.SnapshotCache(), network, 10*time.Second)
 		srcCache[network] = s
 		return s, nil
 	}

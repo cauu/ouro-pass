@@ -46,10 +46,9 @@ func TestBuildServices_FullVsDegraded(t *testing.T) {
 	if !deps.TrustedProxy || deps.SecureCookies {
 		t.Errorf("edge flags not propagated: TrustedProxy=%v SecureCookies=%v", deps.TrustedProxy, deps.SecureCookies)
 	}
-	// p4-1: per-network raw source (the active-membership cache returns, generalized
-	// per attestor, in p5-1).
-	if src == nil || src.Name() != "mock" {
-		t.Errorf("chain source = %v (want mock)", src)
+	// p5-1: the per-network source is wrapped with the (generalized) active-membership cache.
+	if src == nil || src.Name() != "mock+cache" {
+		t.Errorf("chain source = %v (want mock+cache)", src)
 	}
 
 	// Degraded: no field key → OAuth/Keys nil (routes degrade to 501) but the

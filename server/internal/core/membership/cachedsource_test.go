@@ -24,7 +24,7 @@ func (c *countingSource) Snapshot(ctx context.Context, sch string) (*chain.Snaps
 func (c *countingSource) Epoch(ctx context.Context) (uint64, error) { return c.inner.Epoch(ctx) }
 func (c *countingSource) Name() string                              { return "counting" }
 
-func newCachedTest(t *testing.T, poolID string) (*CachedSource, *countingSource, func(time.Time)) {
+func newCachedTest(t *testing.T) (*CachedSource, *countingSource, func(time.Time)) {
 	t.Helper()
 	ctx := context.Background()
 	st, err := store.Open(ctx, store.SQLite, "file:"+filepath.Join(t.TempDir(), "t.db"))
@@ -36,7 +36,7 @@ func newCachedTest(t *testing.T, poolID string) (*CachedSource, *countingSource,
 	}
 	t.Cleanup(func() { st.Close() })
 	cnt := &countingSource{inner: chain.NewMockSource(0), calls: map[string]int{}}
-	cs := NewCachedSource(cnt, st.SnapshotCache(), poolID, "preview", time.Second)
+	cs := NewCachedSource(cnt, st.SnapshotCache(), "preview", time.Second)
 	clock := time.Date(2023, 2, 2, 0, 0, 0, 0, time.UTC) // preview epoch 100 (genesis + 100d)
 	cur := &clock
 	cs.now = func() time.Time { return *cur }
@@ -46,7 +46,7 @@ func newCachedTest(t *testing.T, poolID string) (*CachedSource, *countingSource,
 
 func TestCachedSource_ActiveHitsAndEpochRollover(t *testing.T) {
 	const us = "pool1us"
-	cs, cnt, setNow := newCachedTest(t, us)
+	cs, cnt, setNow := newCachedTest(t)
 	ctx := context.Background()
 
 	cnt.inner.Put(&chain.Snapshot{
@@ -78,7 +78,7 @@ func TestCachedSource_ActiveHitsAndEpochRollover(t *testing.T) {
 
 func TestCachedSource_PendingNeverCached(t *testing.T) {
 	const us = "pool1us"
-	cs, cnt, _ := newCachedTest(t, us)
+	cs, cnt, _ := newCachedTest(t)
 	ctx := context.Background()
 
 	// Registered + live-delegating to us, no active stake yet → pending.
@@ -95,30 +95,40 @@ func TestCachedSource_PendingNeverCached(t *testing.T) {
 	}
 }
 
-func TestCachedSource_BailDropsCacheRow(t *testing.T) {
-	const us = "pool1us"
-	cs, cnt, _ := newCachedTest(t, us)
+func TestCachedSource_PoolAgnosticUpdateAndBail(t *testing.T) {
+	const us, other = "pool1us", "pool1other"
+	cs, cnt, _ := newCachedTest(t)
 	ctx := context.Background()
 
-	active := &chain.Snapshot{
+	cnt.inner.Put(&chain.Snapshot{
 		StakeCredentialHash: "h3", AccountStatus: "registered",
 		DelegatedPoolID: us, ActiveStakePoolID: us, ActiveStakeLovelace: "9", EpochsDelegated: 1, Source: "mock",
-	}
-	cnt.inner.Put(active)
+	})
 	if s, _ := cs.Snapshot(ctx, "h3"); DeriveState(s, us) != StateActive {
-		t.Fatal("setup: expected active")
+		t.Fatal("setup: expected active in us")
 	}
-	// Bail: now active elsewhere → none. The miss path must delete the stale row.
-	cnt.inner.Put(&chain.Snapshot{StakeCredentialHash: "h3", AccountStatus: "registered", DelegatedPoolID: "pool1other", ActiveStakePoolID: "pool1other", Source: "mock"})
-	// Same epoch: a stale active row would still be hit; deletion prevents that.
-	// Force a re-derive by rolling epoch is unnecessary — the previous call cached,
-	// this call hits the cache (active) UNLESS bail deleted it. So we must first
-	// invalidate the hit: roll epoch so this call goes to origin and bails.
+
+	// Moved to another pool (still active somewhere): the pool-agnostic cache updates
+	// to the new active pool — us derives none, the new pool active. (Detected at the
+	// epoch boundary; active is epoch-stable, so we roll the epoch to re-fetch.)
+	cnt.inner.Put(&chain.Snapshot{StakeCredentialHash: "h3", AccountStatus: "registered", DelegatedPoolID: other, ActiveStakePoolID: other, ActiveStakeLovelace: "9", EpochsDelegated: 1, Source: "mock"})
 	cs.now = func() time.Time { return time.Date(2023, 2, 3, 0, 0, 0, 0, time.UTC) } // epoch 101
-	if s, _ := cs.Snapshot(ctx, "h3"); DeriveState(s, us) != StateNone {
-		t.Fatal("expected none after bail")
+	s, _ := cs.Snapshot(ctx, "h3")
+	if DeriveState(s, us) != StateNone || DeriveState(s, other) != StateActive {
+		t.Fatalf("after move: us=%v other=%v", DeriveState(s, us), DeriveState(s, other))
 	}
-	if _, err := cs.cache.Get(ctx, "h3"); err == nil {
-		t.Fatal("bail must delete the cache row")
+	if row, err := cs.cache.Get(ctx, "h3", "preview"); err != nil || derefStr(row.DelegatedPoolID) != other {
+		t.Fatalf("cache should hold the new active pool: %v %+v", err, row)
+	}
+
+	// Fully bailed (active nowhere — live-delegating but no active stake yet): the row
+	// is deleted so no stale active is ever served.
+	cnt.inner.Put(&chain.Snapshot{StakeCredentialHash: "h3", AccountStatus: "registered", DelegatedPoolID: other, Source: "mock"})
+	cs.now = func() time.Time { return time.Date(2023, 2, 4, 0, 0, 0, 0, time.UTC) } // epoch 102
+	if s, _ := cs.Snapshot(ctx, "h3"); DeriveState(s, other) != StatePending {
+		t.Fatalf("expected pending after losing active stake, got %v", DeriveState(s, other))
+	}
+	if _, err := cs.cache.Get(ctx, "h3", "preview"); err == nil {
+		t.Fatal("active-nowhere must delete the cache row")
 	}
 }

@@ -126,7 +126,7 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 - [x] p2-2 token claims→`credentials` 数组 + `iss` 解耦(部署级 issuer id);e2e;RP 迁移说明。
 - [x] p3-1 tier_rules 泛化语法(over 聚合)+ 订阅/渠道 tier 接入;单测(多池/边界)。
 - [x] p4-1 配置：删 `OUROPASS_POOL_ID` + 加 `OUROPASS_ISSUER`(=iss base URL);`network` 下放 attestor + `chain.Source` 按 network 工厂;冷启动未配置态;迁移既有部署。
-- [ ] p5-1 新鲜度/缓存泛化：`CachedSource` per-attestor 策略;质押路径回归。
+- [x] p5-1 新鲜度/缓存泛化：`CachedSource` per-attestor 策略;质押路径回归。
 - [ ] p6-1 admin API + UI：attestor CRUD + 全局 tier_rules 编辑(扩展 Tiers 页);RBAC + 审计。
 - [ ] p7-1 全量 `go test ./...` + `pnpm build/lint` + 二进制 smoke + 文档(凭证模型/token/tier/迁移)。
 
@@ -164,6 +164,9 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 
 - 2026-06-26 p4-1 完成（去 POOL_ID + ISSUER 必填 + per-network 源工厂 + 冷启动）：① config 删 `OUROPASS_POOL_ID`,`OUROPASS_ISSUER` 改**必填**(无池派生默认,= iss/issuer 身份,base-URL 约定);新增 `cfg.Scope`(= Issuer)= 第一方订阅/渠道/admin 命名空间(替代 pool 作用域)。② main.go 用 `cfg.Scope` 接 telegram/reconciler/admin/Deps;**per-network 源工厂** `srcFor(network)`(mutex 守 map,按 network 建/缓 raw `chain.Source`);默认网络源给 reconciler epoch tick + 委托 roster。③ oauth.Config 删尽 legacy `Chain/PoolID/Network`(分类早已不读)。④ admin `adminDelegators` 改用 `primaryPoolID`(从首个 active `pool_stake` attestor 解析真实 pool_id,而非 scope);adminGetPool/tier 走 IssuerConfig。**决策**(标准指令落盘):订阅作用域 = issuer 派生(单部署单命名空间);委托 roster 的真实 pool 从 attestor 配置解析(多池/多网络选择留 p6-1);**主动缓存(CachedSource)在 p4-1 暂移除、p5-1 按 attestor 泛化重引入**(本 item 用 raw 源,正确性不变)。冷启动:零 attestor → BuildSet 空 → 不持有 → 拒签发;admin(owner-key env)可登录配置,attestorsFor 每调用从 DB 解析即时生效。
 - 2026-06-26 p4-1 | stack: go | command: `go test ./... && go build ./cmd/issuer` + 二进制冷启动 smoke | result: pass | note: TC-6。config_test(ISSUER 必填、缺则 err、Scope=Issuer)、main_test(buildServices 全/降级,源名=`mock`)更新绿;attestor `TestSet_Empty`(零 attestor→Held=false/any_active=false/total=0=冷启动)新增绿;admin 委托测试 seed pool_stake attestor 后绿;全仓 0 失败。**二进制 smoke**:仅 `OUROPASS_ISSUER`(无 POOL_ID)+ mock + 零 attestor 启动 → `issuer listening`、`/healthz`=200、`/.well-known/ouropass/jwks.json`=200。
+
+- 2026-06-26 p5-1 完成（缓存泛化:pool-agnostic + network-scoped）：重引入主动成员缓存(p4-1 暂移除)。`CachedSource` 去 `poolID`,改**pool-agnostic**:缓存判据 `snap.ActiveStakePoolID != ""`(active somewhere=epoch 稳定),`delegated_pool_id` 存**真实** active pool;同 network 所有 pool_stake attestor 共享一份 snapshot,各自 `DeriveState` 求 per-pool 状态。**network-scoped**:`StakeSnapshotCache` 加 `network` 列、复合主键 `(stake_credential_hash, network)`(迁移 `0013` 因缓存可重建,直接 DROP+CREATE);repo Get/Upsert/Delete 按 (sch, network) 定址。main.go `srcFor` 每 network 的 raw 源外包一层 `NewCachedSource`。**决策/已知边界**:已 active 的凭证在两池间迁移时,目的池的 pending 延迟到 epoch 边界才识别(active 本就 epoch 稳定);**onboarding(none→pending)仍即时**(active-nowhere 不缓存/删除),故入场对称性不变。
+- 2026-06-26 p5-1 | stack: go | command: `go test ./... && go build ./cmd/issuer` | result: pass | note: TC-7。`membership` 缓存测试更新:`ActiveHitsAndEpochRollover`(命中不再取源、epoch 翻转重取)、`PendingNeverCached`(active-nowhere 每次现算)、`PoolAgnosticUpdateAndBail`(迁池→缓存更新为新 active pool、us 见 none/other 见 active;active-nowhere→删行)全绿;store 全套(含新复合键迁移)+ main_test(源名=`mock+cache`)绿;全仓 0 失败、二进制 build 绿。
 
 ## 7. Change Requests (append-only)
 - 2026-06-26 初始决策（草案，用户已认可主线）：① subject 不变=钱包 stake credential;② pool 降格为 `AttestorConfig` 的一个 `Kind`(pool_stake),多池=多条,NFT 预留;③ token=`credentials` 自描述数组;④ tier_rules 全局、对**聚合事实**求值(订阅判定+tier);⑤ 薄闸=持任一 attestor(ANY,可配);⑥ 去 `OUROPASS_POOL_ID`,全走后端配置,加部署级 `OUROPASS_ISSUER`(`iss` 来源)。
