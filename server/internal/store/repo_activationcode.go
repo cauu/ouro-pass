@@ -25,8 +25,11 @@ func (r *ActivationCodeRepo) Create(ctx context.Context, a domain.ActivationCode
 }
 
 // Consume atomically marks an activation code consumed for the given channel,
-// enforcing single-use and expiry (used by the Telegram bot, §9.7).
-func (r *ActivationCodeRepo) Consume(ctx context.Context, code, channelType string, now time.Time) (*domain.ActivationCode, error) {
+// enforcing single-use and expiry (used by the Telegram bot, §9.7). S0005 p2-2:
+// when channelID is non-empty the code must target that instance (or be an
+// unbound legacy code); a code bound to a different instance is rejected with
+// ErrPurpose so an instance's bot never redeems another instance's code.
+func (r *ActivationCodeRepo) Consume(ctx context.Context, code, channelType, channelID string, now time.Time) (*domain.ActivationCode, error) {
 	var out *domain.ActivationCode
 	err := r.s.WithTx(ctx, func(tx *sql.Tx) error {
 		var a domain.ActivationCode
@@ -43,6 +46,11 @@ func (r *ActivationCodeRepo) Consume(ctx context.Context, code, channelType stri
 			return err
 		}
 		if a.ChannelType != channelType {
+			return domain.ErrPurpose
+		}
+		// Instance binding: a code bound to one instance is only redeemable by that
+		// instance's bot. Unbound legacy codes (channel_id == "") stay type-scoped.
+		if channelID != "" && a.ChannelID != "" && a.ChannelID != channelID {
 			return domain.ErrPurpose
 		}
 		if consumed.Valid && consumed.String != "" {

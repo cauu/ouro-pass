@@ -104,7 +104,7 @@ func (p *Processor) activate(ctx context.Context, up Update, code string) string
 	if code == "" {
 		return "Please provide an activation code: /start <code>"
 	}
-	rec, err := p.activation.Consume(ctx, crypto.HashToken(code), "telegram", p.now())
+	rec, err := p.activation.Consume(ctx, crypto.HashToken(code), "telegram", p.channelID, p.now())
 	if err != nil {
 		switch {
 		case errors.Is(err, domain.ErrConsumed):

@@ -272,14 +272,14 @@ func TestAuthCodeAndActivation_ConsumeOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Wrong channel → ErrPurpose.
-	if _, err := st.ActivationCodes().Consume(ctx, "act1", "discord", now); err != domain.ErrPurpose {
+	if _, err := st.ActivationCodes().Consume(ctx, "act1", "discord", "", now); err != domain.ErrPurpose {
 		t.Fatalf("wrong channel: %v", err)
 	}
-	got, err := st.ActivationCodes().Consume(ctx, "act1", "telegram", now)
+	got, err := st.ActivationCodes().Consume(ctx, "act1", "telegram", "", now)
 	if err != nil || got.Status != domain.ActivationConsumed {
 		t.Fatalf("consume activation: %v %+v", err, got)
 	}
-	if _, err := st.ActivationCodes().Consume(ctx, "act1", "telegram", now); err != domain.ErrConsumed {
+	if _, err := st.ActivationCodes().Consume(ctx, "act1", "telegram", "", now); err != domain.ErrConsumed {
 		t.Fatalf("activation replay: %v", err)
 	}
 }

@@ -12,18 +12,37 @@ import (
 var ErrNotConfigured = errors.New("telegram: bot token not configured")
 
 // tgConfig is the stored ChannelConfig blob for Telegram: the bot token is kept
-// encrypted at rest (field cipher), never in plaintext.
+// encrypted at rest (field cipher), never in plaintext. The bot username is not
+// secret (it is public on Telegram) and is stored in the clear so deep links can
+// be built to the right instance (S0005 p2-2).
 type tgConfig struct {
 	BotTokenEnc string `json:"bot_token_enc"`
+	BotUsername string `json:"bot_username,omitempty"`
 }
 
 // EncodeToken encrypts a plaintext bot token into the stored config blob.
 func EncodeToken(cipher *crypto.FieldCipher, plain string) (json.RawMessage, error) {
+	return EncodeConfig(cipher, plain, "")
+}
+
+// EncodeConfig encrypts the bot token and stores the public bot username (used
+// for per-instance activation deep links) in one config blob.
+func EncodeConfig(cipher *crypto.FieldCipher, plain, username string) (json.RawMessage, error) {
 	enc, err := cipher.Encrypt([]byte(plain))
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(tgConfig{BotTokenEnc: hex.EncodeToString(enc)})
+	return json.Marshal(tgConfig{BotTokenEnc: hex.EncodeToString(enc), BotUsername: username})
+}
+
+// DecodeUsername returns the public bot username from a stored config blob (no
+// decryption needed). Returns "" when absent or unparseable.
+func DecodeUsername(config []byte) string {
+	var c tgConfig
+	if json.Unmarshal(config, &c) != nil {
+		return ""
+	}
+	return c.BotUsername
 }
 
 // DecodeToken decrypts the bot token from a stored config blob. Returns "" (no
