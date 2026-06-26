@@ -120,7 +120,7 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 - server/internal/core/membership/（DeriveState/TierFor/CachedSource）、core/oauth/（attest/Membership/claims）、utils/jose/（AccessClaims）、utils/chain/、config/、store/repo_poolconfig.go
 
 ## 3. Execution Plan
-- [ ] p1-1 Attestor 接口 + 注册表 + `pool_stake` evaluator（包 S0004 membership/facts），多池;纯函数/单测。
+- [x] p1-1 Attestor 接口 + 注册表 + `pool_stake` evaluator（包 S0004 membership/facts），多池;纯函数/单测。
 - [ ] p1-2 `AttestorConfig` 模型 + 迁移：现池→`pool_stake` attestor;`tier_rules`→全局 issuer 配置;repo CRUD;单测。
 - [ ] p2-1 多 attestor 求值 + 聚合事实 + 薄闸 ANY;替换 oauth/reconciler 里的单 `PoolID` 路径。
 - [ ] p2-2 token claims→`credentials` 数组 + `iss` 解耦(部署级 issuer id);e2e;RP 迁移说明。
@@ -143,8 +143,11 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 
 ## 5. Execution Log (append-only)
 - 2026-06-26 S0006 草案创建（draft）：承接 S0004→把"单池质押证明"泛化为"链上身份凭证(Attestor)"抽象;多池本期实现,NFT 留接口;tier_rules 全局 over 聚合;去 `OUROPASS_POOL_ID` 全走后端配置;`iss`/token 形状随之变更。尚未执行。
+- 2026-06-26 S0006 激活（draft→active），Previous-Spec S0004。
+- 2026-06-26 p1-1 完成：新包 `server/internal/core/attestor`——`Attestor` 接口(`Kind/ID/Attest`)+ `Attestation{Kind,ID,Held,Claim,Facts}` + `Registry`(Kind→Builder,`DefaultRegistry` 仅注册 `pool_stake`,NFT 不注册=故意 C5)+ `PoolStakeAttestor`(包 `membership.DeriveState`,产出 token claim `{kind,pool,network,state,active_stake_lovelace,epochs_active,member_since}` + 命名聚合事实 `pool:<id>.<name>`)+ `SourceFor` 按 network 取源的接口缝(D4,真实工厂留 p4-1)。`Held = state != none`(active/pending 都算持有)。member_since 逻辑从 oauth 迁来、改为 per-pool。
 
 ## 6. Validation Evidence (append-only)
+- 2026-06-26 p1-1 | stack: go | command: `go build ./... && go test ./internal/core/attestor/ && go vet ./internal/core/attestor/` | result: pass | note: TC-1。`TestPoolStake_MultiPool`(两 pool_stake attestor over 同 subjects,各自独立 active/pending/none + Held)、`TestPoolStake_ClaimAndFacts`(claim 携带 active_stake/epochs/member_since;命名事实 `pool:<id>.*`)、`TestRegistry`(default 注册 pool_stake;NFT 未注册报错;缺 pool_id 报错)全绿;全仓 build 绿、vet 净。
 
 ## 7. Change Requests (append-only)
 - 2026-06-26 初始决策（草案，用户已认可主线）：① subject 不变=钱包 stake credential;② pool 降格为 `AttestorConfig` 的一个 `Kind`(pool_stake),多池=多条,NFT 预留;③ token=`credentials` 自描述数组;④ tier_rules 全局、对**聚合事实**求值(订阅判定+tier);⑤ 薄闸=持任一 attestor(ANY,可配);⑥ 去 `OUROPASS_POOL_ID`,全走后端配置,加部署级 `OUROPASS_ISSUER`(`iss` 来源)。
