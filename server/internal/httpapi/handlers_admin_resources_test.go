@@ -145,13 +145,13 @@ func TestAdminTierRules(t *testing.T) {
 		t.Fatalf("default tier_rules = %s, want []", tr)
 	}
 
-	// Invalid (bad min_state) → 400.
-	if c := postCode(t, client, srv.URL+"/api/admin/pool/tier-rules", `{"tier_rules":[{"tier":"x","min_state":"bogus"}]}`); c != http.StatusBadRequest {
-		t.Fatalf("bad min_state = %d, want 400", c)
+	// Invalid (bad op in the boolean DSL) → 400.
+	if c := postCode(t, client, srv.URL+"/api/admin/pool/tier-rules", `{"tier_rules":[{"tier":"x","when":{"fact":"any_active","op":"~=","value":"true"}}]}`); c != http.StatusBadRequest {
+		t.Fatalf("bad op = %d, want 400", c)
 	}
 
 	// Valid → stored and reflected by GET.
-	rules := `{"tier_rules":[{"tier":"gold","min_state":"active","min_active_stake":"1000000"},{"tier":"basic","min_state":"active"}]}`
+	rules := `{"tier_rules":[{"tier":"gold","when":{"fact":"total_active_stake","op":">=","value":"1000000"}},{"tier":"basic","when":{"fact":"any_active","op":"==","value":"true"}}]}`
 	if c := postCode(t, client, srv.URL+"/api/admin/pool/tier-rules", rules); c != 200 {
 		t.Fatalf("set tier_rules = %d, want 200", c)
 	}

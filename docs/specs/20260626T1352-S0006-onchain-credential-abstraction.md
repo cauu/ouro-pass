@@ -124,7 +124,7 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 - [x] p1-2 `AttestorConfig` 模型 + 迁移：现池→`pool_stake` attestor;`tier_rules`→全局 issuer 配置;repo CRUD;单测。
 - [x] p2-1 多 attestor 求值 + 聚合事实 + 薄闸 ANY;替换 oauth/reconciler 里的单 `PoolID` 路径。
 - [x] p2-2 token claims→`credentials` 数组 + `iss` 解耦(部署级 issuer id);e2e;RP 迁移说明。
-- [ ] p3-1 tier_rules 泛化语法(over 聚合)+ 订阅/渠道 tier 接入;单测(多池/边界)。
+- [x] p3-1 tier_rules 泛化语法(over 聚合)+ 订阅/渠道 tier 接入;单测(多池/边界)。
 - [ ] p4-1 配置：删 `OUROPASS_POOL_ID` + 加 `OUROPASS_ISSUER`(=iss base URL);`network` 下放 attestor + `chain.Source` 按 network 工厂;冷启动未配置态;迁移既有部署。
 - [ ] p5-1 新鲜度/缓存泛化：`CachedSource` per-attestor 策略;质押路径回归。
 - [ ] p6-1 admin API + UI：attestor CRUD + 全局 tier_rules 编辑(扩展 Tiers 页);RBAC + 审计。
@@ -158,6 +158,9 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 - 2026-06-26 p2-2 完成（token = credentials[] + iss 解耦）：`jose.AccessClaims` 删扁平 `MembershipState/ActiveStakeLovelace/EpochsActive/MemberSince`,改 `Credentials []map[string]any` → 发 `credentials` claim(每条自描述 `{kind,pool,network,state,active_stake_lovelace?,epochs_active?,member_since?}`)。仅 **held**(active/pending)凭证进数组(`claimsOf` 过滤;薄闸保证 ≥1)。`token.mint` 改填 `Credentials`;oauth `attestation` 删 `epochsActive/memberSince`(连同 `claimInt/claimTime` 辅助)。`iss` 注释定为部署 issuer 身份(非池派生);**注**:`OUROPASS_ISSUER` 改必填 + base-URL 约定在 p4-1 落（本 item 仅 token 层解耦)。introspect 只读 `tier`,不受影响。
 - 2026-06-26 p2-2 | stack: go | command: `go test ./... && go build ./cmd/issuer` | result: pass | note: TC-4。`jose_test`(签发→JWKS 验签→断言 `credentials[0]` kind/state/active_stake + 扁平 `pool_membership_state` 已消失)、`token_test`(authcode 换 token→`credentials[0]` pool/state/active_stake/member_since + 扁平claim消失)更新后绿;e2e(introspect tier=gold)绿;全仓 0 失败、二进制 build 绿。
 - 2026-06-26 **RP 迁移说明（无兼容包袱,未上线）**：access token 不再带扁平 `pool_membership_state`/`active_stake_lovelace`/`epochs_active`/`member_since`;改为 `credentials` 数组——RP 遍历找 `kind=="pool_stake"` 且关心的 `pool`,读其 `state`/`active_stake_lovelace`/`epochs_active`/`member_since`。`tier`(第一方,可选)与 `iss`/`sub`/`aud`/`exp` 不变。`iss` 现为部署 issuer 身份(p4-1 起 = 公开 base URL,RP 从 `iss` 发现 JWKS)。
+
+- 2026-06-26 p3-1 完成（tier_rules 布尔 DSL over 聚合 + 接入）：新包 `internal/core/tier`——`Rule{Tier,When}` + `Condition{All/Any/Not/Fact,Op,Value}` 递归布尔 DSL;`Eval(rules, facts) string`(有序首匹配,无匹配=""=非订阅者)、`Validate`(每条需 tier、condition 恰一形态、op∈`== != >= > <= <`、op/value 须配 fact)。数值 op 用 big.Int(缺失数值事实=0),`==`/`!=` 字符串等值;空 `when`=catch-all。**接入**:oauth `firstPartyTier(ctx, facts)` 改 `tier.Eval(IssuerConfig.GetTierRules, res.Facts)`——删 `attestation.activeStake`/`primaryHeld`/`claimStr`(不再需代表值);telegram/订阅 tier 经 `Attest` 自动走新 DSL。admin `/pool/tier-rules` 切到 `IssuerConfig` + `tier.Validate`(读写均 issuer-global,脱离 PoolConfig)。删旧 `membership/tier.go`(`TierFor`/`ValidateTierRules`/`TierRule`,已无引用)。
+- 2026-06-26 p3-1 | stack: go | command: `go test ./... && go vet ./internal/core/tier/ ./internal/core/oauth/ && go build ./cmd/issuer` | result: pass | note: TC-5。`tier`:`TestEval_ThresholdsFirstMatch`(gold/silver/basic 阈值 + 边界 + 非 active=无 tier + 空事实)、`TestEval_BooleanCombinators`(all/any/not 嵌套,OR 两分支 vip,not 落 member)、`TestValidate`(缺 tier/坏 op/op 无 fact/双形态/非数组 全拒)。oauth/e2e/httpapi tier seed 改新 DSL 后绿;admin tier-rules 端点测试改布尔 DSL(坏 op→400、gold/basic 持久化)绿;全仓 0 失败、vet 净、二进制 build 绿。
 
 ## 7. Change Requests (append-only)
 - 2026-06-26 初始决策（草案，用户已认可主线）：① subject 不变=钱包 stake credential;② pool 降格为 `AttestorConfig` 的一个 `Kind`(pool_stake),多池=多条,NFT 预留;③ token=`credentials` 自描述数组;④ tier_rules 全局、对**聚合事实**求值(订阅判定+tier);⑤ 薄闸=持任一 attestor(ANY,可配);⑥ 去 `OUROPASS_POOL_ID`,全走后端配置,加部署级 `OUROPASS_ISSUER`(`iss` 来源)。

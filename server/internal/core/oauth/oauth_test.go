@@ -88,12 +88,12 @@ func newHarness(t *testing.T) *harness {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// First-party tier mapping (S0006: issuer-global, was PoolConfig.tier_rules):
-	// active≥1M → gold, active≥100k → silver, any active → basic.
+	// First-party tier mapping (S0006: issuer-global boolean DSL over aggregate
+	// facts): active≥1M → gold, active≥100k → silver, any active → basic.
 	if err := st.Issuer().SetTierRules(ctx, json.RawMessage(`[
-			{"tier":"gold","min_state":"active","min_active_stake":"1000000"},
-			{"tier":"silver","min_state":"active","min_active_stake":"100000"},
-			{"tier":"basic","min_state":"active"}
+			{"tier":"gold","when":{"fact":"total_active_stake","op":">=","value":"1000000"}},
+			{"tier":"silver","when":{"fact":"total_active_stake","op":">=","value":"100000"}},
+			{"tier":"basic","when":{"fact":"any_active","op":"==","value":"true"}}
 		]`), time.Now()); err != nil {
 		t.Fatal(err)
 	}

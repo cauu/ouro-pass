@@ -61,7 +61,7 @@ func oauthDeps(t *testing.T) (Deps, *chain.MockSource, ed25519.PrivateKey, strin
 		Status: "active", CreatedAt: time.Now(),
 	})
 	st.Issuer().SetTierRules(ctx,
-		json.RawMessage(`[{"tier":"gold","min_state":"active","min_active_stake":"1000000"}]`), time.Now())
+		json.RawMessage(`[{"tier":"gold","when":{"fact":"total_active_stake","op":">=","value":"1000000"}}]`), time.Now())
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	return Deps{Wallet: wallet, Keys: ks, OAuth: srv}, mock, priv, hex.EncodeToString(pub)
 }

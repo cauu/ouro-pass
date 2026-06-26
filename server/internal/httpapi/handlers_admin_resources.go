@@ -10,7 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"ouro-pass/server/internal/core/admin"
 	"ouro-pass/server/internal/core/keys"
-	"ouro-pass/server/internal/core/membership"
+	"ouro-pass/server/internal/core/tier"
 	"ouro-pass/server/internal/domain"
 	"ouro-pass/server/internal/httpapi/respond"
 	"ouro-pass/server/internal/utils/chain"
@@ -95,23 +95,15 @@ func (h *apiHandlers) adminMembers(w http.ResponseWriter, r *http.Request) {
 // mapping (S0004 §2.6). Defaults to an empty tier_rules array when no PoolConfig
 // row exists yet.
 func (h *apiHandlers) adminGetPool(w http.ResponseWriter, r *http.Request) {
-	pc, err := h.d.Store.PoolConfig().Get(r.Context(), h.d.PoolID)
-	if errors.Is(err, domain.ErrNotFound) {
-		respond.JSON(w, http.StatusOK, map[string]any{
-			"pool_id": h.d.PoolID, "network": h.d.Network, "tier_rules": json.RawMessage("[]"),
-		})
-		return
-	}
+	// S0006: tier_rules are issuer-global (the boolean DSL over aggregate facts),
+	// no longer per-pool. GetTierRules returns "[]" when unset.
+	tr, err := h.d.Store.Issuer().GetTierRules(r.Context())
 	if err != nil {
 		serverError(w, r, err)
 		return
 	}
-	tr := pc.TierRules
-	if len(tr) == 0 {
-		tr = json.RawMessage("[]")
-	}
 	respond.JSON(w, http.StatusOK, map[string]any{
-		"pool_id": pc.PoolID, "network": pc.Network, "ticker": pc.Ticker, "tier_rules": tr,
+		"pool_id": h.d.PoolID, "network": h.d.Network, "tier_rules": tr,
 	})
 }
 
@@ -127,27 +119,17 @@ func (h *apiHandlers) adminSetTierRules(w http.ResponseWriter, r *http.Request) 
 		respond.Error(w, http.StatusBadRequest, "invalid_request", "body must be {\"tier_rules\": [...]}")
 		return
 	}
-	if err := membership.ValidateTierRules(body.TierRules); err != nil {
+	if err := tier.Validate(body.TierRules); err != nil {
 		respond.Error(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
-	now := time.Now()
-	pc, err := h.d.Store.PoolConfig().Get(r.Context(), h.d.PoolID)
-	switch {
-	case errors.Is(err, domain.ErrNotFound):
-		pc = &domain.PoolConfig{PoolID: h.d.PoolID, Network: h.d.Network, CreatedAt: now}
-	case err != nil:
-		serverError(w, r, err)
-		return
-	}
-	pc.TierRules = body.TierRules
-	pc.UpdatedAt = now
-	if err := h.d.Store.PoolConfig().Upsert(r.Context(), *pc); err != nil {
+	// S0006: persist to the issuer-global singleton (was PoolConfig.tier_rules).
+	if err := h.d.Store.Issuer().SetTierRules(r.Context(), body.TierRules, time.Now()); err != nil {
 		serverError(w, r, err)
 		return
 	}
 	h.audit(r, "pool.tier_rules_set", h.d.PoolID)
-	respond.JSON(w, http.StatusOK, map[string]any{"pool_id": h.d.PoolID, "tier_rules": pc.TierRules})
+	respond.JSON(w, http.StatusOK, map[string]any{"pool_id": h.d.PoolID, "tier_rules": body.TierRules})
 }
 
 // adminDelegators enumerates the pool's full on-chain delegator set, one page at

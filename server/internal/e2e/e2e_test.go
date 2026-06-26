@@ -200,7 +200,7 @@ func (e *env) eligible(w wallet) {
 	e.t.Helper()
 	ctx := context.Background()
 	_ = e.st.Issuer().SetTierRules(ctx,
-		json.RawMessage(`[{"tier":"gold","min_state":"active","min_active_stake":"1000000"}]`), time.Now())
+		json.RawMessage(`[{"tier":"gold","when":{"fact":"total_active_stake","op":">=","value":"1000000"}}]`), time.Now())
 	e.chain.Put(&chain.Snapshot{
 		StakeCredentialHash: w.sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakePoolID: testPool,
 		ActiveStakeLovelace: "5000000", EpochsDelegated: 5, AccountStatus: "registered",

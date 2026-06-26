@@ -15,6 +15,7 @@ import (
 	"ouro-pass/server/internal/core/attestor"
 	"ouro-pass/server/internal/core/keys"
 	"ouro-pass/server/internal/core/membership"
+	"ouro-pass/server/internal/core/tier"
 	"ouro-pass/server/internal/core/walletauth"
 	"ouro-pass/server/internal/domain"
 	"ouro-pass/server/internal/store"
@@ -158,17 +159,14 @@ func (s *Server) Authorize(ctx context.Context, req AuthorizeRequest) (code stri
 }
 
 // attestation is the issuance-time view of a credential over the WHOLE attestor
-// set (S0006): the per-attestor claims (→ token credentials[], p2-2) and the
-// aggregate facts (→ tier DSL, p3-1), plus a representative pool-membership state
-// and the optional first-party tier. The representative single-pool fields
-// (activeStake/epochsActive/memberSince) feed the transitional flat token claims;
-// p2-2 replaces them with the credentials[] array.
+// set (S0006): the held credentials' self-describing claims (→ token
+// credentials[]), the aggregate facts (→ tier DSL), a representative
+// pool-membership state (gate + first-party consumers), and the first-party tier.
 type attestation struct {
-	state       membership.State // representative: active if any held-active, else pending if any held, else none
-	activeStake string           // representative active stake, for the transitional tier path (p3-1 uses facts)
-	tier        string
+	state       membership.State  // representative: active if any held-active, else pending if any held, else none
+	tier        string            // first-party opinion (tier DSL over facts)
 	credentials []map[string]any  // held credentials' self-describing claims → token credentials[]
-	facts       map[string]string // aggregate named facts (tier DSL, p3-1)
+	facts       map[string]string // aggregate named facts (tier DSL input)
 }
 
 // evaluate runs the configured attestor set for a subject, with blacklisted
@@ -199,22 +197,6 @@ func representativeState(res *attestor.Result) membership.State {
 	return membership.StateNone
 }
 
-// primaryHeld picks the attestation that best represents membership for the
-// transitional flat token claims (p2-2 replaces these with credentials[]): the
-// active one if present, else the first held.
-func primaryHeld(res *attestor.Result) *attestor.Attestation {
-	var firstHeld *attestor.Attestation
-	for _, a := range res.Attestations {
-		if a.Claim["state"] == string(membership.StateActive) {
-			return a
-		}
-		if a.Held && firstHeld == nil {
-			firstHeld = a
-		}
-	}
-	return firstHeld
-}
-
 // Membership derives a credential's current representative pool-membership state
 // (S0004 §2.2 generalized to ANY-of, S0006): the reconciler's signal. Blacklisted
 // or not-held-by-any credentials are `none`.
@@ -238,11 +220,8 @@ func (s *Server) attest(ctx context.Context, sch string) (*attestation, error) {
 		facts:       res.Facts,
 		credentials: claimsOf(res.Attestations),
 	}
-	if rep := primaryHeld(res); rep != nil {
-		a.activeStake = claimStr(rep.Claim, "active_stake_lovelace")
-	}
 	if a.state != membership.StateNone {
-		a.tier = s.firstPartyTier(ctx, a.state, a.activeStake)
+		a.tier = s.firstPartyTier(ctx, a.facts)
 	}
 	return a, nil
 }
@@ -258,16 +237,15 @@ func (s *Server) Attest(ctx context.Context, sch string) (membership.State, stri
 	return a.state, a.tier, nil
 }
 
-// firstPartyTier maps the representative (state, active stake) to the issuer's
-// thin first-party tier via the issuer-global tier_rules (S0006: moved out of
-// PoolConfig). Errors / no match degrade to no tier. p3-1 replaces this with the
-// boolean DSL evaluated over the full aggregate facts.
-func (s *Server) firstPartyTier(ctx context.Context, state membership.State, activeStake string) string {
+// firstPartyTier maps the aggregate facts to the issuer's thin first-party tier
+// via the issuer-global tier_rules boolean DSL (S0006 §2.4). Errors / no match
+// degrade to no tier (the optional opinion is simply absent).
+func (s *Server) firstPartyTier(ctx context.Context, facts map[string]string) string {
 	rules, err := s.cfg.Store.Issuer().GetTierRules(ctx)
 	if err != nil {
 		return ""
 	}
-	return membership.TierFor(state, activeStake, rules)
+	return tier.Eval(rules, facts)
 }
 
 func contains(xs []string, v string) bool { return slices.Contains(xs, v) }
@@ -283,11 +261,4 @@ func claimsOf(atts []*attestor.Attestation) []map[string]any {
 		}
 	}
 	return out
-}
-
-func claimStr(m map[string]any, k string) string {
-	if v, ok := m[k].(string); ok {
-		return v
-	}
-	return ""
 }
