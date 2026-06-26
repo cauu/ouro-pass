@@ -103,6 +103,7 @@ supervisor.Run(ctx):
 - [x] p5-1 前端：Channels 页管理 N 实例（列表 + 增/改/删/启停 + configured 状态）；Setup 反映；类型/ api。
 - [x] p6-1 全量 `go test ./...` + `pnpm build/lint` + 二进制 smoke（多实例 worker 起停）+ 文档（渠道实例模型/生命周期）。
 - [x] p7-1 （交付后追加）token 尾号指纹：`GET /channels` 返回 `token_hint`（前4…后4），UI Channels 表展示 Token 列；完整 token 仍永不回传（C2 部分放宽，见 §7）。
+- [x] p7-2 （交付后追加）端到端流程验证工具 `cmd/devflow`：用真实 router + 合成钱包 + mock 链,叙事化跑通 auth(OAuth) 全程 + S0005 订阅全程(激活绑实例→bot /start→订阅→实例 push),供手动验收。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 数据模型：实例可建多份（同 type 不同 name）；迁移把既有单 telegram + 其订阅/激活回填到 `default`，迁移前后订阅可投递。
@@ -123,6 +124,7 @@ supervisor.Run(ctx):
 - 2026-06-26T21:42:00+08:00 p1-2 completed：`ChannelConfigRepo` by-id CRUD（Create/Get/List/ListActive/SetStatus/Delete + `scanChannel`）；`SubscriptionRepo` by-instance（GetByInstanceUser/ListActiveByInstance/CancelByChannelID）；`domain.ErrConflict`；repo 单测。
 - 2026-06-26T21:42:00+08:00 p2-1 completed：`telegram.Supervisor`（Run/desired/reconcile + `Runner`/`Factory` 注入）逐实例对账启停、子 ctx、token 变更指纹重建、env-token 隐式 default fallback；`telegram.NewInstanceProcessor`（channel_id 感知 lookup/写订阅）；main.go 用 supervisor 取代单 worker，新增 `instanceToken`/`telegramReconcileInterval`/`envInstanceID`，push 暂沿用 type 级 token（p3-1 改实例级）。集成测试 `TestSupervisor_*`（-race）。
 - 2026-06-26T21:42:00+08:00 p2-2 completed：激活码带 `channel_id`（`CreateActivation` 增参 + 落库）；`Consume` 增 channelID 实例校验（绑定码仅本实例可兑，遗留无绑定码保持 type 级）；processor.activate 写 `subscription.channel_id`（rec.ChannelID 优先，回退 bot 自身实例）；activation handler 按 `channel_id` 解析实例 `bot_username` 构深链、校验实例存活；telegram config 增明文 `bot_username` + `EncodeConfig`/`DecodeUsername`。测试 `TestActivate_InstanceBinding`/`TestDecodeUsername`。
+- 2026-06-26T21:42:00+08:00 p7-2 completed（交付后追加，用户验收用工具）：`cmd/devflow` —— 自包含端到端叙事驱动,内嵌真实 httpapi.NewRouter + 服务装配(同 main),合成 CIP-30 钱包 + mock 链 + 固定 dev field key;seed attestor/tier_rules/telegram 实例/oauth client,跑通 auth(challenge→authorize→token→introspect→refresh) + S0005 订阅(activation 带 channel_id→实例 Processor /start→订阅→实例 push)。`--db file:.dev/ouro.db` 可把 seed 的实例/订阅留给 make dev 查看。说明:不直连 :8080 是因 Telegram /start 需真 bot、且 sqlite 单写不能与 make dev 共享。
 - 2026-06-26T21:42:00+08:00 p7-1 completed（交付后追加，用户验收前迭代）：`telegram.TokenHint`（前4…后4，≤8 全掩码）；handler `channelTokenHint` 解密算指纹，`channelView` 增 `token_hint`（仅 telegram）；types `ChannelInstance.token_hint`；ChannelsPage 增 Token 列（mono + title 提示）。完整 token 仍不回传。测试：`TestTokenHint` 边界 + `TestAdminChannelCRUD` 断言 hint 存在/形如 9876…、响应不含完整 token。`make web` 重新嵌入 SPA（修复 make dev 仍服务旧 UI / 旧 configure 端点的问题）。
 - 2026-06-26T21:42:00+08:00 p6-1 completed：全量 `go test ./...` + `go vet ./...` + issuer 二进制构建全绿；`pnpm build`/`pnpm lint` 全绿（p5-1 已记）；issuer 二进制 smoke 跑通多实例 worker 生命周期（2 实例起 / disable 停 / SIGINT 干净退出），supervisor 增停机日志（可观测性）；新增 `docs/multi-channel-instances.md`。所有计划项 p1-1..p6-1 均 `[x]`，等待用户验收后关闭。
 - 2026-06-26T21:42:00+08:00 p5-1 completed：前端 ChannelsPage 重写为多实例 CRUD（增表单 + 实例表 + 启停/Re-token/删除，删除提示级联 cancel）；api/admin.ts channels 区改 CRUD（listChannels→ChannelInstance[]、create/update/setChannelEnabled/deleteChannel）；types 增 `ChannelInstance`、PushCreate 增可选 `channel_id`；SetupPage `hasTelegram` 改 `some(telegram && configured)`。`pnpm build` + `pnpm lint` 全绿。
@@ -149,6 +151,7 @@ supervisor.Run(ctx):
 - TC-8 | stack: go | command: go test ./internal/worker/telegram/ -run TestTokenHint -count=1 | result: pass | note: ""→""、正常→1234…cret（仅露首尾4）、短(≤8)→全 • 掩码。
 - TC-8 | stack: go | command: go test ./internal/httpapi/ -run TestAdminChannelCRUD -count=1 | result: pass | note: GET /channels 返回 token_hint=9876…、响应 JSON 不含完整 token、不含中段 "secret"；每个 telegram 实例都有 hint。
 - TC-8 | stack: ui | command: pnpm lint + make web（重建并重新嵌入 SPA） | result: pass | note: 0 errors（2 既有警告）；ChannelsPage 增 Token 列展示 token_hint；嵌入式 dist 已用新构建覆盖（解决 make dev 仍打老 configure 端点）。
+- p7-2 | stack: go | command: go run ./cmd/devflow | result: pass | note: 叙事化端到端跑通——auth：challenge→authorize(302 code)→token(access+refresh)→introspect active=true tier=gold→refresh 轮换；订阅：activation/create(深链 t.me/DevFlowBot?start=…)→bot /start→subscription(channel_id=ch-devflow-members, tier=gold, active)→push 投到 tg-1001。go vet/build 全绿。
 
 ## 7. Change Requests (append-only)
 - 2026-06-26 p7-1（用户验收前迭代）：放宽 C2 的"永不回传"边界——`GET /channels` 增 `token_hint`（bot token 的前4…后4），用于运维核对"是哪把钥匙 / 是否换过"。仅暴露首尾各 4 字符，完整 token 与中段 secret 仍永不回传、永不明文落库；非 telegram / 无 cipher / 无 token 时为空。范围限于读取展示，不改 token 写入路径。
