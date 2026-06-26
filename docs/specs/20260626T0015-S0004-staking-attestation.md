@@ -152,6 +152,7 @@ e = currentEpoch(now()); row = cache.Get(sch)
 - [x] p4-1 rules 删除:删 `MembershipRule`/Rules 端点/引擎 tier 判定;`PoolConfig.tier_rules` + 第一方 tier 映射(渠道/push);迁移既有测试;(S0002 删 Rules 页另计)。
 - [x] p5-1 (可选/可延后) delegator 枚举:`chain.Delegators(poolID,page)` + `GET /api/admin/delegators`(**透传 Koios 分页、不缓存**)+ 测试。
 - [x] p6-1 全量 `go test ./...` + 二进制 smoke + 文档(链数据架构/口径/claims/tier)。
+- [x] p7-1 **（tier_rules 配置入口，验收发现）** p4-1/p4-2 后 `tier_rules` 无配置入口（`PoolConfig` 生产零写、不 seed → tier 永远空，只能直接写库）。补：后端 `membership.ValidateTierRules`（形状/state/整数阈值校验）+ `GET /api/admin/pool`（viewer，无行时返回默认 `[]`）+ `POST /api/admin/pool/tier-rules`（operator，校验后 Get-or-create upsert PoolConfig，审计 `pool.tier_rules_set`）；前端 `getPool`/`setTierRules` + `TierRule`/`PoolInfo` 类型 + 新 **Tiers 页**（当前规则表 + JSON 编辑器 + 校验保存 + 示例）+ 路由/导航（operator，复用 SlidersHorizontal）。tier 仍仅自家渠道用；对外 RP 读 raw claims。
 - [x] p4-2 **（前端删 Rules 页，验收发现）** p4-1 删了后端 rules 端点但 Rules 前端页留着（"另计"），导致它调已删的 `/api/admin/rules`→404。端到端删除：`RulesPage.tsx`、`App.tsx` 路由、`Layout.tsx` 导航(+未用 `SlidersHorizontal` icon)、`admin.ts` `listRules`/`upsertRule`、`types.ts` `Rule`/`RuleUpsert`、`SetupPage` 的 rules 查询 + "Membership rules" 步。无替代 UI——tier 经 `PoolConfig.tier_rules` 配置，本期无专用编辑页（与 p4-1 决策一致；future spec 可加 tier_rules 编辑器）。
 
 ## 4. Test and Acceptance Criteria
@@ -195,6 +196,9 @@ e = currentEpoch(now()); row = cache.Get(sch)
 
 - 2026-06-26 p4-2 完成（前端删 Rules 页，用户验收发现"Rules 页没变化"）：根因——p4-1 删后端 rules 端点但前端 Rules 页未动（spec 标"另计"），页调 `/api/admin/rules` 已 404。端到端删 `RulesPage.tsx` + 路由/导航/icon/api/types/Setup 步。无替代:tier 经 PoolConfig.tier_rules，本期无编辑页。`pnpm build` 绿（bundle 463KB→403KB/gzip 131KB，-60KB）、lint 0 error；全仓 web 0 残留 rules 引用。
 - 2026-06-26 p4-2 | stack: ui | command: `pnpm build`(tsc -b && vite build) + `pnpm lint` + `grep` 扫残留 | result: pass | note: 打包绿、lint 0 error、web 内 0 处 `RulesPage`/`listRules`/`/api/admin/rules` 残留。
+
+- 2026-06-26 p7-1 完成（tier_rules 配置入口，用户验收问"新规则在哪配"暴露缺口）：核对——`PoolConfig.Upsert` 生产零调用、不 seed，`firstPartyTier.Get` 永远 NotFound→tier 恒空。补端点 + Tiers 页（用户选 A）。后端 `ValidateTierRules` + `GET /pool` + `POST /pool/tier-rules`（operator，create-on-first-set，审计）。前端 Tiers 页（表 + JSON 编辑器 + 校验）+ 路由/导航。**决策**：① 不复活旧 CRUD 规则引擎——新模型一池一份有序 tier_rules，单页编辑即可；② 权限 operator（对齐旧 Rules 页），无 step-up（非签发凭证类敏感操作）；③ POST 而非 PUT（复用现有 api client，无需加 put）。
+- 2026-06-26 p7-1 | stack: go+ui | command: `go test ./internal/httpapi/`(TestAdminTierRules) + `go test ./...` + `pnpm build`+`pnpm lint` | result: pass | note: `TestAdminTierRules`（默认[]、坏 min_state→400、设置后 GET 反映）绿；全仓 backend 绿；web 打包绿 lint 0 error。
 
 ## 7. Change Requests (append-only)
 - 2026-06-25 核心决策(累积,用户拍板):① issuer = 质押身份证明提供方,业务策略下沉 RP;② token 带精确事实(state/active_stake/epochs/since),**不分桶**;③ **删除 rules 子系统**,薄第一方 tier 映射进 `PoolConfig.tier_rules`(仅自家渠道用);④ 有效质押 = epoch active_stake 口径,pending 仅入场过渡,leaving 由 epoch 自然收敛、grace 下沉 RP;⑤ 缓存**只缓 `active`**(epoch 稳定;命中 iff snapshot_epoch==当前、本地算 epoch),pending/none 现算不缓(onboarding/bail 即时对称);⑥ Koios 失败 D8 分场景(登录 fail-closed / reconciler 软 fail-open);⑦ epoch 常量内置 per-network;⑧ **砍掉 owner 链上校验 / operator-viewer 管理(原 B)**——owner 沿用 env 配置信任;⑨ delegator 枚举(C)解耦、可延后/单独排期。

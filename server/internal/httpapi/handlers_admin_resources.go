@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"ouro-pass/server/internal/core/admin"
 	"ouro-pass/server/internal/core/keys"
+	"ouro-pass/server/internal/core/membership"
 	"ouro-pass/server/internal/domain"
 	"ouro-pass/server/internal/httpapi/respond"
 	"ouro-pass/server/internal/utils/chain"
@@ -25,6 +26,8 @@ func (h *apiHandlers) mountAdminResources(r chi.Router) {
 
 	r.Method(http.MethodGet, "/members", viewer(h.adminMembers))
 	r.Method(http.MethodGet, "/delegators", viewer(h.adminDelegators))
+	r.Method(http.MethodGet, "/pool", viewer(h.adminGetPool))
+	r.Method(http.MethodPost, "/pool/tier-rules", operator(h.adminSetTierRules))
 	r.Method(http.MethodPost, "/members/{sch}/revoke", operator(h.adminRevokeMember))
 	r.Method(http.MethodGet, "/subscriptions", viewer(h.adminSubscriptions))
 	r.Method(http.MethodPost, "/subscriptions/{id}/cancel", operator(h.adminCancelSub))
@@ -84,6 +87,65 @@ func (h *apiHandlers) adminMembers(w http.ResponseWriter, r *http.Request) {
 		out = append(out, member{StakeCredentialHash: s.StakeCredentialHash, Tier: s.Tier, Channel: s.ChannelType})
 	}
 	respond.JSON(w, http.StatusOK, map[string]any{"members": out})
+}
+
+// adminGetPool returns the served pool's config, including the first-party tier
+// mapping (S0004 §2.6). Defaults to an empty tier_rules array when no PoolConfig
+// row exists yet.
+func (h *apiHandlers) adminGetPool(w http.ResponseWriter, r *http.Request) {
+	pc, err := h.d.Store.PoolConfig().Get(r.Context(), h.d.PoolID)
+	if errors.Is(err, domain.ErrNotFound) {
+		respond.JSON(w, http.StatusOK, map[string]any{
+			"pool_id": h.d.PoolID, "network": h.d.Network, "tier_rules": json.RawMessage("[]"),
+		})
+		return
+	}
+	if err != nil {
+		serverError(w, r, err)
+		return
+	}
+	tr := pc.TierRules
+	if len(tr) == 0 {
+		tr = json.RawMessage("[]")
+	}
+	respond.JSON(w, http.StatusOK, map[string]any{
+		"pool_id": pc.PoolID, "network": pc.Network, "ticker": pc.Ticker, "tier_rules": tr,
+	})
+}
+
+// adminSetTierRules replaces the pool's first-party tier mapping (operator). The
+// rules are validated (shape, states, integer thresholds) before persisting; the
+// PoolConfig row is created on first set. Editing tier_rules is the only way to
+// configure first-party tiers — external RPs use the raw token facts (S0004 §2.6).
+func (h *apiHandlers) adminSetTierRules(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		TierRules json.RawMessage `json:"tier_rules"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.TierRules) == 0 {
+		respond.Error(w, http.StatusBadRequest, "invalid_request", "body must be {\"tier_rules\": [...]}")
+		return
+	}
+	if err := membership.ValidateTierRules(body.TierRules); err != nil {
+		respond.Error(w, http.StatusBadRequest, "invalid_request", err.Error())
+		return
+	}
+	now := time.Now()
+	pc, err := h.d.Store.PoolConfig().Get(r.Context(), h.d.PoolID)
+	switch {
+	case errors.Is(err, domain.ErrNotFound):
+		pc = &domain.PoolConfig{PoolID: h.d.PoolID, Network: h.d.Network, CreatedAt: now}
+	case err != nil:
+		serverError(w, r, err)
+		return
+	}
+	pc.TierRules = body.TierRules
+	pc.UpdatedAt = now
+	if err := h.d.Store.PoolConfig().Upsert(r.Context(), *pc); err != nil {
+		serverError(w, r, err)
+		return
+	}
+	h.audit(r, "pool.tier_rules_set", h.d.PoolID)
+	respond.JSON(w, http.StatusOK, map[string]any{"pool_id": h.d.PoolID, "tier_rules": pc.TierRules})
 }
 
 // adminDelegators enumerates the pool's full on-chain delegator set, one page at

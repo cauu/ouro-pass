@@ -6,9 +6,11 @@ import type {
   Member,
   OAuthClient,
   PushCreate,
+  PoolInfo,
   PushJob,
   Role,
   StepUpBody,
+  TierRule,
   Subscription,
 } from "@/lib/types";
 
@@ -58,6 +60,11 @@ export const createPushJob = (body: PushCreate) =>
   api.post<{ job_id: string; status: string }>("/api/admin/push/jobs", body);
 
 // ---- oauth clients ----
+// ---- pool / first-party tiers ----
+export const getPool = () => api.get<PoolInfo>("/api/admin/pool");
+export const setTierRules = (tierRules: TierRule[]) =>
+  api.post<{ pool_id: string }>("/api/admin/pool/tier-rules", { tier_rules: tierRules });
+
 export const listClients = () => api.get<{ clients: OAuthClient[] }>("/api/admin/oauth-clients");
 export const registerClient = (body: ClientRegister & StepUpBody) =>
   api.post<{ client_id: string; client_secret?: string }>("/api/admin/oauth-clients", body);

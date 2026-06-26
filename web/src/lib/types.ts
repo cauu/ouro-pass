@@ -78,6 +78,21 @@ export interface StepUpBody {
   step_up_signature: string;
 }
 
+// First-party tier mapping (S0004 §2.6): ordered, first match wins. Consumed only
+// by the issuer's own channels; external RPs read raw token facts.
+export interface TierRule {
+  tier: string;
+  min_state?: string; // "active" | "pending" (default active)
+  min_active_stake?: string; // decimal lovelace; "" = no minimum
+}
+
+export interface PoolInfo {
+  pool_id: string;
+  network?: string;
+  ticker?: string;
+  tier_rules: TierRule[];
+}
+
 export interface ClientRegister {
   // client_id is system-generated server-side; not part of the request.
   name: string;

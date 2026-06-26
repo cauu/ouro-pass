@@ -11,6 +11,7 @@ import { MembersPage } from "./features/members/MembersPage";
 import { PushPage } from "./features/push/PushPage";
 import { SetupPage } from "./features/setup/SetupPage";
 import { SubscriptionsPage } from "./features/subscriptions/SubscriptionsPage";
+import { TiersPage } from "./features/tiers/TiersPage";
 
 const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -26,6 +27,14 @@ const router = createBrowserRouter([
       { path: "dashboard", element: <DashboardPage /> },
       { path: "members", element: <MembersPage /> },
       { path: "subscriptions", element: <SubscriptionsPage /> },
+      {
+        path: "tiers",
+        element: (
+          <RequireRole min="operator">
+            <TiersPage />
+          </RequireRole>
+        ),
+      },
       {
         path: "channels",
         element: (

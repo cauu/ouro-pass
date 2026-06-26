@@ -86,6 +86,41 @@ func TestAdminRBAC_Matrix(t *testing.T) {
 	}
 }
 
+// TestAdminTierRules: operator sets the first-party tier mapping; GET reflects it;
+// invalid rules are rejected (S0004 p7-1).
+func TestAdminTierRules(t *testing.T) {
+	srv, client, _, _, _ := adminResourceEnv(t, domain.RoleOperator)
+
+	getPool := func() map[string]any {
+		resp, err := client.Get(srv.URL + "/api/admin/pool")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var m map[string]any
+		json.NewDecoder(resp.Body).Decode(&m)
+		return m
+	}
+	if tr, _ := json.Marshal(getPool()["tier_rules"]); string(tr) != "[]" {
+		t.Fatalf("default tier_rules = %s, want []", tr)
+	}
+
+	// Invalid (bad min_state) → 400.
+	if c := postCode(t, client, srv.URL+"/api/admin/pool/tier-rules", `{"tier_rules":[{"tier":"x","min_state":"bogus"}]}`); c != http.StatusBadRequest {
+		t.Fatalf("bad min_state = %d, want 400", c)
+	}
+
+	// Valid → stored and reflected by GET.
+	rules := `{"tier_rules":[{"tier":"gold","min_state":"active","min_active_stake":"1000000"},{"tier":"basic","min_state":"active"}]}`
+	if c := postCode(t, client, srv.URL+"/api/admin/pool/tier-rules", rules); c != 200 {
+		t.Fatalf("set tier_rules = %d, want 200", c)
+	}
+	tr, _ := json.Marshal(getPool()["tier_rules"])
+	if !strings.Contains(string(tr), `"gold"`) || !strings.Contains(string(tr), `"1000000"`) {
+		t.Fatalf("tier_rules not persisted: %s", tr)
+	}
+}
+
 // TestAdminDelegators lists the pool's full on-chain delegator set (S0004 §2.7):
 // a viewer-readable roster served from the chain source (mocked here).
 func TestAdminDelegators(t *testing.T) {

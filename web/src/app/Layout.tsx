@@ -8,6 +8,7 @@ import {
   ScrollText,
   Send,
   Settings,
+  SlidersHorizontal,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -30,6 +31,7 @@ const NAV: NavItem[] = [
   { to: "/dashboard", label: "Dashboard", min: "viewer", icon: LayoutDashboard },
   { to: "/members", label: "Members", min: "viewer", icon: Users },
   { to: "/subscriptions", label: "Subscriptions", min: "viewer", icon: BellRing },
+  { to: "/tiers", label: "Tiers", min: "operator", icon: SlidersHorizontal },
   { to: "/channels", label: "Channels", min: "operator", icon: Send },
   { to: "/push", label: "Push", min: "operator", icon: Megaphone },
   { to: "/clients", label: "OAuth Clients", min: "owner", icon: AppWindow },
