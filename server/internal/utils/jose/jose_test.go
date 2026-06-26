@@ -16,18 +16,18 @@ func TestSignAccessToken_VerifiableViaJWKS(t *testing.T) {
 	now := time.Now()
 
 	tokenStr, err := SignAccessToken(kid, priv, AccessClaims{
-		Issuer:       "ouropass:pool1abc",
-		Subject:      "sub-xyz",
-		Audience:     "app:ouro-ops",
-		IssuedAt:     now,
-		NotBefore:    now,
-		Expiry:       now.Add(24 * time.Hour),
-		JTI:                 "jti-1",
-		MembershipState:     "active",
-		ActiveStakeLovelace: "5000000",
-		EpochsActive:        17,
-		Tier:                "gold",
-		Cnf:                 map[string]string{"jkt": "thumb"},
+		Issuer:    "ouropass:pool1abc",
+		Subject:   "sub-xyz",
+		Audience:  "app:ouro-ops",
+		IssuedAt:  now,
+		NotBefore: now,
+		Expiry:    now.Add(24 * time.Hour),
+		JTI:       "jti-1",
+		Credentials: []map[string]any{
+			{"kind": "pool_stake", "pool": "pool1abc", "network": "mainnet", "state": "active", "active_stake_lovelace": "5000000", "epochs_active": 17},
+		},
+		Tier: "gold",
+		Cnf:  map[string]string{"jkt": "thumb"},
 	})
 	if err != nil {
 		t.Fatalf("sign: %v", err)
@@ -66,11 +66,21 @@ func TestSignAccessToken_VerifiableViaJWKS(t *testing.T) {
 	if tier != "gold" {
 		t.Errorf("tier = %v", tier)
 	}
-	if st, _ := tok.Get("pool_membership_state"); st != "active" {
-		t.Errorf("pool_membership_state = %v, want active", st)
+	creds, ok := tok.Get("credentials")
+	if !ok {
+		t.Fatal("missing credentials claim")
 	}
-	if as, _ := tok.Get("active_stake_lovelace"); as != "5000000" {
-		t.Errorf("active_stake_lovelace = %v, want 5000000", as)
+	arr, _ := creds.([]any)
+	if len(arr) != 1 {
+		t.Fatalf("credentials len = %d, want 1", len(arr))
+	}
+	c0, _ := arr[0].(map[string]any)
+	if c0["kind"] != "pool_stake" || c0["state"] != "active" || c0["active_stake_lovelace"] != "5000000" {
+		t.Fatalf("credentials[0] = %v", c0)
+	}
+	// Flat single-pool claims must be gone (S0006: replaced by credentials[]).
+	if _, ok := tok.Get("pool_membership_state"); ok {
+		t.Error("pool_membership_state must no longer be present")
 	}
 
 	// Wrong key → verification fails.

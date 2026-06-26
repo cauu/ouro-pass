@@ -164,13 +164,11 @@ func (s *Server) Authorize(ctx context.Context, req AuthorizeRequest) (code stri
 // (activeStake/epochsActive/memberSince) feed the transitional flat token claims;
 // p2-2 replaces them with the credentials[] array.
 type attestation struct {
-	state        membership.State // representative: active if any held-active, else pending if any held, else none
-	activeStake  string
-	epochsActive int
-	memberSince  time.Time
-	tier         string
-	credentials  []map[string]any  // per-attestor self-describing claims (token credentials[], p2-2)
-	facts        map[string]string // aggregate named facts (tier DSL, p3-1)
+	state       membership.State // representative: active if any held-active, else pending if any held, else none
+	activeStake string           // representative active stake, for the transitional tier path (p3-1 uses facts)
+	tier        string
+	credentials []map[string]any  // held credentials' self-describing claims → token credentials[]
+	facts       map[string]string // aggregate named facts (tier DSL, p3-1)
 }
 
 // evaluate runs the configured attestor set for a subject, with blacklisted
@@ -242,8 +240,6 @@ func (s *Server) attest(ctx context.Context, sch string) (*attestation, error) {
 	}
 	if rep := primaryHeld(res); rep != nil {
 		a.activeStake = claimStr(rep.Claim, "active_stake_lovelace")
-		a.epochsActive = claimInt(rep.Claim, "epochs_active")
-		a.memberSince = claimTime(rep.Claim, "member_since")
 	}
 	if a.state != membership.StateNone {
 		a.tier = s.firstPartyTier(ctx, a.state, a.activeStake)
@@ -276,12 +272,15 @@ func (s *Server) firstPartyTier(ctx context.Context, state membership.State, act
 
 func contains(xs []string, v string) bool { return slices.Contains(xs, v) }
 
-// claimsOf projects each attestation's self-describing claim into the token
-// credentials[] payload (consumed in p2-2).
+// claimsOf projects the HELD attestations' self-describing claims into the token
+// credentials[] payload (S0006 §2.3) — the token attests what the subject holds,
+// so not-held (none) credentials are omitted.
 func claimsOf(atts []*attestor.Attestation) []map[string]any {
 	out := make([]map[string]any, 0, len(atts))
 	for _, a := range atts {
-		out = append(out, a.Claim)
+		if a.Held {
+			out = append(out, a.Claim)
+		}
 	}
 	return out
 }
@@ -291,20 +290,4 @@ func claimStr(m map[string]any, k string) string {
 		return v
 	}
 	return ""
-}
-
-func claimInt(m map[string]any, k string) int {
-	if v, ok := m[k].(int); ok {
-		return v
-	}
-	return 0
-}
-
-func claimTime(m map[string]any, k string) time.Time {
-	if v, ok := m[k].(string); ok && v != "" {
-		if t, err := time.Parse(time.RFC3339, v); err == nil {
-			return t
-		}
-	}
-	return time.Time{}
 }

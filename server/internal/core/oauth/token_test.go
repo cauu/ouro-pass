@@ -63,16 +63,30 @@ func TestToken_AuthCodeConfidential(t *testing.T) {
 	if tier, _ := tok.Get("tier"); tier != "gold" {
 		t.Errorf("tier claim = %v", tier)
 	}
-	// Staking-attestation claims (S0004 §2.5): state + exact active stake + epochs
-	// + member_since (epoch 480, 5 epochs active → member_since = start of epoch 476).
-	if st, _ := tok.Get("pool_membership_state"); st != "active" {
-		t.Errorf("pool_membership_state = %v, want active", st)
+	// Staking-attestation as a self-describing credentials[] entry (S0006 §2.3):
+	// kind + pool + state + exact active stake + epochs + member_since (epoch 480,
+	// 5 epochs active → member_since = start of epoch 476).
+	creds, ok := tok.Get("credentials")
+	if !ok {
+		t.Fatal("missing credentials claim")
 	}
-	if as, _ := tok.Get("active_stake_lovelace"); as != "5000000" {
-		t.Errorf("active_stake_lovelace = %v, want exact 5000000", as)
+	arr, _ := creds.([]any)
+	if len(arr) != 1 {
+		t.Fatalf("credentials len = %d, want 1", len(arr))
 	}
-	if ms, ok := tok.Get("member_since"); !ok || ms == "" {
-		t.Errorf("member_since missing: %v", ms)
+	c0, _ := arr[0].(map[string]any)
+	if c0["kind"] != "pool_stake" || c0["pool"] != testPool || c0["state"] != "active" {
+		t.Fatalf("credentials[0] = %v", c0)
+	}
+	if c0["active_stake_lovelace"] != "5000000" {
+		t.Errorf("active_stake_lovelace = %v, want 5000000", c0["active_stake_lovelace"])
+	}
+	if ms, _ := c0["member_since"].(string); ms == "" {
+		t.Errorf("member_since missing in credential: %v", c0["member_since"])
+	}
+	// Flat single-pool claims must be gone.
+	if _, ok := tok.Get("pool_membership_state"); ok {
+		t.Error("pool_membership_state must no longer be present")
 	}
 
 	// Ledger row + active refresh grant recorded.

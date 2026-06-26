@@ -255,11 +255,8 @@ func (s *Server) mint(ctx context.Context, q store.Querier, p mintParams) (*Toke
 	claims := jose.AccessClaims{
 		Issuer: s.cfg.Issuer, Subject: sub, Audience: p.aud,
 		IssuedAt: now, NotBefore: now, Expiry: exp, JTI: jti,
-		MembershipState:     string(p.att.state),
-		ActiveStakeLovelace: p.att.activeStake,
-		EpochsActive:        p.att.epochsActive,
-		MemberSince:         p.att.memberSince,
-		Tier:                p.att.tier,
+		Credentials: p.att.credentials,
+		Tier:        p.att.tier,
 	}
 	var boundDevice []byte
 	if p.clientType == domain.ClientPublic && p.devicePubkey != "" {

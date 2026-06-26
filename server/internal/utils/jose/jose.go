@@ -19,12 +19,14 @@ import (
 // TypAccessToken is the JOSE `typ` header for access tokens.
 const TypAccessToken = "at+jwt"
 
-// AccessClaims is the payload of an access token: a staking-identity attestation
-// (S0004 §2.5). It carries the issuer's *interpreted facts* — membership state
-// and the exact active stake — so relying parties apply their own policy; `tier`
-// is an optional first-party opinion RPs may ignore.
+// AccessClaims is the payload of an access token: an on-chain identity attestation
+// (S0006 §2.3). It carries one self-describing entry per credential the subject
+// holds in `credentials` — each with its kind and kind-specific facts (pool_stake:
+// pool/network/state/active_stake_lovelace/epochs_active/member_since) — so relying
+// parties read the entries they care about and apply their own policy; `tier` is an
+// optional first-party opinion RPs may ignore.
 type AccessClaims struct {
-	Issuer    string
+	Issuer    string // token `iss`: the issuer's deployment identity (S0006 D3), not pool-derived
 	Subject   string // pseudonymous sub
 	Audience  string
 	IssuedAt  time.Time
@@ -32,12 +34,10 @@ type AccessClaims struct {
 	Expiry    time.Time
 	JTI       string
 
-	// Staking attestation (S0004 §2.5).
-	MembershipState     string    // "active" | "pending" (none is never issued)
-	ActiveStakeLovelace string    // exact effective active stake (decimal string); "" if none
-	EpochsActive        int       // trailing consecutive active epochs
-	MemberSince         time.Time // start of the current active run; zero → omitted
-	Tier                string    // optional first-party opinion (PoolConfig.tier_rules); "" → omitted
+	// Credentials is the self-describing attestation set (S0006 §2.3): one entry per
+	// held credential. Issued only when non-empty (the thin gate guarantees ≥1).
+	Credentials []map[string]any
+	Tier        string // optional first-party opinion (issuer tier_rules); "" → omitted
 
 	Cnf map[string]string // optional PoP confirmation, e.g. {"jkt": "..."}
 }
@@ -51,14 +51,9 @@ func SignAccessToken(kid string, priv ed25519.PrivateKey, c AccessClaims) (strin
 		IssuedAt(c.IssuedAt).
 		NotBefore(c.NotBefore).
 		Expiration(c.Expiry).
-		JwtID(c.JTI).
-		Claim("pool_membership_state", c.MembershipState).
-		Claim("epochs_active", c.EpochsActive)
-	if c.ActiveStakeLovelace != "" {
-		b = b.Claim("active_stake_lovelace", c.ActiveStakeLovelace)
-	}
-	if !c.MemberSince.IsZero() {
-		b = b.Claim("member_since", c.MemberSince.UTC().Format(time.RFC3339))
+		JwtID(c.JTI)
+	if len(c.Credentials) > 0 {
+		b = b.Claim("credentials", c.Credentials)
 	}
 	if c.Tier != "" {
 		b = b.Claim("tier", c.Tier)
