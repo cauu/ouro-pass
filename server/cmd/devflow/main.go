@@ -55,15 +55,22 @@ import (
 
 const (
 	pool      = "pool1devflowxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-	scope     = "ouropass:devflow"
 	channelID = "ch-devflow-members"
 	clientID  = "spa-devflow"
 )
 
+// scope is the first-party namespace (PoolID) every seeded row is tagged with. It
+// MUST equal the issuer scope of whatever server will read the data back. `make
+// dev` derives scope from DEV_ISSUER, so the default matches it — otherwise the
+// admin pages (which filter by PoolID) would never show the seeded rows.
+var scope = "http://localhost:8080"
+
 func main() {
 	dbFlag := flag.String("db", "", "SQLite DSN (default: an ephemeral temp file)")
 	network := flag.String("network", "preview", "network label for the attestor")
+	scopeFlag := flag.String("scope", scope, "first-party scope/PoolID; must match the reading server's OUROPASS_ISSUER")
 	flag.Parse()
+	scope = *scopeFlag
 
 	if err := run(*dbFlag, *network); err != nil {
 		fmt.Fprintln(os.Stderr, "devflow error:", err)
@@ -77,6 +84,7 @@ func run(dsn, network string) error {
 		dsn = "file:" + filepath.Join(os.TempDir(), fmt.Sprintf("devflow-%d.db", time.Now().UnixNano()))
 	}
 	fmt.Printf("DB: %s\n", dsn)
+	fmt.Printf("scope (PoolID): %s  (must match the reading server's OUROPASS_ISSUER)\n", scope)
 
 	st, err := store.Open(ctx, store.SQLite, dsn)
 	if err != nil {
@@ -175,8 +183,10 @@ func run(dsn, network string) error {
 	}
 
 	section("Done")
-	fmt.Println("Both flows completed. If --db pointed at .dev/ouro.db, start `make dev` and")
-	fmt.Println("open /admin → Channels/Subscriptions to see the seeded instance + subscription.")
+	fmt.Println("Both flows completed.")
+	fmt.Println("To view in `make dev`: re-run with `--db file:.dev/ouro.db` (stop `make dev` first),")
+	fmt.Println("then start `make dev` and open /admin → Channels / Subscriptions / Members.")
+	fmt.Println("The seeded rows use scope =", scope, "— it must equal make dev's OUROPASS_ISSUER.")
 	return nil
 }
 
@@ -360,11 +370,10 @@ func (c *capturing) SendMessage(_ context.Context, chatID, _ string) error {
 }
 
 func codeFrom(loc string) string {
-	i := strings.Index(loc, "code=")
-	if i < 0 {
+	_, rest, ok := strings.Cut(loc, "code=")
+	if !ok {
 		return ""
 	}
-	rest := loc[i+5:]
 	if amp := strings.IndexByte(rest, '&'); amp >= 0 {
 		rest = rest[:amp]
 	}
