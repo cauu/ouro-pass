@@ -8,4 +8,5 @@ var (
 	ErrConsumed = errors.New("already consumed")
 	ErrExpired  = errors.New("expired")
 	ErrPurpose  = errors.New("purpose mismatch")
+	ErrConflict = errors.New("conflict")
 )

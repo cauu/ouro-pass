@@ -36,6 +36,46 @@ func (r *SubscriptionRepo) GetByChannelUser(ctx context.Context, poolID, channel
 		` WHERE pool_id = ? AND channel_type = ? AND channel_user_id = ?`), poolID, channelType, channelUserID))
 }
 
+// GetByInstanceUser loads a session by the S0005 instance-scoped unique key
+// (channel_id, channel_user_id) — what a per-instance bot worker uses so the
+// same user can hold independent subscriptions on different instances.
+func (r *SubscriptionRepo) GetByInstanceUser(ctx context.Context, channelID, channelUserID string) (*domain.SubscriptionSession, error) {
+	return r.scanOne(r.s.DB.QueryRowContext(ctx, r.s.Rebind(subscriptionCols+
+		` WHERE channel_id = ? AND channel_user_id = ?`), channelID, channelUserID))
+}
+
+// ListActiveByInstance returns all active sessions for a single channel instance
+// — the per-instance push candidate set (S0005 p3-1).
+func (r *SubscriptionRepo) ListActiveByInstance(ctx context.Context, channelID string) ([]domain.SubscriptionSession, error) {
+	rows, err := r.s.DB.QueryContext(ctx, r.s.Rebind(subscriptionCols+
+		` WHERE channel_id = ? AND status = ?`), channelID, string(domain.SubActive))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []domain.SubscriptionSession
+	for rows.Next() {
+		x, err := scanSubscription(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, *x)
+	}
+	return out, rows.Err()
+}
+
+// CancelByChannelID cancels every active session bound to an instance — the
+// D7 delete/disable cascade. Returns the number of rows affected.
+func (r *SubscriptionRepo) CancelByChannelID(ctx context.Context, channelID string) (int64, error) {
+	res, err := r.s.DB.ExecContext(ctx, r.s.Rebind(
+		`UPDATE SubscriptionSession SET status = ? WHERE channel_id = ? AND status = ?`),
+		string(domain.SubCancelled), channelID, string(domain.SubActive))
+	if err != nil {
+		return 0, err
+	}
+	return res.RowsAffected()
+}
+
 // ListActiveByChannel returns all active sessions for a pool's channel (the
 // push-scheduler candidate set; tier/topic/entitlement filtering is applied by
 // the scheduler in code over the JSON array columns).

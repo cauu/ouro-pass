@@ -95,7 +95,7 @@ supervisor.Run(ctx):
 
 ## 3. Execution Plan
 - [x] p1-1 数据模型 + 迁移：`ChannelConfig.name` + 稳定 `channel_id` + 唯一约束；`SubscriptionSession.channel_id`（唯一键迁移）；`ActivationCode.channel_id`；既有单 telegram 回填 `default` 实例（D6）。
-- [ ] p1-2 repo：渠道实例 CRUD（List/Get/Create/Update/SetStatus/Delete by id）；订阅/激活 by `channel_id`；单测。
+- [x] p1-2 repo：渠道实例 CRUD（List/Get/Create/Update/SetStatus/Delete by id）；订阅/激活 by `channel_id`；单测。
 - [ ] p2-1 worker supervisor：逐实例 telegram worker + 动态启停 + 子 ctx + 每实例 token/offset；集成测试（增/删/停 → worker 起停）。
 - [ ] p2-2 激活绑实例：`/bind` 深链 + 激活码带 `channel_id`；处理器写 `subscription.channel_id`；e2e。
 - [ ] p3-1 推送绑实例：`PushJob.channel_id` 定向 + 经实例 transport 投递（D5 语义落定）。
@@ -122,6 +122,7 @@ supervisor.Run(ctx):
 ## 6. Validation Evidence (append-only)
 - TC-1 | stack: go | command: go test ./internal/store/ -run TestMigrate -count=1 | result: pass | note: 0014 回填既有 telegram 渠道 name='default' + 订阅/激活 channel_id；新唯一键 (channel_id, channel_user_id) 允许同 user 跨实例订阅、拒绝同实例重复。
 - TC-1 | stack: go | command: go build ./... && go test ./internal/store/ ./internal/worker/... ./internal/core/oauth/ ./internal/httpapi/ ./internal/e2e/ -count=1 | result: pass | note: 列名/唯一键变更后既有订阅/激活/推送/worker/e2e 全绿（迁移前后订阅可投递路径未回归）。
+- TC-2 | stack: go | command: go test ./internal/store/ -run 'TestChannelConfig_CRUD\|TestSubscription_InstanceAddressing' -count=1 | result: pass | note: ChannelConfigRepo by-id CRUD（Create 同 (pool,type) 同名→ErrConflict；Get/List 按 type,name 排序；ListActive 排除 disabled；SetStatus/Delete）；SubscriptionRepo by-instance（GetByInstanceUser 按 channel_id 消歧、同 user 跨实例独立；ListActiveByInstance/CancelByChannelID 级联仅限本实例）。
 
 ## 7. Change Requests (append-only)
 - 2026-06-26 初始决策（草案，待执行期确认）：① 渠道实例可定址（稳定 channel_id + name，`(pool,type,name)` 唯一）；② 订阅唯一键改 `(channel_id, channel_user_id)`，同 user 跨实例独立订阅；③ worker supervisor 单点对账逐实例启停；④ 激活/推送绑实例；⑤ 既有单 telegram 迁移为 `default` 实例、env-token 作隐式 default；⑥ 删除默认级联 cancel 订阅（D7，可改为仅停用）；⑦ 本期只接 telegram，新平台后续单独排期。
