@@ -51,7 +51,7 @@ func adminResourceEnv(t *testing.T, role domain.AdminRole) (*httptest.Server, *h
 	}
 	cipher, _ := crypto.NewFieldCipher(make([]byte, 32))
 	deps := Deps{
-		Wallet: wallet, Store: st, PoolID: "pool1", Keys: keys.New(st, cipher),
+		Wallet: wallet, Store: st, PoolID: "pool1", Keys: keys.New(st, cipher), Cipher: cipher,
 		Chain: &chain.MockSource{DelegatorsByPool: map[string][]string{"pool1": {"sch-aaa", "sch-bbb"}}},
 		Admin: admin.New(admin.Config{Wallet: wallet, Store: st, OwnerKeyHash: ownerKeys, PoolID: "pool1"}),
 	}
@@ -83,6 +83,46 @@ func TestAdminRBAC_Matrix(t *testing.T) {
 	}
 	if code := getCode(t, client, srv.URL+"/api/admin/oauth-clients"); code != http.StatusForbidden {
 		t.Errorf("viewer GET clients = %d, want 403 (owner only)", code)
+	}
+}
+
+// TestAdminConfigureChannel: configuring the Telegram bot token stores it
+// ENCRYPTED (never plaintext) and surfaces a "configured" status (S0004 p8-1).
+func TestAdminConfigureChannel(t *testing.T) {
+	srv, client, _, _, st := adminResourceEnv(t, domain.RoleOperator)
+	const token = "987654:XYZ-secret-bot-token"
+
+	if c := postCode(t, client, srv.URL+"/api/admin/channels/telegram/configure",
+		`{"config":{"bot_token":"`+token+`"}}`); c != 200 {
+		t.Fatalf("configure telegram = %d, want 200", c)
+	}
+
+	// Stored config must be encrypted (no plaintext token in the row).
+	cfg, err := st.Channels().GetByType(context.Background(), "telegram")
+	if err != nil {
+		t.Fatalf("channel not stored: %v", err)
+	}
+	if strings.Contains(string(cfg.Config), token) {
+		t.Fatalf("bot token stored in PLAINTEXT: %s", cfg.Config)
+	}
+
+	// Status endpoint reports telegram configured.
+	resp, _ := client.Get(srv.URL + "/api/admin/channels")
+	defer resp.Body.Close()
+	var body struct {
+		Channels []struct {
+			ChannelType string `json:"channel_type"`
+			Configured  bool   `json:"configured"`
+		} `json:"channels"`
+	}
+	json.NewDecoder(resp.Body).Decode(&body)
+	if len(body.Channels) != 1 || body.Channels[0].ChannelType != "telegram" || !body.Channels[0].Configured {
+		t.Fatalf("status = %+v, want telegram configured", body.Channels)
+	}
+
+	// Missing bot_token → 400.
+	if c := postCode(t, client, srv.URL+"/api/admin/channels/telegram/configure", `{"config":{}}`); c != http.StatusBadRequest {
+		t.Fatalf("empty bot_token = %d, want 400", c)
 	}
 }
 

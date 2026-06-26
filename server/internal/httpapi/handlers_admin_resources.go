@@ -15,6 +15,7 @@ import (
 	"ouro-pass/server/internal/httpapi/respond"
 	"ouro-pass/server/internal/utils/chain"
 	"ouro-pass/server/internal/utils/crypto"
+	"ouro-pass/server/internal/worker/telegram"
 )
 
 // mountAdminResources wires the admin resource endpoints with the §9.8 role
@@ -31,6 +32,7 @@ func (h *apiHandlers) mountAdminResources(r chi.Router) {
 	r.Method(http.MethodPost, "/members/{sch}/revoke", operator(h.adminRevokeMember))
 	r.Method(http.MethodGet, "/subscriptions", viewer(h.adminSubscriptions))
 	r.Method(http.MethodPost, "/subscriptions/{id}/cancel", operator(h.adminCancelSub))
+	r.Method(http.MethodGet, "/channels", viewer(h.adminListChannels))
 	r.Method(http.MethodPost, "/channels/{type}/configure", operator(h.adminConfigureChannel))
 	r.Method(http.MethodGet, "/push/jobs", operator(h.adminListPushJobs))
 	r.Method(http.MethodPost, "/push/jobs", operator(h.adminCreatePushJob))
@@ -243,8 +245,23 @@ func (h *apiHandlers) adminCancelSub(w http.ResponseWriter, r *http.Request) {
 
 // ---- rules ----
 
-
 // ---- channels ----
+
+// adminListChannels reports which delivery channels are configured (no secrets):
+// the Channels/Setup UI uses it to show "configured" state.
+func (h *apiHandlers) adminListChannels(w http.ResponseWriter, r *http.Request) {
+	_, err := h.d.Store.Channels().GetByType(r.Context(), "telegram")
+	telegramConfigured := err == nil
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		serverError(w, r, err)
+		return
+	}
+	respond.JSON(w, http.StatusOK, map[string]any{
+		"channels": []map[string]any{
+			{"channel_type": "telegram", "configured": telegramConfigured},
+		},
+	})
+}
 
 func (h *apiHandlers) adminConfigureChannel(w http.ResponseWriter, r *http.Request) {
 	channelType := chi.URLParam(r, "type")
@@ -258,6 +275,27 @@ func (h *apiHandlers) adminConfigureChannel(w http.ResponseWriter, r *http.Reque
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		respond.Error(w, http.StatusBadRequest, "invalid_request", "config required")
 		return
+	}
+	// Telegram: the bot token is a secret — encrypt it at rest (field cipher) and
+	// store only the ciphertext, never plaintext (S0004 p8-1).
+	if channelType == "telegram" {
+		if h.d.Cipher == nil {
+			notImplemented(w, r)
+			return
+		}
+		var in struct {
+			BotToken string `json:"bot_token"`
+		}
+		if err := json.Unmarshal(body.Config, &in); err != nil || in.BotToken == "" {
+			respond.Error(w, http.StatusBadRequest, "invalid_request", "bot_token required")
+			return
+		}
+		enc, err := telegram.EncodeToken(h.d.Cipher, in.BotToken)
+		if err != nil {
+			serverError(w, r, err)
+			return
+		}
+		body.Config = enc
 	}
 	now := time.Now()
 	id := crypto.RandomID()

@@ -12,17 +12,20 @@ import (
 )
 
 // BotAPITransport is the production Telegram Bot API transport (long polling).
-// Real network use is exercised under the integration build tag (D5); the type
-// compiles and is wired by main when a bot token is configured.
+// Real network use is exercised under the integration build tag (D5).
+//
+// The token is resolved per call via a function, so it is hot-reloadable: an
+// admin configuring the bot token (encrypted ChannelConfig) takes effect on the
+// next poll with no restart. An empty token means "not configured yet".
 type BotAPITransport struct {
-	token   string
+	token   func() string
 	timeout int // long-poll seconds
 	client  *http.Client
 }
 
-// NewBotAPITransport builds a transport for the given bot token.
-func NewBotAPITransport(token string) *BotAPITransport {
-	return &BotAPITransport{token: token, timeout: 30, client: &http.Client{Timeout: 45 * time.Second}}
+// NewBotAPITransport builds a transport whose token is resolved per call by tokenFn.
+func NewBotAPITransport(tokenFn func() string) *BotAPITransport {
+	return &BotAPITransport{token: tokenFn, timeout: 30, client: &http.Client{Timeout: 45 * time.Second}}
 }
 
 type tgUpdate struct {
@@ -38,8 +41,12 @@ type tgUpdate struct {
 	} `json:"message"`
 }
 
-// GetUpdates long-polls the Telegram getUpdates endpoint.
+// GetUpdates long-polls the Telegram getUpdates endpoint. With no token
+// configured it is a quiet no-op (the worker just sleeps and retries).
 func (b *BotAPITransport) GetUpdates(ctx context.Context, offset int) ([]Update, error) {
+	if b.token() == "" {
+		return nil, nil
+	}
 	// Only message updates are handled; restricting allowed_updates avoids
 	// receiving edited_message/channel_post/callback_query that carry no
 	// message.from and would otherwise be mis-dispatched (p12-10).
@@ -77,7 +84,11 @@ func (b *BotAPITransport) SendMessage(ctx context.Context, chatID, text string) 
 }
 
 func (b *BotAPITransport) call(ctx context.Context, method string, q url.Values, out any) error {
-	endpoint := fmt.Sprintf("https://api.telegram.org/bot%s/%s", b.token, method)
+	tok := b.token()
+	if tok == "" {
+		return ErrNotConfigured
+	}
+	endpoint := fmt.Sprintf("https://api.telegram.org/bot%s/%s", tok, method)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(q.Encode()))
 	if err != nil {
 		return err

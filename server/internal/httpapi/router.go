@@ -22,6 +22,7 @@ import (
 	"ouro-pass/server/internal/httpapi/respond"
 	"ouro-pass/server/internal/store"
 	"ouro-pass/server/internal/utils/chain"
+	"ouro-pass/server/internal/utils/crypto"
 )
 
 // Deps carries the collaborators the handlers need; nil services degrade their
@@ -31,8 +32,9 @@ type Deps struct {
 	Keys          *keys.Service
 	OAuth         *oauth.Server
 	Admin         *admin.Service
-	Store         *store.Store // admin resource handlers use repos directly
-	Chain         chain.Source // optional admin delegator roster (S0004 §2.7)
+	Store         *store.Store        // admin resource handlers use repos directly
+	Chain         chain.Source        // optional admin delegator roster (S0004 §2.7)
+	Cipher        *crypto.FieldCipher // field cipher for channel secrets (telegram bot token)
 	PoolID        string
 	TelegramBot   string // bot username for activation deep links
 	Network       string // "mainnet"|"testnet"; when set, the auth page enforces a wallet network guard

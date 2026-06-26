@@ -102,16 +102,35 @@ func run() error {
 
 	// Background workers run while issuance is enabled (they need eligibility).
 	if deps.OAuth != nil {
-		if cfg.TelegramToken != "" {
-			transport := telegram.NewBotAPITransport(cfg.TelegramToken)
-			proc := telegram.NewProcessor(st, deps.OAuth, cfg.PoolID)
-			tgWorker := telegram.NewWorker(proc, transport)
-			startWorker("telegram", func() { tgWorker.Run(sigCtx) })
-			// The push worker delivers admin-created PushJobs over the same
-			// Telegram transport (the missing runtime driver, p12-4).
-			pushWorker := push.NewWorker(st, transport, pushPollInterval, push.Options{})
-			startWorker("push", func() { pushWorker.Run(sigCtx) })
+		// The bot token is resolved live: env first (OUROPASS_TELEGRAM_TOKEN, for
+		// ops/back-compat), else the admin-configured ChannelConfig (decrypted).
+		// The worker always runs and is a quiet no-op until a token exists, so
+		// configuring it via the admin UI takes effect with no restart (S0004 p8-1).
+		tokenFn := func() string {
+			if cfg.TelegramToken != "" {
+				return cfg.TelegramToken
+			}
+			if deps.Cipher == nil {
+				return ""
+			}
+			c, err := st.Channels().GetByType(context.Background(), "telegram")
+			if err != nil {
+				return ""
+			}
+			tok, err := telegram.DecodeToken(deps.Cipher, c.Config)
+			if err != nil {
+				return ""
+			}
+			return tok
 		}
+		transport := telegram.NewBotAPITransport(tokenFn)
+		proc := telegram.NewProcessor(st, deps.OAuth, cfg.PoolID)
+		startWorker("telegram", func() { telegram.NewWorker(proc, transport).Run(sigCtx) })
+		// The push worker delivers admin-created PushJobs over the same Telegram
+		// transport (the missing runtime driver, p12-4).
+		pushWorker := push.NewWorker(st, transport, pushPollInterval, push.Options{})
+		startWorker("push", func() { pushWorker.Run(sigCtx) })
+
 		recon := reconciliation.New(st, deps.OAuth, chainSrc, cfg.PoolID)
 		startWorker("reconciliation", func() { recon.Run(sigCtx, epochPollInterval) })
 	}
@@ -182,6 +201,7 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, chain.Sou
 			return httpapi.Deps{}, nil, err
 		}
 		deps.Keys = keys.New(st, cipher)
+		deps.Cipher = cipher // for channel-secret encryption (telegram bot token)
 	} else {
 		slog.Warn("OUROPASS_FIELD_KEY not set; signing-key/JWKS routes disabled")
 	}
