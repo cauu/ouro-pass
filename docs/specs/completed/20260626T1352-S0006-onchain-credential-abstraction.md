@@ -1,12 +1,12 @@
 # Ouro Pass 链上身份凭证抽象（多凭证 / 多池 / NFT-ready）
 
 Spec-ID: S0006
-Status: active
+Status: completed
 Created Time: 2026-06-26T13:05:00+08:00
 Start Time: 2026-06-26T13:52:00+08:00
-Completion Time:
+Completion Time: 2026-06-26T17:03:00+08:00
 Previous Spec-ID: S0004
-Closure Reason:
+Closure Reason: delivered
 
 ## 1. Requirement Details
 
@@ -197,6 +197,8 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 
 - 2026-06-26 p6-7 完成（加回 tiers 只读列表）：`TiersPage` 顶部加 "Configured tiers" 卡片——读 `pool.data.tier_rules`(服务端已存态),`describe(when)` 递归把 DSL 渲成可读式(`all`→AND、`any`→OR、`not`→NOT(...)、叶→`fact op value`,ada 事实显示 ADA,空→always);表格 `# / Tier(badge) / Condition`。编辑器卡片改名 "Edit rules"。保存后 `invalidate(["pool"])` 刷新该列表。
 - 2026-06-26 p6-7 | stack: ui | command: `pnpm build && pnpm lint` + `make web` | result: pass | note: TC-8(UI)。`tsc -b && vite build` 绿(JS 418KB/gzip 135KB)、`pnpm lint` 0 error;嵌入 bundle 含 `Configured tiers`/`Edit rules`;UI 重 stage、二进制重 build。
+
+- 2026-06-26 S0006 关闭（completed / delivered，用户验收通过）：p1-1…p7-1 全交付 + 验收追加 p6-2…p6-7(砍冗余字段、disable/delete bug、Tiers 结构化构建器、按类型渲染 value、ADA 单位、只读列表)全部完成。全仓 `go test ./...` 0 失败、`go vet ./...` 全净、前端 `tsc -b && vite build` + `pnpm lint` 0 error、二进制冷启动 smoke 通过、SPA 已嵌入。移入 `completed/`。后续渠道多实例(S0005 draft)单独排期。
 
 ## 7. Change Requests (append-only)
 - 2026-06-26 初始决策（草案，用户已认可主线）：① subject 不变=钱包 stake credential;② pool 降格为 `AttestorConfig` 的一个 `Kind`(pool_stake),多池=多条,NFT 预留;③ token=`credentials` 自描述数组;④ tier_rules 全局、对**聚合事实**求值(订阅判定+tier);⑤ 薄闸=持任一 attestor(ANY,可配);⑥ 去 `OUROPASS_POOL_ID`,全走后端配置,加部署级 `OUROPASS_ISSUER`(`iss` 来源)。
