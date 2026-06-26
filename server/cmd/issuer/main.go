@@ -18,6 +18,7 @@ import (
 
 	"ouro-pass/server/internal/config"
 	"ouro-pass/server/internal/core/admin"
+	"ouro-pass/server/internal/core/attestor"
 	"ouro-pass/server/internal/core/keys"
 	"ouro-pass/server/internal/core/membership"
 	"ouro-pass/server/internal/core/oauth"
@@ -218,9 +219,21 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, chain.Sou
 	// the reconciler share it (the reconciler warms it across epoch boundaries).
 	chainSrc := membership.NewCachedSource(rawChain, st.SnapshotCache(), cfg.PoolID, cfg.Network, 10*time.Second)
 	deps.Chain = chainSrc // optional admin delegator roster (S0004 §2.7)
+	// S0006: resolve the attestor set (one pool_stake per AttestorConfig) from the
+	// store per call so admin config changes take effect immediately. The real
+	// per-network source factory is p4-1; for now every attestor shares chainSrc.
+	reg := attestor.DefaultRegistry()
+	srcFor := func(string) (chain.Source, error) { return chainSrc, nil }
+	attestorsFor := func(ctx context.Context) (*attestor.Set, error) {
+		cfgs, err := st.Attestors().ListActive(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return attestor.BuildSet(cfgs, reg, srcFor)
+	}
 	if deps.Keys != nil && len(serverSalt) > 0 {
 		deps.OAuth = oauth.New(oauth.Config{
-			Store: st, Wallet: deps.Wallet, Keys: deps.Keys, Chain: chainSrc,
+			Store: st, Wallet: deps.Wallet, Keys: deps.Keys, Chain: chainSrc, Attestors: attestorsFor,
 			PoolID: cfg.PoolID, Network: cfg.Network, Issuer: cfg.Issuer, ServerSalt: serverSalt,
 			AccessTTL: accessTTL, RefreshTTL: refreshTTL,
 		})

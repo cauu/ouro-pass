@@ -25,6 +25,7 @@ import (
 	"github.com/fxamacker/cbor/v2"
 
 	"ouro-pass/server/internal/core/admin"
+	"ouro-pass/server/internal/core/attestor"
 	"ouro-pass/server/internal/core/keys"
 	"ouro-pass/server/internal/core/oauth"
 	"ouro-pass/server/internal/core/walletauth"
@@ -75,8 +76,16 @@ func newEnv(t *testing.T) *env {
 
 	wallet := walletauth.New(st, time.Minute)
 	mock := chain.NewMockSource(480)
+	attestorsFor := func(context.Context) (*attestor.Set, error) {
+		params, _ := json.Marshal(attestor.PoolStakeParams{PoolID: testPool})
+		a, err := attestor.BuildPoolStake("att-e2e", params, func(string) (chain.Source, error) { return mock, nil })
+		if err != nil {
+			return nil, err
+		}
+		return attestor.NewSet([]attestor.Attestor{a}), nil
+	}
 	oas := oauth.New(oauth.Config{
-		Store: st, Wallet: wallet, Keys: ks, Chain: mock,
+		Store: st, Wallet: wallet, Keys: ks, Chain: mock, Attestors: attestorsFor,
 		PoolID: testPool, Issuer: "ouropass:" + testPool, ServerSalt: []byte("e2e-salt"),
 		AccessTTL: time.Hour, RefreshTTL: 24 * time.Hour,
 	})
@@ -190,10 +199,8 @@ func codeFromLocation(t *testing.T, loc string) string {
 func (e *env) eligible(w wallet) {
 	e.t.Helper()
 	ctx := context.Background()
-	_ = e.st.PoolConfig().Upsert(ctx, domain.PoolConfig{
-		PoolID: testPool, Network: "preview", CreatedAt: time.Now(), UpdatedAt: time.Now(),
-		TierRules: json.RawMessage(`[{"tier":"gold","min_state":"active","min_active_stake":"1000000"}]`),
-	})
+	_ = e.st.Issuer().SetTierRules(ctx,
+		json.RawMessage(`[{"tier":"gold","min_state":"active","min_active_stake":"1000000"}]`), time.Now())
 	e.chain.Put(&chain.Snapshot{
 		StakeCredentialHash: w.sch, Epoch: 480, DelegatedPoolID: testPool, ActiveStakePoolID: testPool,
 		ActiveStakeLovelace: "5000000", EpochsDelegated: 5, AccountStatus: "registered",

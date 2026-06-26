@@ -12,6 +12,7 @@ import (
 	"slices"
 	"time"
 
+	"ouro-pass/server/internal/core/attestor"
 	"ouro-pass/server/internal/core/keys"
 	"ouro-pass/server/internal/core/membership"
 	"ouro-pass/server/internal/core/walletauth"
@@ -23,20 +24,26 @@ import (
 
 // Errors surfaced to handlers as OAuth error codes.
 var (
-	ErrInvalidClient   = errors.New("invalid_client")
-	ErrInvalidRequest  = errors.New("invalid_request")
-	ErrNotEligible     = errors.New("not_eligible")
-	ErrAccessDenied    = errors.New("access_denied")
+	ErrInvalidClient  = errors.New("invalid_client")
+	ErrInvalidRequest = errors.New("invalid_request")
+	ErrNotEligible    = errors.New("not_eligible")
+	ErrAccessDenied   = errors.New("access_denied")
 )
 
 // Config bundles the server's collaborators and parameters.
 type Config struct {
-	Store      *store.Store
-	Wallet     *walletauth.Service
-	Keys       *keys.Service
+	Store  *store.Store
+	Wallet *walletauth.Service
+	Keys   *keys.Service
+	// Attestors resolves the active attestor set to evaluate, per call, so admin
+	// config changes take effect immediately (S0006). Injected: tests supply a
+	// fixed set; production resolves from the store (ListActive → BuildSet).
+	Attestors func(ctx context.Context) (*attestor.Set, error)
+	// Chain / PoolID / Network are legacy single-pool fields retained for wiring
+	// until p4-1 removes OUROPASS_POOL_ID; classification no longer reads them.
 	Chain      chain.Source
 	PoolID     string
-	Network    string // mainnet | preprod | preview (for epoch→time, member_since)
+	Network    string
 	Issuer     string // token `iss`
 	ServerSalt []byte // HMAC salt for `sub` derivation
 	AccessTTL  time.Duration
@@ -125,13 +132,14 @@ func (s *Server) Authorize(ctx context.Context, req AuthorizeRequest) (code stri
 		return "", ErrAccessDenied
 	}
 
-	// Thin issuer gate (S0004 §2.5): only pool members (pending/active) get a code;
-	// `none` is denied. Business policy (thresholds → access) is the RP's.
-	state, _, err := s.classify(ctx, sch)
+	// Thin issuer gate (S0004 §2.5, generalized to ANY-of in S0006): only holders
+	// of at least one configured credential (pending/active) get a code; held-by-
+	// nothing is denied. Business policy (thresholds → access) is the RP's.
+	res, err := s.evaluate(ctx, sch)
 	if err != nil {
 		return "", err
 	}
-	if state == membership.StateNone {
+	if representativeState(res) == membership.StateNone {
 		return "", ErrNotEligible
 	}
 
@@ -149,63 +157,103 @@ func (s *Server) Authorize(ctx context.Context, req AuthorizeRequest) (code stri
 	return plain, nil
 }
 
-
-// attestation is the issuance-time view of a credential: membership state, the
-// exact staking facts for claims, and the optional first-party tier. Tier is
-// transitionally sourced from the rules engine; p4-1 moves it to
-// PoolConfig.tier_rules and deletes rules.
+// attestation is the issuance-time view of a credential over the WHOLE attestor
+// set (S0006): the per-attestor claims (→ token credentials[], p2-2) and the
+// aggregate facts (→ tier DSL, p3-1), plus a representative pool-membership state
+// and the optional first-party tier. The representative single-pool fields
+// (activeStake/epochsActive/memberSince) feed the transitional flat token claims;
+// p2-2 replaces them with the credentials[] array.
 type attestation struct {
-	state        membership.State
+	state        membership.State // representative: active if any held-active, else pending if any held, else none
 	activeStake  string
 	epochsActive int
 	memberSince  time.Time
 	tier         string
+	credentials  []map[string]any  // per-attestor self-describing claims (token credentials[], p2-2)
+	facts        map[string]string // aggregate named facts (tier DSL, p3-1)
 }
 
-// classify resolves a credential's membership state from the live snapshot, with
-// blacklisted credentials forced to `none` (snap is nil then).
-func (s *Server) classify(ctx context.Context, sch string) (membership.State, *chain.Snapshot, error) {
+// evaluate runs the configured attestor set for a subject, with blacklisted
+// credentials forced to an empty (not-held) result.
+func (s *Server) evaluate(ctx context.Context, sch string) (*attestor.Result, error) {
 	if blocked, err := s.blacklist.Has(ctx, sch); err != nil {
-		return membership.StateNone, nil, err
+		return nil, err
 	} else if blocked {
-		return membership.StateNone, nil, nil
+		return &attestor.Result{Facts: map[string]string{}}, nil
 	}
-	snap, err := s.cfg.Chain.Snapshot(ctx, sch)
-	if err != nil {
-		return membership.StateNone, nil, err
-	}
-	return membership.DeriveState(snap, s.cfg.PoolID), snap, nil
-}
-
-// Membership derives a credential's current pool-membership state (S0004 §2.2):
-// the reconciler's signal. Blacklisted credentials are `none`.
-func (s *Server) Membership(ctx context.Context, sch string) (membership.State, error) {
-	st, _, err := s.classify(ctx, sch)
-	return st, err
-}
-
-// attest builds the issuance-time attestation (state + staking facts + first-party
-// tier). The thin issuer gate is the caller's: state `none` → deny.
-func (s *Server) attest(ctx context.Context, sch string) (*attestation, error) {
-	st, snap, err := s.classify(ctx, sch)
+	set, err := s.cfg.Attestors(ctx)
 	if err != nil {
 		return nil, err
 	}
-	a := &attestation{state: st}
-	if snap != nil {
-		a.activeStake = snap.ActiveStakeLovelace
-		a.epochsActive = snap.EpochsDelegated
-		a.memberSince = s.memberSince(snap)
+	return set.Evaluate(ctx, sch)
+}
+
+// representativeState collapses a multi-attestor result to one pool-membership
+// state for the thin gate and first-party consumers (reconciler / Telegram):
+// active if any credential is active, else pending if any is held, else none.
+func representativeState(res *attestor.Result) membership.State {
+	if res.Facts[attestor.FactAnyActive] == "true" {
+		return membership.StateActive
 	}
-	if st != membership.StateNone {
-		a.tier = s.firstPartyTier(ctx, st, snap)
+	if res.Held {
+		return membership.StatePending
+	}
+	return membership.StateNone
+}
+
+// primaryHeld picks the attestation that best represents membership for the
+// transitional flat token claims (p2-2 replaces these with credentials[]): the
+// active one if present, else the first held.
+func primaryHeld(res *attestor.Result) *attestor.Attestation {
+	var firstHeld *attestor.Attestation
+	for _, a := range res.Attestations {
+		if a.Claim["state"] == string(membership.StateActive) {
+			return a
+		}
+		if a.Held && firstHeld == nil {
+			firstHeld = a
+		}
+	}
+	return firstHeld
+}
+
+// Membership derives a credential's current representative pool-membership state
+// (S0004 §2.2 generalized to ANY-of, S0006): the reconciler's signal. Blacklisted
+// or not-held-by-any credentials are `none`.
+func (s *Server) Membership(ctx context.Context, sch string) (membership.State, error) {
+	res, err := s.evaluate(ctx, sch)
+	if err != nil {
+		return membership.StateNone, err
+	}
+	return representativeState(res), nil
+}
+
+// attest builds the issuance-time attestation over the attestor set. The thin
+// issuer gate is the caller's: representative state `none` (held by nothing) → deny.
+func (s *Server) attest(ctx context.Context, sch string) (*attestation, error) {
+	res, err := s.evaluate(ctx, sch)
+	if err != nil {
+		return nil, err
+	}
+	a := &attestation{
+		state:       representativeState(res),
+		facts:       res.Facts,
+		credentials: claimsOf(res.Attestations),
+	}
+	if rep := primaryHeld(res); rep != nil {
+		a.activeStake = claimStr(rep.Claim, "active_stake_lovelace")
+		a.epochsActive = claimInt(rep.Claim, "epochs_active")
+		a.memberSince = claimTime(rep.Claim, "member_since")
+	}
+	if a.state != membership.StateNone {
+		a.tier = s.firstPartyTier(ctx, a.state, a.activeStake)
 	}
 	return a, nil
 }
 
-// Attest exposes the issuance-time state + first-party tier for the issuer's own
-// channels (Telegram). External relying parties never call this — they read the
-// raw token facts and apply their own policy.
+// Attest exposes the issuance-time representative state + first-party tier for the
+// issuer's own channels (Telegram). External relying parties never call this —
+// they read the raw token facts and apply their own policy.
 func (s *Server) Attest(ctx context.Context, sch string) (membership.State, string, error) {
 	a, err := s.attest(ctx, sch)
 	if err != nil {
@@ -214,29 +262,49 @@ func (s *Server) Attest(ctx context.Context, sch string) (membership.State, stri
 	return a.state, a.tier, nil
 }
 
-// firstPartyTier maps (state, active stake) to the issuer's thin first-party tier
-// via PoolConfig.tier_rules (S0004 §2.6). Errors / no match degrade to no tier
-// (the optional opinion is simply absent).
-func (s *Server) firstPartyTier(ctx context.Context, state membership.State, snap *chain.Snapshot) string {
-	pc, err := s.cfg.Store.PoolConfig().Get(ctx, s.cfg.PoolID)
+// firstPartyTier maps the representative (state, active stake) to the issuer's
+// thin first-party tier via the issuer-global tier_rules (S0006: moved out of
+// PoolConfig). Errors / no match degrade to no tier. p3-1 replaces this with the
+// boolean DSL evaluated over the full aggregate facts.
+func (s *Server) firstPartyTier(ctx context.Context, state membership.State, activeStake string) string {
+	rules, err := s.cfg.Store.Issuer().GetTierRules(ctx)
 	if err != nil {
 		return ""
 	}
-	return membership.TierFor(state, snap.ActiveStakeLovelace, pc.TierRules)
-}
-
-// memberSince stamps when the credential's current active run began: the start of
-// epoch (snapshotEpoch - epochsActive + 1). Zero for non-active / unknown network.
-func (s *Server) memberSince(snap *chain.Snapshot) time.Time {
-	if snap.EpochsDelegated <= 0 {
-		return time.Time{}
-	}
-	start := snap.Epoch - uint64(snap.EpochsDelegated) + 1
-	t, ok := chain.EpochStart(s.cfg.Network, start)
-	if !ok {
-		return time.Time{}
-	}
-	return t
+	return membership.TierFor(state, activeStake, rules)
 }
 
 func contains(xs []string, v string) bool { return slices.Contains(xs, v) }
+
+// claimsOf projects each attestation's self-describing claim into the token
+// credentials[] payload (consumed in p2-2).
+func claimsOf(atts []*attestor.Attestation) []map[string]any {
+	out := make([]map[string]any, 0, len(atts))
+	for _, a := range atts {
+		out = append(out, a.Claim)
+	}
+	return out
+}
+
+func claimStr(m map[string]any, k string) string {
+	if v, ok := m[k].(string); ok {
+		return v
+	}
+	return ""
+}
+
+func claimInt(m map[string]any, k string) int {
+	if v, ok := m[k].(int); ok {
+		return v
+	}
+	return 0
+}
+
+func claimTime(m map[string]any, k string) time.Time {
+	if v, ok := m[k].(string); ok && v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			return t
+		}
+	}
+	return time.Time{}
+}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
+	"ouro-pass/server/internal/core/attestor"
 	"ouro-pass/server/internal/core/keys"
 	"ouro-pass/server/internal/core/walletauth"
 	"ouro-pass/server/internal/domain"
@@ -64,8 +65,17 @@ func newHarness(t *testing.T) *harness {
 	}
 
 	mock := chain.NewMockSource(480)
+	// S0006: one pool_stake attestor for testPool, evaluated over the mock source.
+	attestorsFor := func(context.Context) (*attestor.Set, error) {
+		params, _ := json.Marshal(attestor.PoolStakeParams{PoolID: testPool, Network: "preview"})
+		a, err := attestor.BuildPoolStake("att-test", params, func(string) (chain.Source, error) { return mock, nil })
+		if err != nil {
+			return nil, err
+		}
+		return attestor.NewSet([]attestor.Attestor{a}), nil
+	}
 	srv := New(Config{
-		Store: st, Wallet: walletauth.New(st, time.Minute), Keys: ks, Chain: mock,
+		Store: st, Wallet: walletauth.New(st, time.Minute), Keys: ks, Chain: mock, Attestors: attestorsFor,
 		PoolID: testPool, Network: "preview", Issuer: "ouropass:" + testPool, ServerSalt: []byte("salt"),
 		AccessTTL: time.Hour, RefreshTTL: 24 * time.Hour,
 	})
@@ -78,16 +88,13 @@ func newHarness(t *testing.T) *harness {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// First-party tier mapping (replaces the rules engine): active≥1M → gold,
-	// active≥100k → silver, any active → basic.
-	if err := st.PoolConfig().Upsert(ctx, domain.PoolConfig{
-		PoolID: testPool, Network: "preview", CreatedAt: time.Now(), UpdatedAt: time.Now(),
-		TierRules: json.RawMessage(`[
+	// First-party tier mapping (S0006: issuer-global, was PoolConfig.tier_rules):
+	// active≥1M → gold, active≥100k → silver, any active → basic.
+	if err := st.Issuer().SetTierRules(ctx, json.RawMessage(`[
 			{"tier":"gold","min_state":"active","min_active_stake":"1000000"},
 			{"tier":"silver","min_state":"active","min_active_stake":"100000"},
 			{"tier":"basic","min_state":"active"}
-		]`),
-	}); err != nil {
+		]`), time.Now()); err != nil {
 		t.Fatal(err)
 	}
 

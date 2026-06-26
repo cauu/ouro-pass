@@ -70,7 +70,12 @@ func (a *PoolStakeAttestor) Attest(ctx context.Context, subject string) (*Attest
 	facts := map[string]string{
 		PoolFactKey(a.params.PoolID, "state"): string(state),
 	}
-	if snap != nil {
+	// The snapshot's active-stake position (amount/epochs/since) credits exactly
+	// one pool — ActiveStakePoolID — i.e. it is meaningful only when this pool is
+	// the active one (state == active). For pending/none the effective active stake
+	// for THIS pool is absent, so we emit no amount facts (a pending credential has
+	// state but no active stake yet).
+	if snap != nil && state == membership.StateActive {
 		if snap.ActiveStakeLovelace != "" {
 			claim["active_stake_lovelace"] = snap.ActiveStakeLovelace
 			facts[PoolFactKey(a.params.PoolID, "active_stake_lovelace")] = snap.ActiveStakeLovelace

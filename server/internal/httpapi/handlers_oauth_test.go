@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
+	"ouro-pass/server/internal/core/attestor"
 	"ouro-pass/server/internal/core/keys"
 	"ouro-pass/server/internal/core/oauth"
 	"ouro-pass/server/internal/core/walletauth"
@@ -42,8 +43,16 @@ func oauthDeps(t *testing.T) (Deps, *chain.MockSource, ed25519.PrivateKey, strin
 	ks.Rotate(ctx)
 	mock := chain.NewMockSource(480)
 	wallet := walletauth.New(st, time.Minute)
+	attestorsFor := func(context.Context) (*attestor.Set, error) {
+		params, _ := json.Marshal(attestor.PoolStakeParams{PoolID: "pool1abc", Network: "preview"})
+		a, err := attestor.BuildPoolStake("att-test", params, func(string) (chain.Source, error) { return mock, nil })
+		if err != nil {
+			return nil, err
+		}
+		return attestor.NewSet([]attestor.Attestor{a}), nil
+	}
 	srv := oauth.New(oauth.Config{
-		Store: st, Wallet: wallet, Keys: ks, Chain: mock, PoolID: "pool1abc",
+		Store: st, Wallet: wallet, Keys: ks, Chain: mock, Attestors: attestorsFor, PoolID: "pool1abc",
 		Issuer: "ouropass:pool1abc", ServerSalt: []byte("salt"), AccessTTL: time.Hour, RefreshTTL: time.Hour,
 	})
 	st.OAuthClients().Upsert(ctx, domain.OAuthClient{
@@ -51,10 +60,8 @@ func oauthDeps(t *testing.T) (Deps, *chain.MockSource, ed25519.PrivateKey, strin
 		RedirectURIs: []string{"https://app/cb"}, AllowedAudiences: []string{"app:ouro"},
 		Status: "active", CreatedAt: time.Now(),
 	})
-	st.PoolConfig().Upsert(ctx, domain.PoolConfig{
-		PoolID: "pool1abc", Network: "preview", CreatedAt: time.Now(), UpdatedAt: time.Now(),
-		TierRules: json.RawMessage(`[{"tier":"gold","min_state":"active","min_active_stake":"1000000"}]`),
-	})
+	st.Issuer().SetTierRules(ctx,
+		json.RawMessage(`[{"tier":"gold","min_state":"active","min_active_stake":"1000000"}]`), time.Now())
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
 	return Deps{Wallet: wallet, Keys: ks, OAuth: srv}, mock, priv, hex.EncodeToString(pub)
 }
