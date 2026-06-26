@@ -23,6 +23,7 @@ import (
 	"ouro-pass/server/internal/core/membership"
 	"ouro-pass/server/internal/core/oauth"
 	"ouro-pass/server/internal/core/walletauth"
+	"ouro-pass/server/internal/domain"
 	"ouro-pass/server/internal/httpapi"
 	"ouro-pass/server/internal/store"
 	"ouro-pass/server/internal/utils/chain"
@@ -37,6 +38,14 @@ const epochPollInterval = 5 * time.Minute
 
 // pushPollInterval is how often the push worker drains due scheduled jobs.
 const pushPollInterval = 15 * time.Second
+
+// telegramReconcileInterval is how often the supervisor reconciles the running
+// telegram workers against the active channel-instance set (S0005 p2-1).
+const telegramReconcileInterval = 5 * time.Second
+
+// envInstanceID is the synthetic instance id for the OUROPASS_TELEGRAM_TOKEN
+// fallback "default" instance (D6).
+const envInstanceID = "env-default"
 
 const (
 	nonceTTL        = 5 * time.Minute
@@ -103,11 +112,35 @@ func run() error {
 
 	// Background workers run while issuance is enabled (they need eligibility).
 	if deps.OAuth != nil {
-		// The bot token is resolved live: env first (OUROPASS_TELEGRAM_TOKEN, for
-		// ops/back-compat), else the admin-configured ChannelConfig (decrypted).
-		// The worker always runs and is a quiet no-op until a token exists, so
-		// configuring it via the admin UI takes effect with no restart (S0004 p8-1).
-		tokenFn := func() string {
+		// S0005 p2-1: a supervisor runs one telegram worker per active DB instance,
+		// each bound to its own decrypted token, processor (instance-scoped), and
+		// long-poll offset. It reconciles every tick, so adding/removing/disabling
+		// or re-tokening an instance takes effect with no restart (D3/C4). The env
+		// token OUROPASS_TELEGRAM_TOKEN remains an implicit "default" instance that
+		// runs only while no DB instance exists (D6/C1).
+		factory := func(inst domain.ChannelConfig) (telegram.Runner, error) {
+			token, err := instanceToken(cfg, deps.Cipher, inst)
+			if err != nil {
+				return nil, err
+			}
+			tok := token // capture per instance (static token, independent offset)
+			transport := telegram.NewBotAPITransport(func() string { return tok })
+			proc := telegram.NewInstanceProcessor(st, deps.OAuth, cfg.Scope, inst.ChannelID)
+			return telegram.NewWorker(proc, transport), nil
+		}
+		var envInstance *domain.ChannelConfig
+		if cfg.TelegramToken != "" {
+			envInstance = &domain.ChannelConfig{
+				ChannelID: envInstanceID, PoolID: cfg.Scope, ChannelType: "telegram", Name: "default", Status: "active",
+			}
+		}
+		supervisor := telegram.NewSupervisor(st, factory, cfg.Scope, telegramReconcileInterval, envInstance)
+		startWorker("telegram-supervisor", func() { supervisor.Run(sigCtx) })
+
+		// The push worker delivers admin-created PushJobs over a Telegram transport
+		// whose token is resolved live (env first, else the default DB instance).
+		// Per-instance push targeting is wired in p3-1.
+		pushTokenFn := func() string {
 			if cfg.TelegramToken != "" {
 				return cfg.TelegramToken
 			}
@@ -124,12 +157,7 @@ func run() error {
 			}
 			return tok
 		}
-		transport := telegram.NewBotAPITransport(tokenFn)
-		proc := telegram.NewProcessor(st, deps.OAuth, cfg.Scope)
-		startWorker("telegram", func() { telegram.NewWorker(proc, transport).Run(sigCtx) })
-		// The push worker delivers admin-created PushJobs over the same Telegram
-		// transport (the missing runtime driver, p12-4).
-		pushWorker := push.NewWorker(st, transport, pushPollInterval, push.Options{})
+		pushWorker := push.NewWorker(st, telegram.NewBotAPITransport(pushTokenFn), pushPollInterval, push.Options{})
 		startWorker("push", func() { pushWorker.Run(sigCtx) })
 
 		recon := reconciliation.New(st, deps.OAuth, chainSrc, cfg.Scope)
@@ -258,6 +286,30 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, chain.Sou
 		slog.Warn("OAuth issuance disabled (need OUROPASS_FIELD_KEY + OUROPASS_SERVER_SALT)")
 	}
 	return deps, chainSrc, nil
+}
+
+// instanceToken resolves the plaintext bot token for one telegram instance: the
+// env token for the synthetic "default" instance (D6), else the instance's own
+// field-encrypted token from its stored config. An empty token is an error so
+// the supervisor skips the instance and retries once it is configured.
+func instanceToken(cfg *config.Config, cipher *crypto.FieldCipher, inst domain.ChannelConfig) (string, error) {
+	if inst.ChannelID == envInstanceID {
+		if cfg.TelegramToken == "" {
+			return "", fmt.Errorf("env telegram token empty")
+		}
+		return cfg.TelegramToken, nil
+	}
+	if cipher == nil {
+		return "", fmt.Errorf("field cipher unavailable; cannot decrypt instance token")
+	}
+	tok, err := telegram.DecodeToken(cipher, inst.Config)
+	if err != nil {
+		return "", err
+	}
+	if tok == "" {
+		return "", fmt.Errorf("instance %s has no bot token", inst.ChannelID)
+	}
+	return tok, nil
 }
 
 // runNonceGC periodically purges expired wallet-signing nonces until ctx ends.

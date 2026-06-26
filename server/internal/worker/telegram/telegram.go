@@ -46,21 +46,39 @@ type Attester interface {
 // Processor handles the command grammar; it is transport-agnostic.
 type Processor struct {
 	poolID     string
+	channelID  string // S0005: the instance this bot serves ("" = legacy single-instance)
 	activation *store.ActivationCodeRepo
 	subs       *store.SubscriptionRepo
 	elig       Attester
 	now        func() time.Time
 }
 
-// NewProcessor builds a command processor.
+// NewProcessor builds a legacy single-instance command processor (no channel_id).
 func NewProcessor(st *store.Store, elig Attester, poolID string) *Processor {
+	return NewInstanceProcessor(st, elig, poolID, "")
+}
+
+// NewInstanceProcessor builds a command processor bound to a specific channel
+// instance: it writes subscriptions with that channel_id and looks members up by
+// the instance-scoped (channel_id, channel_user_id) key (S0005 p2-1).
+func NewInstanceProcessor(st *store.Store, elig Attester, poolID, channelID string) *Processor {
 	return &Processor{
 		poolID:     poolID,
+		channelID:  channelID,
 		activation: st.ActivationCodes(),
 		subs:       st.Subscriptions(),
 		elig:       elig,
 		now:        time.Now,
 	}
+}
+
+// lookup loads the member's session by the instance-scoped key when this
+// processor serves a specific instance, else by the legacy (pool, type, user).
+func (p *Processor) lookup(ctx context.Context, userID string) (*domain.SubscriptionSession, error) {
+	if p.channelID != "" {
+		return p.subs.GetByInstanceUser(ctx, p.channelID, userID)
+	}
+	return p.subs.GetByChannelUser(ctx, p.poolID, "telegram", userID)
 }
 
 // Handle processes one update and returns the reply text.
@@ -106,9 +124,15 @@ func (p *Processor) activate(ctx context.Context, up Update, code string) string
 		return "Your stake no longer qualifies for membership."
 	}
 	now := p.now()
+	// Bind to the activation code's instance when present (S0005 p2-2), else this
+	// bot's own instance, else legacy "" (single-instance).
+	channelID := p.channelID
+	if rec.ChannelID != "" {
+		channelID = rec.ChannelID
+	}
 	sess := domain.SubscriptionSession{
 		SessionID: crypto.RandomID(), PoolID: p.poolID, StakeCredentialHash: rec.StakeCredentialHash,
-		ChannelType: "telegram", ChannelUserID: up.UserID, Status: domain.SubActive, Tier: tier,
+		ChannelID: channelID, ChannelType: "telegram", ChannelUserID: up.UserID, Status: domain.SubActive, Tier: tier,
 		Topics: nil, Entitlements: nil,
 		CreatedAt: now, LastVerifiedAt: now, ExpiresAt: now.Add(sessionTTL),
 	}
@@ -119,7 +143,7 @@ func (p *Processor) activate(ctx context.Context, up Update, code string) string
 }
 
 func (p *Processor) status(ctx context.Context, up Update) string {
-	sess, err := p.subs.GetByChannelUser(ctx, p.poolID, "telegram", up.UserID)
+	sess, err := p.lookup(ctx, up.UserID)
 	if err != nil {
 		return "You are not subscribed. Use /start <code> to activate."
 	}
@@ -127,7 +151,7 @@ func (p *Processor) status(ctx context.Context, up Update) string {
 }
 
 func (p *Processor) unsubscribe(ctx context.Context, up Update) string {
-	sess, err := p.subs.GetByChannelUser(ctx, p.poolID, "telegram", up.UserID)
+	sess, err := p.lookup(ctx, up.UserID)
 	if err != nil {
 		return "You are not subscribed."
 	}
