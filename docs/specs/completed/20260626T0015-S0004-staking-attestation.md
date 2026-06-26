@@ -1,12 +1,12 @@
 # Ouro Pass 质押身份证明(attestation)
 
 Spec-ID: S0004
-Status: active
+Status: completed
 Created Time: 2026-06-25T01:30:00+08:00
 Start Time: 2026-06-26T00:15:00+08:00
-Completion Time:
+Completion Time: 2026-06-26T13:15:00+08:00
 Previous Spec-ID: S0002
-Closure Reason:
+Closure Reason: delivered
 
 ## 1. Requirement Details
 
@@ -212,6 +212,7 @@ e = currentEpoch(now()); row = cache.Get(sch)
 
 - 2026-06-26 p8-3 完成（单实例 bug 修复）：`ReplaceByType`（tx：删同 (pool,type) 行 + 插一行）替代 handler 的"每存新插行"；`GetByType` 加 `ORDER BY updated_at DESC`。**决策**：当前设计边界 = 一池一 channel_type 一实例；多渠道/多实例(p9-1)延后,需子系统重构(实例定址 + 订阅/激活/推送/worker/UI),用户确认另排。
 - 2026-06-26 p8-3 | stack: go | command: `go test ./internal/store/ ./internal/httpapi/ ./...` | result: pass | note: `TestChannelConfig_ReplaceByType`（两次配置 distinct id → 仅 1 行、GetByType 返最新 token）+ 既有渠道/配置测试绿；全仓绿。
+- 2026-06-26 S0004 关闭（completed / delivered，用户确认）：p1-1…p8-3 全部交付且全仓 `go test ./...`/`go vet`/前端 build+lint 绿、二进制 smoke 通过。延后项 **p9-1（多渠道/同平台多实例）转交 draft `S0005-multi-channel-instances`** 承接，不在本 spec 内实现；故 p9-1 留 `[ ]` 不构成未交付。移入 `completed/`。
 
 ## 7. Change Requests (append-only)
 - 2026-06-25 核心决策(累积,用户拍板):① issuer = 质押身份证明提供方,业务策略下沉 RP;② token 带精确事实(state/active_stake/epochs/since),**不分桶**;③ **删除 rules 子系统**,薄第一方 tier 映射进 `PoolConfig.tier_rules`(仅自家渠道用);④ 有效质押 = epoch active_stake 口径,pending 仅入场过渡,leaving 由 epoch 自然收敛、grace 下沉 RP;⑤ 缓存**只缓 `active`**(epoch 稳定;命中 iff snapshot_epoch==当前、本地算 epoch),pending/none 现算不缓(onboarding/bail 即时对称);⑥ Koios 失败 D8 分场景(登录 fail-closed / reconciler 软 fail-open);⑦ epoch 常量内置 per-network;⑧ **砍掉 owner 链上校验 / operator-viewer 管理(原 B)**——owner 沿用 env 配置信任;⑨ delegator 枚举(C)解耦、可延后/单独排期。
