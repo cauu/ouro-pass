@@ -2,6 +2,7 @@ import { api } from "./client";
 import type {
   Attestor,
   AuditEntry,
+  ChannelInstance,
   ClientRegister,
   Me,
   Member,
@@ -49,13 +50,26 @@ export const cancelSubscription = (id: string) =>
   api.post<{ cancelled: boolean }>(`/api/admin/subscriptions/${encodeURIComponent(id)}/cancel`);
 
 
-// ---- channels ----
+// ---- channels (S0005: per-instance CRUD) ----
 export const listChannels = () =>
-  api.get<{ channels: { channel_type: string; configured: boolean }[] }>("/api/admin/channels");
-export const configureChannel = (type: string, config: unknown) =>
-  api.post<{ channel_id: string }>(`/api/admin/channels/${encodeURIComponent(type)}/configure`, {
-    config,
-  });
+  api.get<{ channels: ChannelInstance[] }>("/api/admin/channels");
+export const createChannel = (body: {
+  channel_type: string;
+  name: string;
+  config: { bot_token?: string; bot_username?: string };
+}) => api.post<{ channel_id: string }>("/api/admin/channels", body);
+export const updateChannel = (
+  id: string,
+  body: { name?: string; status?: string; config?: { bot_token?: string; bot_username?: string } },
+) => api.post<{ channel_id: string }>(`/api/admin/channels/${encodeURIComponent(id)}`, body);
+export const setChannelEnabled = (id: string, enabled: boolean) =>
+  api.post<{ channel_id: string; status: string }>(
+    `/api/admin/channels/${encodeURIComponent(id)}/${enabled ? "enable" : "disable"}`,
+  );
+export const deleteChannel = (id: string) =>
+  api.del<{ deleted: boolean; sessions_cancelled: number }>(
+    `/api/admin/channels/${encodeURIComponent(id)}`,
+  );
 
 // ---- push ----
 export const listPushJobs = () => api.get<{ jobs: PushJob[] }>("/api/admin/push/jobs");

@@ -126,5 +126,18 @@ export interface PushCreate {
   title: string;
   content: string;
   channel_type: string;
+  channel_id?: string; // S0005: target a single channel instance (optional)
   target: { tier?: string; topic?: string; entitlement?: string };
+}
+
+// ChannelInstance is one configured delivery-channel instance (S0005). A pool may
+// run N instances of one platform (e.g. two telegram bots). Secrets are never
+// returned; bot_username is public and used for activation deep links.
+export interface ChannelInstance {
+  channel_id: string;
+  channel_type: string;
+  name: string;
+  status: string; // active | disabled
+  configured: boolean;
+  bot_username?: string;
 }

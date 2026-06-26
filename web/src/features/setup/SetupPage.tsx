@@ -31,7 +31,7 @@ export function SetupPage() {
   const hasKey = (jwks.data?.keys?.length ?? 0) > 0;
   const hasClient = (clients.data?.clients?.length ?? 0) > 0;
   const hasTelegram =
-    channels.data?.channels.find((c) => c.channel_type === "telegram")?.configured ?? false;
+    channels.data?.channels.some((c) => c.channel_type === "telegram" && c.configured) ?? false;
 
   return (
     <>
