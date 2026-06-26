@@ -101,7 +101,7 @@ supervisor.Run(ctx):
 - [x] p3-1 推送绑实例：`PushJob.channel_id` 定向 + 经实例 transport 投递（D5 语义落定：可空=type 级广播；非空=单实例定向，最简）。
 - [x] p4-1 admin API：channels CRUD 端点 + RBAC + 审计；删除级联（D7）。
 - [x] p5-1 前端：Channels 页管理 N 实例（列表 + 增/改/删/启停 + configured 状态）；Setup 反映；类型/ api。
-- [ ] p6-1 全量 `go test ./...` + `pnpm build/lint` + 二进制 smoke（多实例 worker 起停）+ 文档（渠道实例模型/生命周期）。
+- [x] p6-1 全量 `go test ./...` + `pnpm build/lint` + 二进制 smoke（多实例 worker 起停）+ 文档（渠道实例模型/生命周期）。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 数据模型：实例可建多份（同 type 不同 name）；迁移把既有单 telegram + 其订阅/激活回填到 `default`，迁移前后订阅可投递。
@@ -121,6 +121,7 @@ supervisor.Run(ctx):
 - 2026-06-26T21:42:00+08:00 p1-2 completed：`ChannelConfigRepo` by-id CRUD（Create/Get/List/ListActive/SetStatus/Delete + `scanChannel`）；`SubscriptionRepo` by-instance（GetByInstanceUser/ListActiveByInstance/CancelByChannelID）；`domain.ErrConflict`；repo 单测。
 - 2026-06-26T21:42:00+08:00 p2-1 completed：`telegram.Supervisor`（Run/desired/reconcile + `Runner`/`Factory` 注入）逐实例对账启停、子 ctx、token 变更指纹重建、env-token 隐式 default fallback；`telegram.NewInstanceProcessor`（channel_id 感知 lookup/写订阅）；main.go 用 supervisor 取代单 worker，新增 `instanceToken`/`telegramReconcileInterval`/`envInstanceID`，push 暂沿用 type 级 token（p3-1 改实例级）。集成测试 `TestSupervisor_*`（-race）。
 - 2026-06-26T21:42:00+08:00 p2-2 completed：激活码带 `channel_id`（`CreateActivation` 增参 + 落库）；`Consume` 增 channelID 实例校验（绑定码仅本实例可兑，遗留无绑定码保持 type 级）；processor.activate 写 `subscription.channel_id`（rec.ChannelID 优先，回退 bot 自身实例）；activation handler 按 `channel_id` 解析实例 `bot_username` 构深链、校验实例存活；telegram config 增明文 `bot_username` + `EncodeConfig`/`DecodeUsername`。测试 `TestActivate_InstanceBinding`/`TestDecodeUsername`。
+- 2026-06-26T21:42:00+08:00 p6-1 completed：全量 `go test ./...` + `go vet ./...` + issuer 二进制构建全绿；`pnpm build`/`pnpm lint` 全绿（p5-1 已记）；issuer 二进制 smoke 跑通多实例 worker 生命周期（2 实例起 / disable 停 / SIGINT 干净退出），supervisor 增停机日志（可观测性）；新增 `docs/multi-channel-instances.md`。所有计划项 p1-1..p6-1 均 `[x]`，等待用户验收后关闭。
 - 2026-06-26T21:42:00+08:00 p5-1 completed：前端 ChannelsPage 重写为多实例 CRUD（增表单 + 实例表 + 启停/Re-token/删除，删除提示级联 cancel）；api/admin.ts channels 区改 CRUD（listChannels→ChannelInstance[]、create/update/setChannelEnabled/deleteChannel）；types 增 `ChannelInstance`、PushCreate 增可选 `channel_id`；SetupPage `hasTelegram` 改 `some(telegram && configured)`。`pnpm build` + `pnpm lint` 全绿。
 - 2026-06-26T21:42:00+08:00 p4-1 completed：admin channels CRUD 取代单实例 configure：`GET /channels`（列实例，`channelView` 无密钥）、`POST /channels`（建，dup name→409、telegram 加密 token + 明文 bot_username）、`POST /channels/{id}`（改名/状态/config，username-only 保留 token，`encodeChannelConfig` 复用）、`POST /channels/{id}/enable|disable`、`DELETE /channels/{id}`（D7 级联 `CancelByChannelID` + 删除）；全部 operator RBAC + 审计。移除 `/channels/{type}/configure`。测试重写 `TestAdminChannelCRUD` + RBAC viewer 拒 + 非法枚举。
 - 2026-06-26T21:42:00+08:00 p3-1 completed：`PushJob.ChannelID *string`（migration `0015_pushjob_channel`：sqlite+postgres 加 nullable `channel_id`；repo 重构 `pushJobCols`/`scanPushJob`/`scanMany`）；Scheduler `Options.Route func(PushJob)(Sender,error)` 逐 job 选 sender、候选集 `ListActiveByInstance`（channel-scoped）vs `ListActiveByChannel`（legacy），路由失败 fail job；main.go push `pushRoute`（实例 token→transport，回退 default）；admin `createPushJob` 增 `channel_id` + 实例校验。测试 `TestRun_ChannelScopedRoutesToInstance`/`TestRun_RouteFailureFailsJob`。D5 落定：channel_id 可空=type 级广播，非空=单实例定向。
@@ -138,6 +139,10 @@ supervisor.Run(ctx):
 - TC-6 | stack: go | command: go test ./internal/httpapi/ -run 'TestAdminChannelCRUD\|TestAdminRBAC_Matrix\|TestAdminF2' -count=1 | result: pass | note: operator 可创建多实例（同 type 不同 name），token 落库加密、bot_username 明文；重名→409、缺 token→400、非法 type→400；改名/启停/username-only 保留 token；DELETE 级联 cancel 订阅（D7）+ 删除实例；GET 列出实例无密钥；viewer GET 可、POST 创建→403；审计记录 create/update/delete。
 - TC-7 | stack: ui | command: pnpm build (tsc -b && vite build) | result: pass | note: ChannelsPage 改为多实例 CRUD（新增表单 + 实例表：名称/类型/bot/状态 + 启停/Re-token/删除）；api/admin.ts listChannels→ChannelInstance[]、新增 create/update/setEnabled/deleteChannel；types 增 ChannelInstance + PushCreate.channel_id；SetupPage hasTelegram 改 some(active+configured)。tsc 全绿。
 - TC-7 | stack: ui | command: pnpm lint (eslint .) | result: pass | note: 0 errors（2 个既有 react-refresh 警告，非本次改动文件）。
+- p6-1 | stack: go | command: go test ./... | result: pass | note: 全量服务端测试全绿（含新增 store/telegram/push 测试）。
+- p6-1 | stack: go | command: go vet ./... && go build ./cmd/issuer | result: pass | note: vet 无告警；issuer 二进制构建成功。
+- p6-1 | stack: go | command: issuer 二进制 smoke（sqlite + 2 seeded telegram 实例 + mock chain） | result: pass | note: 日志显示 telegram-supervisor 起，逐实例 worker 起（inst-members + inst-announce）；disable inst-announce → "worker stopped reason=removed-or-disabled"（~4s 内）、inst-members 续跑；SIGINT → "all workers stopped" 干净退出（无泄漏）。新增 supervisor 停机日志（可观测性）。
+- p6-1 | stack: doc | command: 新增 docs/multi-channel-instances.md | result: pass | note: 渠道实例模型 / supervisor 生命周期 / 激活 / 推送 / 删除级联 / env fallback / 关键文件，沿用既有 feature-doc 风格。
 
 ## 7. Change Requests (append-only)
 - 2026-06-26 初始决策（草案，待执行期确认）：① 渠道实例可定址（稳定 channel_id + name，`(pool,type,name)` 唯一）；② 订阅唯一键改 `(channel_id, channel_user_id)`，同 user 跨实例独立订阅；③ worker supervisor 单点对账逐实例启停；④ 激活/推送绑实例；⑤ 既有单 telegram 迁移为 `default` 实例、env-token 作隐式 default；⑥ 删除默认级联 cancel 订阅（D7，可改为仅停用）；⑦ 本期只接 telegram，新平台后续单独排期。

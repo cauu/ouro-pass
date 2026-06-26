@@ -98,6 +98,7 @@ func (s *Supervisor) reconcile(ctx context.Context, running map[string]runningWo
 		if !ok || fingerprintOf(inst) != rw.fingerprint {
 			rw.cancel()
 			delete(running, id)
+			slog.Info("telegram supervisor: worker stopped", "instance", id, "reason", stopReason(ok))
 		}
 	}
 	// Start workers for instances not currently running (includes the just-stopped
@@ -126,4 +127,13 @@ func (s *Supervisor) reconcile(ctx context.Context, running map[string]runningWo
 // so the supervisor restarts a worker after an admin edits its token live.
 func fingerprintOf(inst domain.ChannelConfig) string {
 	return inst.Status + "|" + inst.UpdatedAt.UTC().Format(time.RFC3339Nano)
+}
+
+// stopReason labels why a worker was cancelled: gone (removed/disabled) vs
+// changed (token/config edit → restart next loop).
+func stopReason(stillWanted bool) string {
+	if stillWanted {
+		return "changed"
+	}
+	return "removed-or-disabled"
 }
