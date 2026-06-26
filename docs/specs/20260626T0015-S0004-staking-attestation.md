@@ -156,6 +156,8 @@ e = currentEpoch(now()); row = cache.Get(sch)
 - [x] p4-2 **（前端删 Rules 页，验收发现）** p4-1 删了后端 rules 端点但 Rules 前端页留着（"另计"），导致它调已删的 `/api/admin/rules`→404。端到端删除：`RulesPage.tsx`、`App.tsx` 路由、`Layout.tsx` 导航(+未用 `SlidersHorizontal` icon)、`admin.ts` `listRules`/`upsertRule`、`types.ts` `Rule`/`RuleUpsert`、`SetupPage` 的 rules 查询 + "Membership rules" 步。无替代 UI——tier 经 `PoolConfig.tier_rules` 配置，本期无专用编辑页（与 p4-1 决策一致；future spec 可加 tier_rules 编辑器）。
 - [x] p8-1 **（Telegram 渠道接通-后端，验收发现）** 根因：管理页把 bot token 写进 `ChannelConfig` 表,但 worker 只读环境变量 `OUROPASS_TELEGRAM_TOKEN`(且开机定死)、**没人读那张表** → 配了等于没配;且明文存(文案谎称加密)。修：① token **加密落库**(`telegram.EncodeToken`,field cipher,存 `bot_token_enc`),handler 校验 `bot_token` 非空;② transport 改**动态 token**(`tokenFn func()string`,每次调用解析),空 token 时 GetUpdates 静默 no-op、call 返 `ErrNotConfigured`;③ main worker **常驻**(去掉 env 门),`tokenFn`=env 优先、否则解密 DB ChannelConfig → **配置即热生效、无需重启**;④ `Deps.Cipher`;⑤ `GET /api/admin/channels` 状态端点(viewer,不回 secret)。
 - [x] p8-2 **（Telegram 渠道接通-前端，验收发现）** Channels 页显示"已配置 ✓"状态 + Setup 页 Telegram 步真实反映;`listChannels` api。
+- [x] p8-3 **（单实例 bug 修复，验收发现）** 用户问"channels 该支持多渠道/同平台多实例"——核查发现现状不仅不支持,还有 bug:handler 每次保存 `RandomID()` 新插一行(`ON CONFLICT(channel_id)` 永不冲突)、`GetByType ... LIMIT 1` 无序取任意行 → 重复保存堆孤儿行、重存 token 可能不生效。修(用户选 A=先修单实例、多实例另排):`ChannelConfigRepo.ReplaceByType`(tx 内删同 (pool,type) 旧行 + 插新行,保证一行)+ handler 改用它 + `GetByType` 加 `ORDER BY updated_at DESC`(防御性)。明确"一池一 type 一实例"为当前设计边界。
+- [ ] p9-1 **（多渠道/同平台多实例，延后/可另开 spec）** 真正支持多渠道类型 + 同平台多实例需子系统重构:渠道实例可定址(稳定 channel_id/名)、worker 按实例跑、`SubscriptionSession`/激活/推送绑到实例、管理 UI 增改删 N 实例。改动面大,用户确认延后/单独排期。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 Koios:`account_stake_history` 取真 active_stake + epochs_active;`account_info` 取 live pool/status;仅本池委托才二次拉。
@@ -207,6 +209,9 @@ e = currentEpoch(now()); row = cache.Get(sch)
 
 - 2026-06-26 p8-2 完成（Telegram 前端状态）：`listChannels` api；Channels 页加 configured/not configured 徽章 + 保存后失效 `["channels"]` + 文案改"live、no restart / 提交新 token 替换"；Setup 页 Telegram 步由硬编码 `done={false}` 改为真实 `hasTelegram`。
 - 2026-06-26 p8-2 | stack: ui | command: `pnpm build`(tsc -b && vite build) + `pnpm lint` | result: pass | note: 打包绿（JS 408KB/gzip 132KB）、lint 0 error；Channels/Setup 反映渠道配置状态。
+
+- 2026-06-26 p8-3 完成（单实例 bug 修复）：`ReplaceByType`（tx：删同 (pool,type) 行 + 插一行）替代 handler 的"每存新插行"；`GetByType` 加 `ORDER BY updated_at DESC`。**决策**：当前设计边界 = 一池一 channel_type 一实例；多渠道/多实例(p9-1)延后,需子系统重构(实例定址 + 订阅/激活/推送/worker/UI),用户确认另排。
+- 2026-06-26 p8-3 | stack: go | command: `go test ./internal/store/ ./internal/httpapi/ ./...` | result: pass | note: `TestChannelConfig_ReplaceByType`（两次配置 distinct id → 仅 1 行、GetByType 返最新 token）+ 既有渠道/配置测试绿；全仓绿。
 
 ## 7. Change Requests (append-only)
 - 2026-06-25 核心决策(累积,用户拍板):① issuer = 质押身份证明提供方,业务策略下沉 RP;② token 带精确事实(state/active_stake/epochs/since),**不分桶**;③ **删除 rules 子系统**,薄第一方 tier 映射进 `PoolConfig.tier_rules`(仅自家渠道用);④ 有效质押 = epoch active_stake 口径,pending 仅入场过渡,leaving 由 epoch 自然收敛、grace 下沉 RP;⑤ 缓存**只缓 `active`**(epoch 稳定;命中 iff snapshot_epoch==当前、本地算 epoch),pending/none 现算不缓(onboarding/bail 即时对称);⑥ Koios 失败 D8 分场景(登录 fail-closed / reconciler 软 fail-open);⑦ epoch 常量内置 per-network;⑧ **砍掉 owner 链上校验 / operator-viewer 管理(原 B)**——owner 沿用 env 配置信任;⑨ delegator 枚举(C)解耦、可延后/单独排期。

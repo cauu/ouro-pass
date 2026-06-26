@@ -64,6 +64,38 @@ func TestChannelConfigRepo(t *testing.T) {
 	}
 }
 
+// TestChannelConfig_ReplaceByType: re-configuring a channel type replaces the
+// single instance (no row pile-up), and GetByType returns the latest token.
+func TestChannelConfig_ReplaceByType(t *testing.T) {
+	ctx := context.Background()
+	st := migratedStore(t)
+	now := time.Now()
+	mk := func(id, enc string) domain.ChannelConfig {
+		return domain.ChannelConfig{
+			ChannelID: id, PoolID: "pool1", ChannelType: "telegram",
+			Config: json.RawMessage(`{"bot_token_enc":"` + enc + `"}`), Status: "active", CreatedAt: now, UpdatedAt: now,
+		}
+	}
+	// Two configures (distinct random ids, as the handler does) must leave ONE row.
+	if err := st.Channels().ReplaceByType(ctx, mk("rand-1", "AAA")); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.Channels().ReplaceByType(ctx, mk("rand-2", "BBB")); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := st.DB.QueryRow(`SELECT COUNT(*) FROM ChannelConfig WHERE pool_id='pool1' AND channel_type='telegram'`).Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("telegram rows = %d, want exactly 1 (no pile-up)", count)
+	}
+	got, _ := st.Channels().GetByType(ctx, "telegram")
+	if string(got.Config) != `{"bot_token_enc":"BBB"}` {
+		t.Fatalf("GetByType returned %s, want the latest BBB", got.Config)
+	}
+}
+
 func TestSubscriptionSession_UpsertUniqueKey(t *testing.T) {
 	ctx := context.Background()
 	st := migratedStore(t)
