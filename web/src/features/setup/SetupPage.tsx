@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Check, Circle } from "lucide-react";
 import { Link } from "react-router-dom";
-import { fetchJwks, listClients, listRules } from "@/api/admin";
+import { fetchJwks, listClients } from "@/api/admin";
 import { PageHeader } from "@/app/page";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 
@@ -25,11 +25,9 @@ function Step({ done, title, children }: { done: boolean; title: string; childre
 
 export function SetupPage() {
   const jwks = useQuery({ queryKey: ["jwks"], queryFn: fetchJwks });
-  const rules = useQuery({ queryKey: ["rules"], queryFn: listRules });
   const clients = useQuery({ queryKey: ["clients"], queryFn: listClients });
 
   const hasKey = (jwks.data?.keys?.length ?? 0) > 0;
-  const hasRule = (rules.data?.rules?.length ?? 0) > 0;
   const hasClient = (clients.data?.clients?.length ?? 0) > 0;
 
   return (
@@ -48,15 +46,6 @@ export function SetupPage() {
               <>
                 Generate one on the <Link className="underline" to="/keys">Signing Keys</Link> page to enable token
                 issuance.
-              </>
-            )}
-          </Step>
-          <Step done={hasRule} title="Membership rules">
-            {hasRule ? (
-              "At least one rule maps staking eligibility to a tier."
-            ) : (
-              <>
-                Define a rule on the <Link className="underline" to="/rules">Rules</Link> page.
               </>
             )}
           </Step>

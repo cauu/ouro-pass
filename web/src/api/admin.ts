@@ -8,8 +8,6 @@ import type {
   PushCreate,
   PushJob,
   Role,
-  Rule,
-  RuleUpsert,
   StepUpBody,
   Subscription,
 } from "@/lib/types";
@@ -47,10 +45,6 @@ export const listSubscriptions = () =>
 export const cancelSubscription = (id: string) =>
   api.post<{ cancelled: boolean }>(`/api/admin/subscriptions/${encodeURIComponent(id)}/cancel`);
 
-// ---- rules ----
-export const listRules = () => api.get<{ rules: Rule[] }>("/api/admin/rules");
-export const upsertRule = (body: RuleUpsert) =>
-  api.post<{ rule_id: string }>("/api/admin/rules", body);
 
 // ---- channels ----
 export const configureChannel = (type: string, config: unknown) =>

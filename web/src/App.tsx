@@ -9,7 +9,6 @@ import { DashboardPage } from "./features/dashboard/DashboardPage";
 import { KeysPage } from "./features/keys/KeysPage";
 import { MembersPage } from "./features/members/MembersPage";
 import { PushPage } from "./features/push/PushPage";
-import { RulesPage } from "./features/rules/RulesPage";
 import { SetupPage } from "./features/setup/SetupPage";
 import { SubscriptionsPage } from "./features/subscriptions/SubscriptionsPage";
 
@@ -27,14 +26,6 @@ const router = createBrowserRouter([
       { path: "dashboard", element: <DashboardPage /> },
       { path: "members", element: <MembersPage /> },
       { path: "subscriptions", element: <SubscriptionsPage /> },
-      {
-        path: "rules",
-        element: (
-          <RequireRole min="operator">
-            <RulesPage />
-          </RequireRole>
-        ),
-      },
       {
         path: "channels",
         element: (

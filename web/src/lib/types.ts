@@ -34,18 +34,6 @@ export interface Subscription {
   CancelledAt: string | null;
 }
 
-export interface Rule {
-  RuleID: string;
-  Name: string;
-  RuleConfig: unknown;
-  Tier: string;
-  Entitlements: string[] | null;
-  Priority: number;
-  Status: string;
-  CreatedAt: string;
-  UpdatedAt: string;
-}
-
 export interface PushJob {
   JobID: string;
   PoolID: string;
@@ -88,16 +76,6 @@ export interface StepUpBody {
   cose_key: string;
   step_up_nonce: string;
   step_up_signature: string;
-}
-
-export interface RuleUpsert {
-  rule_id: string;
-  name: string;
-  rule_config: unknown;
-  tier: string;
-  entitlements: string[];
-  priority: number;
-  status: string;
 }
 
 export interface ClientRegister {

@@ -152,6 +152,7 @@ e = currentEpoch(now()); row = cache.Get(sch)
 - [x] p4-1 rules 删除:删 `MembershipRule`/Rules 端点/引擎 tier 判定;`PoolConfig.tier_rules` + 第一方 tier 映射(渠道/push);迁移既有测试;(S0002 删 Rules 页另计)。
 - [x] p5-1 (可选/可延后) delegator 枚举:`chain.Delegators(poolID,page)` + `GET /api/admin/delegators`(**透传 Koios 分页、不缓存**)+ 测试。
 - [x] p6-1 全量 `go test ./...` + 二进制 smoke + 文档(链数据架构/口径/claims/tier)。
+- [x] p4-2 **（前端删 Rules 页，验收发现）** p4-1 删了后端 rules 端点但 Rules 前端页留着（"另计"），导致它调已删的 `/api/admin/rules`→404。端到端删除：`RulesPage.tsx`、`App.tsx` 路由、`Layout.tsx` 导航(+未用 `SlidersHorizontal` icon)、`admin.ts` `listRules`/`upsertRule`、`types.ts` `Rule`/`RuleUpsert`、`SetupPage` 的 rules 查询 + "Membership rules" 步。无替代 UI——tier 经 `PoolConfig.tier_rules` 配置，本期无专用编辑页（与 p4-1 决策一致；future spec 可加 tier_rules 编辑器）。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 Koios:`account_stake_history` 取真 active_stake + epochs_active;`account_info` 取 live pool/status;仅本池委托才二次拉。
@@ -191,6 +192,9 @@ e = currentEpoch(now()); row = cache.Get(sch)
 
 - 2026-06-26 p6-1 完成：全量验证 + 二进制 smoke + 文档。`go test ./...` 23 包 0 FAIL、`go vet ./...` + integration vet 干净。二进制 smoke：`OUROPASS_CHAIN_KIND=mock` 启动→`/healthz` 200、jwks 501（无 FIELD_KEY 正常降级）、迁移在新库正确落地（`PoolConfig.tier_rules` ✓、`StakeSnapshotCache.epochs_active` ✓、`MembershipRule` 表已 DROP 不存在）、干净关停。新增文档 `docs/staking-attestation.md`（角色/链数据映射/三态/只缓 active 缓存/claims/tier_rules/delegators/迁移清单）。
 - 2026-06-26 p6-1 | stack: go | command: `go test ./...`(23 ok/0 FAIL) + `go vet ./...` + 二进制 boot smoke + `sqlite3` 迁移核验 | result: pass | note: 全仓绿；smoke 启动→healthz200→迁移列/表核对通过→关停。
+
+- 2026-06-26 p4-2 完成（前端删 Rules 页，用户验收发现"Rules 页没变化"）：根因——p4-1 删后端 rules 端点但前端 Rules 页未动（spec 标"另计"），页调 `/api/admin/rules` 已 404。端到端删 `RulesPage.tsx` + 路由/导航/icon/api/types/Setup 步。无替代:tier 经 PoolConfig.tier_rules，本期无编辑页。`pnpm build` 绿（bundle 463KB→403KB/gzip 131KB，-60KB）、lint 0 error；全仓 web 0 残留 rules 引用。
+- 2026-06-26 p4-2 | stack: ui | command: `pnpm build`(tsc -b && vite build) + `pnpm lint` + `grep` 扫残留 | result: pass | note: 打包绿、lint 0 error、web 内 0 处 `RulesPage`/`listRules`/`/api/admin/rules` 残留。
 
 ## 7. Change Requests (append-only)
 - 2026-06-25 核心决策(累积,用户拍板):① issuer = 质押身份证明提供方,业务策略下沉 RP;② token 带精确事实(state/active_stake/epochs/since),**不分桶**;③ **删除 rules 子系统**,薄第一方 tier 映射进 `PoolConfig.tier_rules`(仅自家渠道用);④ 有效质押 = epoch active_stake 口径,pending 仅入场过渡,leaving 由 epoch 自然收敛、grace 下沉 RP;⑤ 缓存**只缓 `active`**(epoch 稳定;命中 iff snapshot_epoch==当前、本地算 epoch),pending/none 现算不缓(onboarding/bail 即时对称);⑥ Koios 失败 D8 分场景(登录 fail-closed / reconciler 软 fail-open);⑦ epoch 常量内置 per-network;⑧ **砍掉 owner 链上校验 / operator-viewer 管理(原 B)**——owner 沿用 env 配置信任;⑨ delegator 枚举(C)解耦、可延后/单独排期。
