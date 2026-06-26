@@ -132,6 +132,7 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 - [x] p6-2 **（验收反馈）** Attestor 表单砍冗余字段:删 `Ticker`/`Display name`(PoolConfig 迁移残留、无任何消费),仅留 `Label`(实例唯一显示名)+ `pool_id` + `network`。
 - [x] p6-3 **（验收 bug）** Attestor disable/delete 不生效:`attestor_id` 含 `:`(`kind:` 前缀 / 迁移 `pool_stake:`),前端 `encodeURIComponent`→`%3A`,chi 按 raw path 路由 → `{id}` 不匹配 → 静默 404。修:① 新 id 改纯 hex(`crypto.RandomID()`,URL-safe);② 迁移 `0012` id 改 `'ps-'||pool_id`(无冒号);③ update/delete handler 加 `url.PathUnescape` 兜底(旧冒号 id 经 `%3A` 也能匹配)。
 - [x] p6-4 **（验收反馈）** Tiers 前端 UI 不支持新 DSL(原来只是裸 JSON 文本框):重写 `TiersPage` 为**结构化规则构建器**——fact 下拉(从已配置 attestor 自动列 `pool:<id>.*` + 静态 `any_active`/`any_held`/`total_active_stake`)、op 下拉、ALL/ANY 组合、叶条件增删、规则排序(首匹配优先级);嵌套 `not`/嵌套表达式落"JSON 高级模式"(双向切换)。
+- [x] p6-5 **（验收反馈）** value 按 fact 类型渲染:`factType` 映射 → `any_active`/`any_held`=布尔(true/false 下拉)、`*.state`=枚举(active/pending/none 下拉)、`total_active_stake`/`*.active_stake_lovelace`/`*.epochs_active`=数字(numeric 输入);op 按类型收窄(布尔/枚举仅 `== !=`,数字 6 个);切 fact 时自动重置 value 默认值 + 校正非法 op。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 Attestor：`pool_stake` evaluator 对多池各自产出 Held/facts;注册表按 kind 实例化。
@@ -185,6 +186,9 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 
 - 2026-06-26 p6-4 完成（Tiers 结构化构建器）：`TiersPage` 重写。`availableFacts`(从 `listAttestors` 列出每个 pool_stake 的 `pool:<pool_id>.{state,active_stake_lovelace,epochs_active}` + 静态聚合事实)喂 fact 下拉;每规则 = tier 名 + ALL/ANY 组合 + 叶条件(fact 下拉 / op 下拉 / value);规则可增删/上下移(首匹配序)。`flatten`/`toWhen`/`serialize` 在 builder 模型 ↔ `{tier,when}` DSL 间双向转换;`not`/嵌套条件标为 advanced,落 JSON 模式编辑(builder↔JSON 切换)。空条件=catch-all(`when` omit)。
 - 2026-06-26 p6-4 | stack: ui | command: `pnpm build && pnpm lint` + `make web` | result: pass | note: TC-8(UI)。`tsc -b && vite build` 绿(JS 415KB/gzip 134KB)、`pnpm lint` 0 error(2 既有 warning);嵌入 bundle 含 builder 文案(`Add condition`/`Back to builder`/`Always matches`);二进制重 build。构建器产出的 `{tier,when}` 即 p3-1 已测的 DSL(`tier.Validate`/`Eval` + `TestAdminTierRules` 端点覆盖),无需新后端测试。
+
+- 2026-06-26 p6-5 完成（value 按类型渲染）：`factType(fact)→bool|state|number|text`;value 组件分支:bool=true/false 下拉、state=active/pending/none 下拉、number=numeric Input;`opsFor(type)` 收窄 op(bool/state 仅 `==`/`!=`,number 全 6);`setFact` 切 fact 时按新类型 `defaultValueFor` 重置 value、非法 op 回 `==`;`+ Add condition` 默认值也按默认 fact 类型给。未知/自定义 fact → text + 全 op + 保留原值为额外 option(兼容 JSON 高级写法)。
+- 2026-06-26 p6-5 | stack: ui | command: `pnpm build && pnpm lint` + `make web` | result: pass | note: TC-8(UI)。`tsc -b && vite build` 绿(JS 416KB/gzip 134KB)、`pnpm lint` 0 error;嵌入 SPA 重 stage、二进制重 build。产出仍是 p3-1 已测 DSL(值为字符串:bool→"true"/"false"、state→"active"…、number→十进制串),后端 `tier.Eval` 的 `compare`(数值 big.Int、bool/str 等值)原样消费,无需新后端测试。
 
 ## 7. Change Requests (append-only)
 - 2026-06-26 初始决策（草案，用户已认可主线）：① subject 不变=钱包 stake credential;② pool 降格为 `AttestorConfig` 的一个 `Kind`(pool_stake),多池=多条,NFT 预留;③ token=`credentials` 自描述数组;④ tier_rules 全局、对**聚合事实**求值(订阅判定+tier);⑤ 薄闸=持任一 attestor(ANY,可配);⑥ 去 `OUROPASS_POOL_ID`,全走后端配置,加部署级 `OUROPASS_ISSUER`(`iss` 来源)。

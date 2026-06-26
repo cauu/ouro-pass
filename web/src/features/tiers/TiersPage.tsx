@@ -11,8 +11,31 @@ import { Select } from "@/ui/select";
 import { Textarea } from "@/ui/textarea";
 import { useToast } from "@/ui/toast";
 
-const OPS = ["==", "!=", ">=", ">", "<=", "<"];
+const NUM_OPS = ["==", "!=", ">=", ">", "<=", "<"];
+const EQ_OPS = ["==", "!="];
 const STATIC_FACTS = ["any_active", "any_held", "total_active_stake"];
+const STATE_VALUES = ["active", "pending", "none"];
+
+type FactType = "bool" | "state" | "number" | "text";
+
+// factType decides which value editor + which operators a fact gets, so the value
+// component matches the fact (boolean → true/false, state → enum, stake → number).
+function factType(fact: string): FactType {
+  if (fact === "any_active" || fact === "any_held") return "bool";
+  if (fact === "total_active_stake") return "number";
+  if (fact.endsWith(".state")) return "state";
+  if (fact.endsWith(".active_stake_lovelace") || fact.endsWith(".epochs_active") || fact.endsWith(".count"))
+    return "number";
+  return "text";
+}
+function opsFor(t: FactType): string[] {
+  return t === "bool" || t === "state" ? EQ_OPS : NUM_OPS;
+}
+function defaultValueFor(t: FactType): string {
+  if (t === "bool") return "true";
+  if (t === "state") return "active";
+  return "";
+}
 
 interface Leaf {
   fact: string;
@@ -111,6 +134,21 @@ export function TiersPage() {
       [next[i], next[j]] = [next[j], next[i]];
       return next;
     });
+  const patchLeaf = (i: number, j: number, partial: Partial<Leaf>) =>
+    update(i, (x) => ({ ...x, leaves: x.leaves.map((y, yj) => (yj === j ? { ...y, ...partial } : y)) }));
+  // Changing the fact re-types the row: reset value to the new type's default and
+  // drop an operator the new type doesn't allow.
+  const setFact = (i: number, j: number, fact: string) =>
+    update(i, (x) => ({
+      ...x,
+      leaves: x.leaves.map((y, yj) => {
+        if (yj !== j) return y;
+        const t = factType(fact);
+        return { fact, op: opsFor(t).includes(y.op) ? y.op : "==", value: defaultValueFor(t) };
+      }),
+    }));
+  const removeLeaf = (i: number, j: number) =>
+    update(i, (x) => ({ ...x, leaves: x.leaves.filter((_, yj) => yj !== j) }));
 
   async function save() {
     setBusy(true);
@@ -241,74 +279,78 @@ export function TiersPage() {
                           )}
                           {r.leaves.length > 1 && <span className="text-muted-foreground">of:</span>}
                         </div>
-                        {r.leaves.map((l, j) => (
-                          <div key={j} className="flex items-center gap-2">
-                            <Select
-                              value={facts.includes(l.fact) ? l.fact : "__custom"}
-                              onChange={(e) =>
-                                update(i, (x) => ({
-                                  ...x,
-                                  leaves: x.leaves.map((y, yj) =>
-                                    yj === j ? { ...y, fact: e.target.value === "__custom" ? y.fact : e.target.value } : y,
-                                  ),
-                                }))
-                              }
-                            >
-                              {facts.map((f) => (
-                                <option key={f} value={f}>
-                                  {f}
-                                </option>
-                              ))}
-                              {!facts.includes(l.fact) && <option value="__custom">{l.fact || "(custom)"}</option>}
-                            </Select>
-                            <Select
-                              className="max-w-[80px]"
-                              value={l.op}
-                              onChange={(e) =>
-                                update(i, (x) => ({
-                                  ...x,
-                                  leaves: x.leaves.map((y, yj) => (yj === j ? { ...y, op: e.target.value } : y)),
-                                }))
-                              }
-                            >
-                              {OPS.map((o) => (
-                                <option key={o} value={o}>
-                                  {o}
-                                </option>
-                              ))}
-                            </Select>
-                            <Input
-                              className="max-w-[220px]"
-                              placeholder="value (e.g. true / 1000000)"
-                              value={l.value}
-                              onChange={(e) =>
-                                update(i, (x) => ({
-                                  ...x,
-                                  leaves: x.leaves.map((y, yj) => (yj === j ? { ...y, value: e.target.value } : y)),
-                                }))
-                              }
-                            />
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() =>
-                                update(i, (x) => ({ ...x, leaves: x.leaves.filter((_, yj) => yj !== j) }))
-                              }
-                            >
-                              ✕
-                            </Button>
-                          </div>
-                        ))}
+                        {r.leaves.map((l, j) => {
+                          const t = factType(l.fact);
+                          return (
+                            <div key={j} className="flex items-center gap-2">
+                              <Select
+                                value={facts.includes(l.fact) ? l.fact : "__custom"}
+                                onChange={(e) => {
+                                  if (e.target.value !== "__custom") setFact(i, j, e.target.value);
+                                }}
+                              >
+                                {facts.map((f) => (
+                                  <option key={f} value={f}>
+                                    {f}
+                                  </option>
+                                ))}
+                                {!facts.includes(l.fact) && (
+                                  <option value="__custom">{l.fact || "(custom)"}</option>
+                                )}
+                              </Select>
+                              <Select
+                                className="max-w-[80px]"
+                                value={l.op}
+                                onChange={(e) => patchLeaf(i, j, { op: e.target.value })}
+                              >
+                                {opsFor(t).map((o) => (
+                                  <option key={o} value={o}>
+                                    {o}
+                                  </option>
+                                ))}
+                              </Select>
+                              {t === "bool" ? (
+                                <Select value={l.value || "true"} onChange={(e) => patchLeaf(i, j, { value: e.target.value })}>
+                                  <option value="true">true</option>
+                                  <option value="false">false</option>
+                                </Select>
+                              ) : t === "state" ? (
+                                <Select value={l.value || "active"} onChange={(e) => patchLeaf(i, j, { value: e.target.value })}>
+                                  {STATE_VALUES.map((s) => (
+                                    <option key={s} value={s}>
+                                      {s}
+                                    </option>
+                                  ))}
+                                  {l.value && !STATE_VALUES.includes(l.value) && (
+                                    <option value={l.value}>{l.value}</option>
+                                  )}
+                                </Select>
+                              ) : (
+                                <Input
+                                  className="max-w-[220px]"
+                                  inputMode={t === "number" ? "numeric" : undefined}
+                                  placeholder={t === "number" ? "lovelace, e.g. 1000000000000" : "value"}
+                                  value={l.value}
+                                  onChange={(e) => patchLeaf(i, j, { value: e.target.value })}
+                                />
+                              )}
+                              <Button variant="ghost" size="sm" onClick={() => removeLeaf(i, j)}>
+                                ✕
+                              </Button>
+                            </div>
+                          );
+                        })}
                         <div>
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() =>
+                            onClick={() => {
+                              const f0 = facts[0] ?? "any_active";
                               update(i, (x) => ({
                                 ...x,
-                                leaves: [...x.leaves, { fact: facts[0] ?? "any_active", op: "==", value: "" }],
-                              }))
-                            }
+                                leaves: [...x.leaves, { fact: f0, op: "==", value: defaultValueFor(factType(f0)) }],
+                              }));
+                            }}
                           >
                             + Add condition
                           </Button>
