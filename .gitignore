@@ -35,3 +35,4 @@ tmp/
 
 # ---- Claude Code (local agent config) ----
 .claude/
+code_review/
