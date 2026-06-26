@@ -318,7 +318,7 @@ func (h *apiHandlers) adminConfigureChannel(w http.ResponseWriter, r *http.Reque
 	// One instance per channel type (current design): replace any previous config
 	// for this (pool, type) so re-saving reliably updates instead of piling up rows.
 	if err := h.d.Store.Channels().ReplaceByType(r.Context(), domain.ChannelConfig{
-		ChannelID: id, PoolID: h.d.PoolID, ChannelType: channelType, Config: body.Config,
+		ChannelID: id, PoolID: h.d.PoolID, ChannelType: channelType, Name: "default", Config: body.Config,
 		Status: "active", CreatedAt: now, UpdatedAt: now,
 	}); err != nil {
 		serverError(w, r, err)

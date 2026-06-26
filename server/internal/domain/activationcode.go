@@ -16,6 +16,7 @@ const (
 type ActivationCode struct {
 	Code                string
 	StakeCredentialHash string
+	ChannelID           string // S0005: the instance this code binds to
 	ChannelType         string
 	Status              ActivationStatus
 	ExpiresAt           time.Time

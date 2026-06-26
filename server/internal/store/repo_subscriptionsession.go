@@ -14,16 +14,17 @@ type SubscriptionRepo struct{ s *Store }
 // Subscriptions returns a repo bound to this store.
 func (s *Store) Subscriptions() *SubscriptionRepo { return &SubscriptionRepo{s} }
 
-// Upsert inserts or replaces a session keyed by (pool, channel_type, channel_user_id).
+// Upsert inserts or replaces a session keyed by (channel_id, channel_user_id) —
+// the S0005 instance-scoped unique key.
 func (r *SubscriptionRepo) Upsert(ctx context.Context, x domain.SubscriptionSession) error {
 	_, err := r.s.DB.ExecContext(ctx, r.s.Rebind(`
-		INSERT INTO SubscriptionSession (session_id, pool_id, stake_credential_hash, channel_type, channel_user_id, channel_account_id, status, tier, topics, entitlements, created_at, last_verified_at, expires_at, cancelled_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT (pool_id, channel_type, channel_user_id) DO UPDATE SET
+		INSERT INTO SubscriptionSession (session_id, pool_id, stake_credential_hash, channel_id, channel_type, channel_user_id, channel_account_id, status, tier, topics, entitlements, created_at, last_verified_at, expires_at, cancelled_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT (channel_id, channel_user_id) DO UPDATE SET
 			stake_credential_hash=excluded.stake_credential_hash, status=excluded.status, tier=excluded.tier,
 			topics=excluded.topics, entitlements=excluded.entitlements, last_verified_at=excluded.last_verified_at,
 			expires_at=excluded.expires_at, cancelled_at=excluded.cancelled_at`),
-		x.SessionID, x.PoolID, x.StakeCredentialHash, x.ChannelType, x.ChannelUserID, nullStr(x.ChannelAccountID),
+		x.SessionID, x.PoolID, x.StakeCredentialHash, x.ChannelID, x.ChannelType, x.ChannelUserID, nullStr(x.ChannelAccountID),
 		string(x.Status), x.Tier, encodeStrings(x.Topics), encodeStrings(x.Entitlements),
 		ts(x.CreatedAt), ts(x.LastVerifiedAt), ts(x.ExpiresAt), tsPtr(x.CancelledAt))
 	return err
@@ -95,7 +96,7 @@ func (r *SubscriptionRepo) CancelByStakeCredential(ctx context.Context, sch stri
 	return res.RowsAffected()
 }
 
-const subscriptionCols = `SELECT session_id, pool_id, stake_credential_hash, channel_type, channel_user_id, channel_account_id, status, tier, topics, entitlements, created_at, last_verified_at, expires_at, cancelled_at FROM SubscriptionSession`
+const subscriptionCols = `SELECT session_id, pool_id, stake_credential_hash, channel_id, channel_type, channel_user_id, channel_account_id, status, tier, topics, entitlements, created_at, last_verified_at, expires_at, cancelled_at FROM SubscriptionSession`
 
 func (r *SubscriptionRepo) scanOne(row rowScanner) (*domain.SubscriptionSession, error) {
 	x, err := scanSubscription(row)
@@ -109,7 +110,7 @@ func scanSubscription(row rowScanner) (*domain.SubscriptionSession, error) {
 	var x domain.SubscriptionSession
 	var status, tier, topics, ents, created, lastVer, expires string
 	var acct, cancelled sql.NullString
-	if err := row.Scan(&x.SessionID, &x.PoolID, &x.StakeCredentialHash, &x.ChannelType, &x.ChannelUserID,
+	if err := row.Scan(&x.SessionID, &x.PoolID, &x.StakeCredentialHash, &x.ChannelID, &x.ChannelType, &x.ChannelUserID,
 		&acct, &status, &tier, &topics, &ents, &created, &lastVer, &expires, &cancelled); err != nil {
 		return nil, err
 	}

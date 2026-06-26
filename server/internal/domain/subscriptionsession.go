@@ -13,11 +13,14 @@ const (
 )
 
 // SubscriptionSession is a member's subscription on a channel — server-side
-// state (§6.2). Unique on (pool_id, channel_type, channel_user_id).
+// state (§6.2). S0005: bound to a specific channel instance via ChannelID, and
+// unique on (channel_id, channel_user_id) so one channel user may subscribe to
+// several instances of the same platform independently.
 type SubscriptionSession struct {
 	SessionID           string
 	PoolID              string
 	StakeCredentialHash string
+	ChannelID           string
 	ChannelType         string
 	ChannelUserID       string
 	ChannelAccountID    *string

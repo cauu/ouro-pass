@@ -18,9 +18,9 @@ func (s *Store) ActivationCodes() *ActivationCodeRepo { return &ActivationCodeRe
 // Create inserts an activation code (code is a hash or the activation token jti).
 func (r *ActivationCodeRepo) Create(ctx context.Context, a domain.ActivationCode) error {
 	_, err := r.s.DB.ExecContext(ctx, r.s.Rebind(`
-		INSERT INTO ActivationCode (code, stake_credential_hash, channel_type, status, expires_at, consumed_at, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`),
-		a.Code, a.StakeCredentialHash, a.ChannelType, string(a.Status), ts(a.ExpiresAt), tsPtr(a.ConsumedAt), ts(a.CreatedAt))
+		INSERT INTO ActivationCode (code, stake_credential_hash, channel_id, channel_type, status, expires_at, consumed_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`),
+		a.Code, a.StakeCredentialHash, a.ChannelID, a.ChannelType, string(a.Status), ts(a.ExpiresAt), tsPtr(a.ConsumedAt), ts(a.CreatedAt))
 	return err
 }
 
@@ -33,9 +33,9 @@ func (r *ActivationCodeRepo) Consume(ctx context.Context, code, channelType stri
 		var status, expires, created string
 		var consumed sql.NullString
 		err := tx.QueryRowContext(ctx, r.s.Rebind(`
-			SELECT code, stake_credential_hash, channel_type, status, expires_at, consumed_at, created_at
+			SELECT code, stake_credential_hash, channel_id, channel_type, status, expires_at, consumed_at, created_at
 			FROM ActivationCode WHERE code = ?`), code).
-			Scan(&a.Code, &a.StakeCredentialHash, &a.ChannelType, &status, &expires, &consumed, &created)
+			Scan(&a.Code, &a.StakeCredentialHash, &a.ChannelID, &a.ChannelType, &status, &expires, &consumed, &created)
 		if errors.Is(err, sql.ErrNoRows) {
 			return domain.ErrNotFound
 		}
