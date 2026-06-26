@@ -28,6 +28,7 @@ type Scheduler struct {
 	subs        *store.SubscriptionRepo
 	deliveries  *store.DeliveryLogRepo
 	sender      Sender
+	route       func(domain.PushJob) (Sender, error)
 	limiter     *rate.Limiter
 	maxAttempts int
 	backoff     time.Duration
@@ -40,6 +41,9 @@ type Options struct {
 	Burst       int
 	MaxAttempts int
 	Backoff     time.Duration
+	// Route resolves the Sender for a job — S0005 p3-1 per-instance delivery. When
+	// nil the scheduler uses the single fixed Sender (legacy type-level fan-out).
+	Route func(domain.PushJob) (Sender, error)
 }
 
 // NewScheduler builds a push scheduler.
@@ -58,7 +62,7 @@ func NewScheduler(st *store.Store, sender Sender, opt Options) *Scheduler {
 	}
 	return &Scheduler{
 		jobs: st.PushJobs(), subs: st.Subscriptions(), deliveries: st.DeliveryLogs(),
-		sender:      sender,
+		sender: sender, route: opt.Route,
 		limiter:     rate.NewLimiter(rate.Limit(opt.RatePerSec), opt.Burst),
 		maxAttempts: opt.MaxAttempts, backoff: opt.Backoff, now: time.Now,
 	}
@@ -78,7 +82,29 @@ func (s *Scheduler) Run(ctx context.Context, job domain.PushJob) (Result, error)
 	if err := s.jobs.SetStatus(ctx, job.JobID, domain.PushRunning); err != nil {
 		return Result{}, err
 	}
-	candidates, err := s.subs.ListActiveByChannel(ctx, job.PoolID, job.ChannelType)
+	// Resolve the per-job sender (S0005 p3-1): a channel-scoped job sends through
+	// its instance's transport. A routing failure (e.g. unconfigured token) fails
+	// the job rather than silently delivering through the wrong channel.
+	sender := s.sender
+	if s.route != nil {
+		sr, err := s.route(job)
+		if err != nil {
+			slog.Warn("push: route failed", "job", job.JobID, "err", err)
+			_ = s.jobs.SetStatus(ctx, job.JobID, domain.PushFailed)
+			return Result{}, err
+		}
+		sender = sr
+	}
+
+	// A channel-scoped job targets exactly that instance's subscribers; an unscoped
+	// job keeps the legacy type-level fan-out.
+	var candidates []domain.SubscriptionSession
+	var err error
+	if job.ChannelID != nil && *job.ChannelID != "" {
+		candidates, err = s.subs.ListActiveByInstance(ctx, *job.ChannelID)
+	} else {
+		candidates, err = s.subs.ListActiveByChannel(ctx, job.PoolID, job.ChannelType)
+	}
 	if err != nil {
 		return Result{}, err
 	}
@@ -91,7 +117,7 @@ func (s *Scheduler) Run(ctx context.Context, job domain.PushJob) (Result, error)
 		if !matches(job, sess) {
 			continue
 		}
-		attempts, sendErr := s.deliver(ctx, sess.ChannelUserID, job.Title+"\n"+job.Content)
+		attempts, sendErr := s.deliver(ctx, sender, sess.ChannelUserID, job.Title+"\n"+job.Content)
 		status := domain.DeliverySent
 		var errMsg *string
 		if sendErr != nil {
@@ -126,13 +152,13 @@ func (s *Scheduler) Run(ctx context.Context, job domain.PushJob) (Result, error)
 // deliver sends with rate limiting + bounded backoff retry; returns attempts.
 // One rate-limit token is spent per recipient (not per retry), so a flaky
 // recipient can't drain the shared send budget for everyone else (p12-4).
-func (s *Scheduler) deliver(ctx context.Context, chatID, text string) (int, error) {
+func (s *Scheduler) deliver(ctx context.Context, sender Sender, chatID, text string) (int, error) {
 	if err := s.limiter.Wait(ctx); err != nil {
 		return 0, err
 	}
 	var lastErr error
 	for attempt := 1; attempt <= s.maxAttempts; attempt++ {
-		if lastErr = s.sender.SendMessage(ctx, chatID, text); lastErr == nil {
+		if lastErr = sender.SendMessage(ctx, chatID, text); lastErr == nil {
 			return attempt, nil
 		}
 		if attempt < s.maxAttempts {

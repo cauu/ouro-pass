@@ -137,10 +137,10 @@ func run() error {
 		supervisor := telegram.NewSupervisor(st, factory, cfg.Scope, telegramReconcileInterval, envInstance)
 		startWorker("telegram-supervisor", func() { supervisor.Run(sigCtx) })
 
-		// The push worker delivers admin-created PushJobs over a Telegram transport
-		// whose token is resolved live (env first, else the default DB instance).
-		// Per-instance push targeting is wired in p3-1.
-		pushTokenFn := func() string {
+		// The push worker delivers admin-created PushJobs. A channel-scoped job is
+		// routed through its target instance's transport; an unscoped (legacy) job
+		// uses a token resolved live (env first, else the default DB instance).
+		pushDefaultTokenFn := func() string {
 			if cfg.TelegramToken != "" {
 				return cfg.TelegramToken
 			}
@@ -157,7 +157,22 @@ func run() error {
 			}
 			return tok
 		}
-		pushWorker := push.NewWorker(st, telegram.NewBotAPITransport(pushTokenFn), pushPollInterval, push.Options{})
+		defaultSender := telegram.NewBotAPITransport(pushDefaultTokenFn)
+		pushRoute := func(job domain.PushJob) (push.Sender, error) {
+			if job.ChannelID == nil || *job.ChannelID == "" {
+				return defaultSender, nil
+			}
+			inst, err := st.Channels().Get(context.Background(), *job.ChannelID)
+			if err != nil {
+				return nil, err
+			}
+			tok, err := instanceToken(cfg, deps.Cipher, *inst)
+			if err != nil {
+				return nil, err
+			}
+			return telegram.NewBotAPITransport(func() string { return tok }), nil
+		}
+		pushWorker := push.NewWorker(st, defaultSender, pushPollInterval, push.Options{Route: pushRoute})
 		startWorker("push", func() { pushWorker.Run(sigCtx) })
 
 		recon := reconciliation.New(st, deps.OAuth, chainSrc, cfg.Scope)

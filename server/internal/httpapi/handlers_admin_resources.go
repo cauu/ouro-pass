@@ -344,6 +344,7 @@ func (h *apiHandlers) adminCreatePushJob(w http.ResponseWriter, r *http.Request)
 		Title       string `json:"title"`
 		Content     string `json:"content"`
 		ChannelType string `json:"channel_type"`
+		ChannelID   string `json:"channel_id"`
 		Target      struct {
 			Tier        string `json:"tier"`
 			Topic       string `json:"topic"`
@@ -358,10 +359,20 @@ func (h *apiHandlers) adminCreatePushJob(w http.ResponseWriter, r *http.Request)
 		respond.Error(w, http.StatusBadRequest, "invalid_request", "unsupported channel_type")
 		return
 	}
+	// A channel-scoped job (S0005 p3-1) must target an existing active instance of
+	// the declared type, so delivery routes to the right bot.
+	if body.ChannelID != "" {
+		inst, err := h.d.Store.Channels().Get(r.Context(), body.ChannelID)
+		if err != nil || inst.Status != "active" || inst.ChannelType != body.ChannelType {
+			respond.Error(w, http.StatusBadRequest, "invalid_request", "unknown or inactive channel instance for channel_type")
+			return
+		}
+	}
 	u := adminFromCtx(r.Context())
 	id := crypto.RandomID()
 	if err := h.d.Store.PushJobs().Create(r.Context(), domain.PushJob{
-		JobID: id, PoolID: h.d.PoolID, Title: body.Title, Content: body.Content, ChannelType: body.ChannelType,
+		JobID: id, PoolID: h.d.PoolID, Title: body.Title, Content: body.Content,
+		ChannelID: ptrIfSet(body.ChannelID), ChannelType: body.ChannelType,
 		TargetTier: ptrIfSet(body.Target.Tier), TargetTopic: ptrIfSet(body.Target.Topic),
 		RequiredEntitlement: ptrIfSet(body.Target.Entitlement), Status: domain.PushScheduled,
 		CreatedBy: u.AdminID, CreatedAt: time.Now(),

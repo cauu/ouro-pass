@@ -98,7 +98,7 @@ supervisor.Run(ctx):
 - [x] p1-2 repo：渠道实例 CRUD（List/Get/Create/Update/SetStatus/Delete by id）；订阅/激活 by `channel_id`；单测。
 - [x] p2-1 worker supervisor：逐实例 telegram worker + 动态启停 + 子 ctx + 每实例 token/offset；集成测试（增/删/停 → worker 起停）。
 - [x] p2-2 激活绑实例：`/bind` 深链 + 激活码带 `channel_id`；处理器写 `subscription.channel_id`；e2e。
-- [ ] p3-1 推送绑实例：`PushJob.channel_id` 定向 + 经实例 transport 投递（D5 语义落定）。
+- [x] p3-1 推送绑实例：`PushJob.channel_id` 定向 + 经实例 transport 投递（D5 语义落定：可空=type 级广播；非空=单实例定向，最简）。
 - [ ] p4-1 admin API：channels CRUD 端点 + RBAC + 审计；删除级联（D7）。
 - [ ] p5-1 前端：Channels 页管理 N 实例（列表 + 增/改/删/启停 + configured 状态）；Setup 反映；类型/ api。
 - [ ] p6-1 全量 `go test ./...` + `pnpm build/lint` + 二进制 smoke（多实例 worker 起停）+ 文档（渠道实例模型/生命周期）。
@@ -121,6 +121,7 @@ supervisor.Run(ctx):
 - 2026-06-26T21:42:00+08:00 p1-2 completed：`ChannelConfigRepo` by-id CRUD（Create/Get/List/ListActive/SetStatus/Delete + `scanChannel`）；`SubscriptionRepo` by-instance（GetByInstanceUser/ListActiveByInstance/CancelByChannelID）；`domain.ErrConflict`；repo 单测。
 - 2026-06-26T21:42:00+08:00 p2-1 completed：`telegram.Supervisor`（Run/desired/reconcile + `Runner`/`Factory` 注入）逐实例对账启停、子 ctx、token 变更指纹重建、env-token 隐式 default fallback；`telegram.NewInstanceProcessor`（channel_id 感知 lookup/写订阅）；main.go 用 supervisor 取代单 worker，新增 `instanceToken`/`telegramReconcileInterval`/`envInstanceID`，push 暂沿用 type 级 token（p3-1 改实例级）。集成测试 `TestSupervisor_*`（-race）。
 - 2026-06-26T21:42:00+08:00 p2-2 completed：激活码带 `channel_id`（`CreateActivation` 增参 + 落库）；`Consume` 增 channelID 实例校验（绑定码仅本实例可兑，遗留无绑定码保持 type 级）；processor.activate 写 `subscription.channel_id`（rec.ChannelID 优先，回退 bot 自身实例）；activation handler 按 `channel_id` 解析实例 `bot_username` 构深链、校验实例存活；telegram config 增明文 `bot_username` + `EncodeConfig`/`DecodeUsername`。测试 `TestActivate_InstanceBinding`/`TestDecodeUsername`。
+- 2026-06-26T21:42:00+08:00 p3-1 completed：`PushJob.ChannelID *string`（migration `0015_pushjob_channel`：sqlite+postgres 加 nullable `channel_id`；repo 重构 `pushJobCols`/`scanPushJob`/`scanMany`）；Scheduler `Options.Route func(PushJob)(Sender,error)` 逐 job 选 sender、候选集 `ListActiveByInstance`（channel-scoped）vs `ListActiveByChannel`（legacy），路由失败 fail job；main.go push `pushRoute`（实例 token→transport，回退 default）；admin `createPushJob` 增 `channel_id` + 实例校验。测试 `TestRun_ChannelScopedRoutesToInstance`/`TestRun_RouteFailureFailsJob`。D5 落定：channel_id 可空=type 级广播，非空=单实例定向。
 
 ## 6. Validation Evidence (append-only)
 - TC-1 | stack: go | command: go test ./internal/store/ -run TestMigrate -count=1 | result: pass | note: 0014 回填既有 telegram 渠道 name='default' + 订阅/激活 channel_id；新唯一键 (channel_id, channel_user_id) 允许同 user 跨实例订阅、拒绝同实例重复。
@@ -130,6 +131,8 @@ supervisor.Run(ctx):
 - TC-3 | stack: go | command: go test ./internal/worker/telegram/ ./internal/e2e/ ./internal/worker/push/ -count=1 | result: pass | note: Processor 实例化（NewInstanceProcessor + lookup by (channel_id,user)）+ main.go supervisor 接线后既有 bot/e2e/push 未回归。
 - TC-4 | stack: go | command: go test ./internal/worker/telegram/ -run 'TestActivate_InstanceBinding\|TestDecodeUsername' -count=1 | result: pass | note: 实例 A 绑定码被实例 B bot 拒（ErrPurpose→Invalid），被 A 接受并写 subscription.channel_id=chA；同 user 在 B 用 B 绑定码得独立订阅（不同 session_id、channel_id=chB）；两实例 /status 并存；bot_username 明文存储 + DecodeUsername 供深链。
 - TC-4 | stack: go | command: go test ./internal/core/oauth/ ./internal/httpapi/ ./internal/store/ ./internal/e2e/ -count=1 | result: pass | note: CreateActivation 增 channel_id 参数 + 记录到激活码；activation handler 按 channel_id 解析实例 bot_username 构深链、校验实例 active/telegram；Consume 增 channelID 实例校验；既有激活/oauth/e2e 未回归。
+- TC-5 | stack: go | command: go test ./internal/worker/push/ -run 'TestRun_ChannelScoped\|TestRun_RouteFailure' -count=1 | result: pass | note: channel-scoped job 仅投本实例订阅（ListActiveByInstance）经 Route 解析的本实例 sender，跨实例不串（senderB 零投递）；路由失败→job 置 failed、零投递；D5 落定 channel_id 可空=type 级、非空=单实例。
+- TC-5 | stack: go | command: go test ./internal/worker/push/ ./internal/httpapi/ ./internal/store/ -count=1 | result: pass | note: PushJob.channel_id（domain/migration 0015/repo scan 重构）+ Scheduler Route 选 sender + 候选集按实例；admin createPushJob 增 channel_id 并校验实例存活/类型；既有 type 级推送（Route=nil）未回归。
 
 ## 7. Change Requests (append-only)
 - 2026-06-26 初始决策（草案，待执行期确认）：① 渠道实例可定址（稳定 channel_id + name，`(pool,type,name)` 唯一）；② 订阅唯一键改 `(channel_id, channel_user_id)`，同 user 跨实例独立订阅；③ worker supervisor 单点对账逐实例启停；④ 激活/推送绑实例；⑤ 既有单 telegram 迁移为 `default` 实例、env-token 作隐式 default；⑥ 删除默认级联 cancel 订阅（D7，可改为仅停用）；⑦ 本期只接 telegram，新平台后续单独排期。
