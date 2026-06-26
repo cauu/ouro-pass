@@ -1,11 +1,11 @@
 # Ouro Pass 多渠道 / 同平台多实例
 
 Spec-ID: S0005
-Status: draft
+Status: active
 Created Time: 2026-06-26T11:32:00+08:00
-Start Time:
+Start Time: 2026-06-26T21:42:00+08:00
 Completion Time:
-Previous Spec-ID:
+Previous Spec-ID: S0006
 Closure Reason:
 
 ## 1. Requirement Details
@@ -115,6 +115,7 @@ supervisor.Run(ctx):
 
 ## 5. Execution Log (append-only)
 - 2026-06-26 S0005 草案创建（draft）：承接 S0004 p9-1（多渠道/同平台多实例）。把渠道实例提升为可定址一等实体，贯穿 worker/订阅/激活/推送/UI；本期运行时仍只接 telegram，多平台模型-ready。尚未执行。
+- 2026-06-26T21:42:00+08:00 S0005 激活（draft→active）：从 docs/specs/draft/ 提升为唯一 active spec，Start Time 落定，Previous Spec-ID=S0006。spec 转入 append-only；执行计划 p1-1 起逐项交付。
 
 ## 6. Validation Evidence (append-only)
 
