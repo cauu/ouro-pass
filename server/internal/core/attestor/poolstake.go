@@ -12,13 +12,11 @@ import (
 )
 
 // PoolStakeParams configures a pool_stake attestor: which pool, on which network
-// (S0006 D2/D4). Ticker/Name are display-only carry-overs from the pool's identity
-// (the former PoolConfig fields).
+// (S0006 D2/D4). The attestor's human name is its AttestorConfig.Label; the pool is
+// fully identified by pool_id + network, so no extra branding fields are kept.
 type PoolStakeParams struct {
 	PoolID  string `json:"pool_id"`
 	Network string `json:"network"`
-	Ticker  string `json:"ticker,omitempty"`
-	Name    string `json:"name,omitempty"`
 }
 
 // PoolStakeAttestor attests a subject's membership in one pool, wrapping the S0004

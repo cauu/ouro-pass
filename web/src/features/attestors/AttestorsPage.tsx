@@ -17,8 +17,6 @@ interface AttestorForm {
   label: string;
   poolId: string;
   network: string;
-  ticker: string;
-  name: string;
 }
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
@@ -34,7 +32,7 @@ export function AttestorsPage() {
   const attestors = q.data?.attestors ?? [];
 
   const { register, handleSubmit, reset } = useForm<AttestorForm>({
-    defaultValues: { label: "", poolId: "", network: "mainnet", ticker: "", name: "" },
+    defaultValues: { label: "", poolId: "", network: "mainnet" },
   });
 
   const invalidate = () => void qc.invalidateQueries({ queryKey: ["attestors"] });
@@ -50,7 +48,7 @@ export function AttestorsPage() {
       createAttestor({
         kind: "pool_stake",
         label: v.label,
-        params: { pool_id: v.poolId, network: v.network, ticker: v.ticker, name: v.name },
+        params: { pool_id: v.poolId, network: v.network },
       }),
     onSuccess: () => {
       toast({ title: "Attestor added", variant: "success" });
@@ -90,7 +88,7 @@ export function AttestorsPage() {
         </CardHeader>
         <CardContent>
           <form className="grid gap-3" onSubmit={handleSubmit((v) => create.mutate(v))}>
-            <Field label="Label" hint="Unique name, e.g. members or announcements">
+            <Field label="Label" hint="This attestor's display name (unique), e.g. members or announcements">
               <Input autoComplete="off" {...register("label", { required: true })} />
             </Field>
             <Field label="Pool ID" hint="bech32 pool id (pool1…)">
@@ -102,12 +100,6 @@ export function AttestorsPage() {
                 <option value="preprod">preprod</option>
                 <option value="preview">preview</option>
               </Select>
-            </Field>
-            <Field label="Ticker (optional)">
-              <Input autoComplete="off" {...register("ticker")} />
-            </Field>
-            <Field label="Display name (optional)">
-              <Input autoComplete="off" {...register("name")} />
             </Field>
             <div>
               <Button type="submit" disabled={create.isPending}>

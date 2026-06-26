@@ -129,6 +129,7 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 - [x] p5-1 新鲜度/缓存泛化：`CachedSource` per-attestor 策略;质押路径回归。
 - [x] p6-1 admin API + UI：attestor CRUD + 全局 tier_rules 编辑(扩展 Tiers 页);RBAC + 审计。
 - [x] p7-1 全量 `go test ./...` + `pnpm build/lint` + 二进制 smoke + 文档(凭证模型/token/tier/迁移)。
+- [x] p6-2 **（验收反馈）** Attestor 表单砍冗余字段:删 `Ticker`/`Display name`(PoolConfig 迁移残留、无任何消费),仅留 `Label`(实例唯一显示名)+ `pool_id` + `network`。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 Attestor：`pool_stake` evaluator 对多池各自产出 Held/facts;注册表按 kind 实例化。
@@ -173,6 +174,9 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 
 - 2026-06-26 p7-1 完成（全量验证 + 文档）：文档新增 `docs/onchain-credentials.md`(凭证模型/token 形状/tier DSL/配置迁移/admin API)+ `docs/staking-attestation.md` 顶部加 S0006 承接说明;`server/Makefile` dev 目标 `OUROPASS_POOL_ID`→`OUROPASS_ISSUER`(+ DEV_ISSUER var)。顺带修一处既有 vet 告警(`handlers_admin_resources_test.go` channels GET 未查 err)使 vet 全净。
 - 2026-06-26 p7-1 | stack: go+ui | command: `go test ./... && go vet ./... && go build ./cmd/issuer` + `pnpm build && pnpm lint` + 二进制 smoke | result: pass | note: 全量收口。`go test ./...` 19 包全 ok / 0 fail;`go vet ./...` **全净**(无任何告警);`go build ./...` + 二进制绿;前端 `tsc -b && vite build` 绿、`pnpm lint` 0 error。**二进制 smoke**(全新 DB):仅 `OUROPASS_ISSUER`(无 POOL_ID)启动 → 13 个迁移全应用(末 `0013`)、`AttestorConfig`/`IssuerConfig`/`StakeSnapshotCache` 建表、`/healthz`+`/.well-known/ouropass/jwks.json`=200。`make -n dev` 解析通过。
+
+- 2026-06-26 p6-2 完成（验收反馈:砍冗余字段）：用户指出 Attestor 表单 Label/Ticker/Display name 冗余。核查确认 `Ticker`/`Name` 是 PoolConfig 迁移残留、**无任何消费**(不进 token claim、不进 tier 事实、UI 不显示)。删 `PoolStakeParams.Ticker`/`.Name`(后端)+ 表单 ticker/name 字段(前端),仅留 `Label`(实例唯一显示名,backs `UNIQUE(kind,label)`)+ `pool_id` + `network`;Label 提示改"This attestor's display name (unique)"。迁移 `0012` 仍写 ticker/name 进 params(已应用、无害——unmarshal 忽略未知键),不改历史。`make web` 已重新 stage 嵌入 SPA。
+- 2026-06-26 p6-2 | stack: go+ui | command: `go test ./... && pnpm build && pnpm lint` + `make web` | result: pass | note: 全仓 `go test ./...` 0 失败(attestor/store/httpapi 套件含迁移 backfill 测试均绿——backfill 用 map 读 params,不依赖 struct 字段);前端 build 绿、lint 0 error;嵌入 bundle 仅余 Label 字段(`Ticker (optional)`/`Display name` 已无)。
 
 ## 7. Change Requests (append-only)
 - 2026-06-26 初始决策（草案，用户已认可主线）：① subject 不变=钱包 stake credential;② pool 降格为 `AttestorConfig` 的一个 `Kind`(pool_stake),多池=多条,NFT 预留;③ token=`credentials` 自描述数组;④ tier_rules 全局、对**聚合事实**求值(订阅判定+tier);⑤ 薄闸=持任一 attestor(ANY,可配);⑥ 去 `OUROPASS_POOL_ID`,全走后端配置,加部署级 `OUROPASS_ISSUER`(`iss` 来源)。
