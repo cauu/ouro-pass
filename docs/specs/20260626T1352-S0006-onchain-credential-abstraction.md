@@ -130,6 +130,7 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 - [x] p6-1 admin API + UI：attestor CRUD + 全局 tier_rules 编辑(扩展 Tiers 页);RBAC + 审计。
 - [x] p7-1 全量 `go test ./...` + `pnpm build/lint` + 二进制 smoke + 文档(凭证模型/token/tier/迁移)。
 - [x] p6-2 **（验收反馈）** Attestor 表单砍冗余字段:删 `Ticker`/`Display name`(PoolConfig 迁移残留、无任何消费),仅留 `Label`(实例唯一显示名)+ `pool_id` + `network`。
+- [x] p6-3 **（验收 bug）** Attestor disable/delete 不生效:`attestor_id` 含 `:`(`kind:` 前缀 / 迁移 `pool_stake:`),前端 `encodeURIComponent`→`%3A`,chi 按 raw path 路由 → `{id}` 不匹配 → 静默 404。修:① 新 id 改纯 hex(`crypto.RandomID()`,URL-safe);② 迁移 `0012` id 改 `'ps-'||pool_id`(无冒号);③ update/delete handler 加 `url.PathUnescape` 兜底(旧冒号 id 经 `%3A` 也能匹配)。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 Attestor：`pool_stake` evaluator 对多池各自产出 Held/facts;注册表按 kind 实例化。
@@ -177,6 +178,9 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 
 - 2026-06-26 p6-2 完成（验收反馈:砍冗余字段）：用户指出 Attestor 表单 Label/Ticker/Display name 冗余。核查确认 `Ticker`/`Name` 是 PoolConfig 迁移残留、**无任何消费**(不进 token claim、不进 tier 事实、UI 不显示)。删 `PoolStakeParams.Ticker`/`.Name`(后端)+ 表单 ticker/name 字段(前端),仅留 `Label`(实例唯一显示名,backs `UNIQUE(kind,label)`)+ `pool_id` + `network`;Label 提示改"This attestor's display name (unique)"。迁移 `0012` 仍写 ticker/name 进 params(已应用、无害——unmarshal 忽略未知键),不改历史。`make web` 已重新 stage 嵌入 SPA。
 - 2026-06-26 p6-2 | stack: go+ui | command: `go test ./... && pnpm build && pnpm lint` + `make web` | result: pass | note: 全仓 `go test ./...` 0 失败(attestor/store/httpapi 套件含迁移 backfill 测试均绿——backfill 用 map 读 params,不依赖 struct 字段);前端 build 绿、lint 0 error;嵌入 bundle 仅余 Label 字段(`Ticker (optional)`/`Display name` 已无)。
+
+- 2026-06-26 p6-3 完成（验收 bug:disable/delete 不生效）：根因 = `attestor_id` 的 `:` 经前端 `encodeURIComponent`→`%3A`,chi 按 raw path 路由使 `{id}` 捕获到编码态、与库内 id 不匹配 → update/delete 静默 404。修三处:create 用纯 hex id;迁移 `0012`(sqlite+postgres)id 改 `'ps-'||pool_id`;handler 新增 `attestorIDParam`(`url.PathUnescape` 兜底,旧冒号 id 也可删)。`make web` 重新 stage 嵌入 SPA。
+- 2026-06-26 p6-3 | stack: go | command: `go test ./... && go vet ./...` + `make web` | result: pass | note: `TestAdminAttestors_CRUD`(新增断言:返回 id 不含 URL 保留字符)、`TestAdminAttestors_LegacyColonID`(直插 `pool_stake:legacyabc` 旧 id,经 `%3A` 编码路径 DELETE→200)、`TestAdminAttestors_RBAC` 全绿;全仓 `go test ./...` 0 失败、`go vet ./...` 全净;UI 已重 stage + 二进制重 build。
 
 ## 7. Change Requests (append-only)
 - 2026-06-26 初始决策（草案，用户已认可主线）：① subject 不变=钱包 stake credential;② pool 降格为 `AttestorConfig` 的一个 `Kind`(pool_stake),多池=多条,NFT 预留;③ token=`credentials` 自描述数组;④ tier_rules 全局、对**聚合事实**求值(订阅判定+tier);⑤ 薄闸=持任一 attestor(ANY,可配);⑥ 去 `OUROPASS_POOL_ID`,全走后端配置,加部署级 `OUROPASS_ISSUER`(`iss` 来源)。

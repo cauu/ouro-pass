@@ -23,7 +23,7 @@ CREATE TABLE IssuerConfig (
 -- name fold into params); its tier_rules lift to the issuer-global config
 -- (last pool wins — deployments are single-pool today).
 INSERT INTO AttestorConfig (attestor_id, kind, label, params, status, created_at, updated_at)
-SELECT 'pool_stake:' || pool_id, 'pool_stake', COALESCE(NULLIF(ticker, ''), pool_id),
+SELECT 'ps-' || pool_id, 'pool_stake', COALESCE(NULLIF(ticker, ''), pool_id),
        json_build_object('pool_id', pool_id, 'network', network, 'ticker', ticker, 'name', COALESCE(name, ''))::text,
        'active', created_at, updated_at
 FROM PoolConfig;

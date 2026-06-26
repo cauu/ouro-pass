@@ -1,11 +1,14 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
+	"ouro-pass/server/internal/core/attestor"
 	"ouro-pass/server/internal/domain"
 )
 
@@ -39,6 +42,11 @@ func TestAdminAttestors_CRUD(t *testing.T) {
 	id, _ := created["attestor_id"].(string)
 	if id == "" {
 		t.Fatalf("create returned no id: %v", created)
+	}
+	// The id travels in the update/delete path, which the client percent-encodes —
+	// it must be URL-safe (no reserved chars) or those routes silently 404.
+	if strings.ContainsAny(id, ":/?#[]@!$&'()*+,;=") {
+		t.Fatalf("attestor_id must be URL-safe, got %q", id)
 	}
 	if got := len(listAttestors(t, client, srv.URL)); got != 2 {
 		t.Fatalf("after create = %d, want 2", got)
@@ -86,6 +94,27 @@ func TestAdminAttestors_CRUD(t *testing.T) {
 	resp2.Body.Close()
 	if resp2.StatusCode != http.StatusNotFound {
 		t.Fatalf("delete missing = %d, want 404", resp2.StatusCode)
+	}
+}
+
+// TestAdminAttestors_LegacyColonID: an attestor whose id contains a ':' (created
+// before the URL-safe fix, or by the migration) must still be deletable via the
+// browser's percent-encoded path (':' → %3A). Guards the decode in the handlers.
+func TestAdminAttestors_LegacyColonID(t *testing.T) {
+	srv, client, _, _, st := adminResourceEnv(t, domain.RoleOperator)
+	params, _ := json.Marshal(attestor.PoolStakeParams{PoolID: "pool1legacy", Network: "mainnet"})
+	if err := st.Attestors().Create(context.Background(), domain.AttestorConfig{
+		AttestorID: "pool_stake:legacyabc", Kind: "pool_stake", Label: "legacy", Params: params,
+		Status: domain.AttestorActive, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	enc := strings.ReplaceAll("pool_stake:legacyabc", ":", "%3A") // what encodeURIComponent sends
+	req, _ := http.NewRequest(http.MethodDelete, srv.URL+"/api/admin/attestors/"+enc, nil)
+	resp, _ := client.Do(req)
+	resp.Body.Close()
+	if resp.StatusCode != 200 {
+		t.Fatalf("delete legacy colon-id via encoded path = %d, want 200", resp.StatusCode)
 	}
 }
 

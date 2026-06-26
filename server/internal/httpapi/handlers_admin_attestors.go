@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -13,6 +14,18 @@ import (
 	"ouro-pass/server/internal/httpapi/respond"
 	"ouro-pass/server/internal/utils/crypto"
 )
+
+// attestorIDParam reads the {id} path param, percent-decoding it. chi routes on the
+// raw (encoded) path, so a client that percent-encodes the id (e.g. a legacy ':'
+// id sent as %3A) would otherwise arrive un-decoded and never match. New ids are
+// URL-safe, making this a no-op for them.
+func attestorIDParam(r *http.Request) string {
+	id := chi.URLParam(r, "id")
+	if dec, err := url.PathUnescape(id); err == nil {
+		return dec
+	}
+	return id
+}
 
 // adminListAttestors returns the configured on-chain credential sources (S0006):
 // the generalization of "the served pool". Params carry no secrets (pool_stake =
@@ -65,7 +78,9 @@ func (h *apiHandlers) adminCreateAttestor(w http.ResponseWriter, r *http.Request
 		return
 	}
 	now := time.Now()
-	id := body.Kind + ":" + crypto.RandomID()
+	// URL-safe id (hex): it travels in the path of update/delete, which the client
+	// percent-encodes — a ':' here would survive as %3A and never match the route.
+	id := crypto.RandomID()
 	if err := h.d.Store.Attestors().Create(r.Context(), domain.AttestorConfig{
 		AttestorID: id, Kind: body.Kind, Label: body.Label, Params: body.Params,
 		Status: domain.AttestorActive, CreatedAt: now, UpdatedAt: now,
@@ -80,7 +95,7 @@ func (h *apiHandlers) adminCreateAttestor(w http.ResponseWriter, r *http.Request
 // adminUpdateAttestor edits an attestor's label/params/status by id (operator).
 // Kind is immutable.
 func (h *apiHandlers) adminUpdateAttestor(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	id := attestorIDParam(r)
 	var body struct {
 		Label  *string         `json:"label"`
 		Params json.RawMessage `json:"params"`
@@ -137,7 +152,7 @@ func (h *apiHandlers) adminUpdateAttestor(w http.ResponseWriter, r *http.Request
 // adminDeleteAttestor removes an attestor by id (operator). Subjects holding only
 // this credential will no longer pass the thin gate on next issuance.
 func (h *apiHandlers) adminDeleteAttestor(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
+	id := attestorIDParam(r)
 	if err := h.d.Store.Attestors().Delete(r.Context(), id); errors.Is(err, domain.ErrNotFound) {
 		respond.Error(w, http.StatusNotFound, "not_found", "attestor not found")
 		return
