@@ -125,7 +125,7 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 - [x] p2-1 多 attestor 求值 + 聚合事实 + 薄闸 ANY;替换 oauth/reconciler 里的单 `PoolID` 路径。
 - [x] p2-2 token claims→`credentials` 数组 + `iss` 解耦(部署级 issuer id);e2e;RP 迁移说明。
 - [x] p3-1 tier_rules 泛化语法(over 聚合)+ 订阅/渠道 tier 接入;单测(多池/边界)。
-- [ ] p4-1 配置：删 `OUROPASS_POOL_ID` + 加 `OUROPASS_ISSUER`(=iss base URL);`network` 下放 attestor + `chain.Source` 按 network 工厂;冷启动未配置态;迁移既有部署。
+- [x] p4-1 配置：删 `OUROPASS_POOL_ID` + 加 `OUROPASS_ISSUER`(=iss base URL);`network` 下放 attestor + `chain.Source` 按 network 工厂;冷启动未配置态;迁移既有部署。
 - [ ] p5-1 新鲜度/缓存泛化：`CachedSource` per-attestor 策略;质押路径回归。
 - [ ] p6-1 admin API + UI：attestor CRUD + 全局 tier_rules 编辑(扩展 Tiers 页);RBAC + 审计。
 - [ ] p7-1 全量 `go test ./...` + `pnpm build/lint` + 二进制 smoke + 文档(凭证模型/token/tier/迁移)。
@@ -161,6 +161,9 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 
 - 2026-06-26 p3-1 完成（tier_rules 布尔 DSL over 聚合 + 接入）：新包 `internal/core/tier`——`Rule{Tier,When}` + `Condition{All/Any/Not/Fact,Op,Value}` 递归布尔 DSL;`Eval(rules, facts) string`(有序首匹配,无匹配=""=非订阅者)、`Validate`(每条需 tier、condition 恰一形态、op∈`== != >= > <= <`、op/value 须配 fact)。数值 op 用 big.Int(缺失数值事实=0),`==`/`!=` 字符串等值;空 `when`=catch-all。**接入**:oauth `firstPartyTier(ctx, facts)` 改 `tier.Eval(IssuerConfig.GetTierRules, res.Facts)`——删 `attestation.activeStake`/`primaryHeld`/`claimStr`(不再需代表值);telegram/订阅 tier 经 `Attest` 自动走新 DSL。admin `/pool/tier-rules` 切到 `IssuerConfig` + `tier.Validate`(读写均 issuer-global,脱离 PoolConfig)。删旧 `membership/tier.go`(`TierFor`/`ValidateTierRules`/`TierRule`,已无引用)。
 - 2026-06-26 p3-1 | stack: go | command: `go test ./... && go vet ./internal/core/tier/ ./internal/core/oauth/ && go build ./cmd/issuer` | result: pass | note: TC-5。`tier`:`TestEval_ThresholdsFirstMatch`(gold/silver/basic 阈值 + 边界 + 非 active=无 tier + 空事实)、`TestEval_BooleanCombinators`(all/any/not 嵌套,OR 两分支 vip,not 落 member)、`TestValidate`(缺 tier/坏 op/op 无 fact/双形态/非数组 全拒)。oauth/e2e/httpapi tier seed 改新 DSL 后绿;admin tier-rules 端点测试改布尔 DSL(坏 op→400、gold/basic 持久化)绿;全仓 0 失败、vet 净、二进制 build 绿。
+
+- 2026-06-26 p4-1 完成（去 POOL_ID + ISSUER 必填 + per-network 源工厂 + 冷启动）：① config 删 `OUROPASS_POOL_ID`,`OUROPASS_ISSUER` 改**必填**(无池派生默认,= iss/issuer 身份,base-URL 约定);新增 `cfg.Scope`(= Issuer)= 第一方订阅/渠道/admin 命名空间(替代 pool 作用域)。② main.go 用 `cfg.Scope` 接 telegram/reconciler/admin/Deps;**per-network 源工厂** `srcFor(network)`(mutex 守 map,按 network 建/缓 raw `chain.Source`);默认网络源给 reconciler epoch tick + 委托 roster。③ oauth.Config 删尽 legacy `Chain/PoolID/Network`(分类早已不读)。④ admin `adminDelegators` 改用 `primaryPoolID`(从首个 active `pool_stake` attestor 解析真实 pool_id,而非 scope);adminGetPool/tier 走 IssuerConfig。**决策**(标准指令落盘):订阅作用域 = issuer 派生(单部署单命名空间);委托 roster 的真实 pool 从 attestor 配置解析(多池/多网络选择留 p6-1);**主动缓存(CachedSource)在 p4-1 暂移除、p5-1 按 attestor 泛化重引入**(本 item 用 raw 源,正确性不变)。冷启动:零 attestor → BuildSet 空 → 不持有 → 拒签发;admin(owner-key env)可登录配置,attestorsFor 每调用从 DB 解析即时生效。
+- 2026-06-26 p4-1 | stack: go | command: `go test ./... && go build ./cmd/issuer` + 二进制冷启动 smoke | result: pass | note: TC-6。config_test(ISSUER 必填、缺则 err、Scope=Issuer)、main_test(buildServices 全/降级,源名=`mock`)更新绿;attestor `TestSet_Empty`(零 attestor→Held=false/any_active=false/total=0=冷启动)新增绿;admin 委托测试 seed pool_stake attestor 后绿;全仓 0 失败。**二进制 smoke**:仅 `OUROPASS_ISSUER`(无 POOL_ID)+ mock + 零 attestor 启动 → `issuer listening`、`/healthz`=200、`/.well-known/ouropass/jwks.json`=200。
 
 ## 7. Change Requests (append-only)
 - 2026-06-26 初始决策（草案，用户已认可主线）：① subject 不变=钱包 stake credential;② pool 降格为 `AttestorConfig` 的一个 `Kind`(pool_stake),多池=多条,NFT 预留;③ token=`credentials` 自描述数组;④ tier_rules 全局、对**聚合事实**求值(订阅判定+tier);⑤ 薄闸=持任一 attestor(ANY,可配);⑥ 去 `OUROPASS_POOL_ID`,全走后端配置,加部署级 `OUROPASS_ISSUER`(`iss` 来源)。

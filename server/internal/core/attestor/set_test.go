@@ -59,6 +59,18 @@ func TestSet_EvaluateNotHeld(t *testing.T) {
 	}
 }
 
+// TestSet_Empty is the cold-start case (S0006 p4-1): zero configured attestors →
+// nobody is held, so the thin gate denies everyone until an attestor is configured.
+func TestSet_Empty(t *testing.T) {
+	res, err := NewSet(nil).Evaluate(context.Background(), "anyone")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Held || res.Facts[FactAnyActive] != "false" || res.Facts[FactTotalActiveStake] != "0" {
+		t.Fatalf("empty set must hold nobody: %+v", res.Facts)
+	}
+}
+
 func TestBuildSet(t *testing.T) {
 	mock := chain.NewMockSource(1)
 	mkCfg := func(id, pool string) domain.AttestorConfig {

@@ -52,7 +52,7 @@ func oauthDeps(t *testing.T) (Deps, *chain.MockSource, ed25519.PrivateKey, strin
 		return attestor.NewSet([]attestor.Attestor{a}), nil
 	}
 	srv := oauth.New(oauth.Config{
-		Store: st, Wallet: wallet, Keys: ks, Chain: mock, Attestors: attestorsFor, PoolID: "pool1abc",
+		Store: st, Wallet: wallet, Keys: ks, Attestors: attestorsFor,
 		Issuer: "ouropass:pool1abc", ServerSalt: []byte("salt"), AccessTTL: time.Hour, RefreshTTL: time.Hour,
 	})
 	st.OAuthClients().Upsert(ctx, domain.OAuthClient{

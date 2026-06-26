@@ -85,8 +85,8 @@ func newEnv(t *testing.T) *env {
 		return attestor.NewSet([]attestor.Attestor{a}), nil
 	}
 	oas := oauth.New(oauth.Config{
-		Store: st, Wallet: wallet, Keys: ks, Chain: mock, Attestors: attestorsFor,
-		PoolID: testPool, Issuer: "ouropass:" + testPool, ServerSalt: []byte("e2e-salt"),
+		Store: st, Wallet: wallet, Keys: ks, Attestors: attestorsFor,
+		Issuer: "ouropass:" + testPool, ServerSalt: []byte("e2e-salt"),
 		AccessTTL: time.Hour, RefreshTTL: 24 * time.Hour,
 	})
 	adm := admin.New(admin.Config{Wallet: wallet, Store: st, OwnerKeyHash: nil, PoolID: testPool})

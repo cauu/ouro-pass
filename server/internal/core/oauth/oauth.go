@@ -19,7 +19,6 @@ import (
 	"ouro-pass/server/internal/core/walletauth"
 	"ouro-pass/server/internal/domain"
 	"ouro-pass/server/internal/store"
-	"ouro-pass/server/internal/utils/chain"
 	"ouro-pass/server/internal/utils/crypto"
 )
 
@@ -39,13 +38,8 @@ type Config struct {
 	// Attestors resolves the active attestor set to evaluate, per call, so admin
 	// config changes take effect immediately (S0006). Injected: tests supply a
 	// fixed set; production resolves from the store (ListActive → BuildSet).
-	Attestors func(ctx context.Context) (*attestor.Set, error)
-	// Chain / PoolID / Network are legacy single-pool fields retained for wiring
-	// until p4-1 removes OUROPASS_POOL_ID; classification no longer reads them.
-	Chain      chain.Source
-	PoolID     string
-	Network    string
-	Issuer     string // token `iss`
+	Attestors  func(ctx context.Context) (*attestor.Set, error)
+	Issuer     string // token `iss`: the issuer's deployment identity (S0006 D3)
 	ServerSalt []byte // HMAC salt for `sub` derivation
 	AccessTTL  time.Duration
 	RefreshTTL time.Duration

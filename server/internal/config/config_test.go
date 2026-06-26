@@ -13,8 +13,8 @@ func withEnv(t *testing.T, kv map[string]string) {
 }
 
 func TestLoad_DefaultsAndRequired(t *testing.T) {
-	// A minimal valid config: only POOL_ID is required beyond defaults.
-	withEnv(t, map[string]string{"OUROPASS_POOL_ID": "pool1abc"})
+	// A minimal valid config: only OUROPASS_ISSUER is required beyond defaults.
+	withEnv(t, map[string]string{"OUROPASS_ISSUER": "https://pass.example.com"})
 	c, err := Load()
 	if err != nil {
 		t.Fatalf("load: %v", err)
@@ -22,8 +22,8 @@ func TestLoad_DefaultsAndRequired(t *testing.T) {
 	if c.Addr != defaultAddr || c.Network != defaultNetwork || c.DBDriver != defaultDBDriver {
 		t.Errorf("defaults not applied: %+v", c)
 	}
-	if c.Issuer != "ouropass:pool1abc" {
-		t.Errorf("issuer = %q, want ouropass:pool1abc", c.Issuer)
+	if c.Issuer != "https://pass.example.com" || c.Scope != "https://pass.example.com" {
+		t.Errorf("issuer/scope = %q/%q", c.Issuer, c.Scope)
 	}
 	if c.TrustedProxy || !c.TLS { // TrustedProxy defaults false, TLS defaults true
 		t.Errorf("edge defaults: TrustedProxy=%v TLS=%v", c.TrustedProxy, c.TLS)
@@ -39,12 +39,12 @@ func TestLoad_Validation(t *testing.T) {
 		env  map[string]string
 		ok   bool
 	}{
-		{"missing pool id", map[string]string{}, false},
-		{"bad network", map[string]string{"OUROPASS_POOL_ID": "p", "OUROPASS_NETWORK": "moon"}, false},
-		{"bad driver", map[string]string{"OUROPASS_POOL_ID": "p", "OUROPASS_DB_DRIVER": "mysql"}, false},
-		{"empty dsn", map[string]string{"OUROPASS_POOL_ID": "p", "OUROPASS_DB_DSN": "   "}, false},
-		{"bad shutdown duration", map[string]string{"OUROPASS_POOL_ID": "p", "OUROPASS_SHUTDOWN_TIMEOUT": "nope"}, false},
-		{"valid mainnet pg", map[string]string{"OUROPASS_POOL_ID": "p", "OUROPASS_NETWORK": "mainnet", "OUROPASS_DB_DRIVER": "postgres", "OUROPASS_DB_DSN": "postgres://x"}, true},
+		{"missing issuer", map[string]string{}, false},
+		{"bad network", map[string]string{"OUROPASS_ISSUER": "iss", "OUROPASS_NETWORK": "moon"}, false},
+		{"bad driver", map[string]string{"OUROPASS_ISSUER": "iss", "OUROPASS_DB_DRIVER": "mysql"}, false},
+		{"empty dsn", map[string]string{"OUROPASS_ISSUER": "iss", "OUROPASS_DB_DSN": "   "}, false},
+		{"bad shutdown duration", map[string]string{"OUROPASS_ISSUER": "iss", "OUROPASS_SHUTDOWN_TIMEOUT": "nope"}, false},
+		{"valid mainnet pg", map[string]string{"OUROPASS_ISSUER": "iss", "OUROPASS_NETWORK": "mainnet", "OUROPASS_DB_DRIVER": "postgres", "OUROPASS_DB_DSN": "postgres://x"}, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

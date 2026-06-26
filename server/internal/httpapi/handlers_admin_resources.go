@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"ouro-pass/server/internal/core/admin"
+	"ouro-pass/server/internal/core/attestor"
 	"ouro-pass/server/internal/core/keys"
 	"ouro-pass/server/internal/core/tier"
 	"ouro-pass/server/internal/domain"
@@ -149,7 +151,15 @@ func (h *apiHandlers) adminDelegators(w http.ResponseWriter, r *http.Request) {
 			page = n
 		}
 	}
-	hashes, err := lister.Delegators(r.Context(), h.d.PoolID, page)
+	// S0006: the served pool is configured as a pool_stake attestor, not an env var.
+	// Resolve the deployment's primary pool for the roster (multi-pool selection by
+	// query param is future admin work).
+	poolID := h.primaryPoolID(r.Context())
+	if poolID == "" {
+		respond.Error(w, http.StatusNotFound, "no_pool", "no active pool_stake attestor configured")
+		return
+	}
+	hashes, err := lister.Delegators(r.Context(), poolID, page)
 	if err != nil {
 		serverError(w, r, err)
 		return
@@ -158,6 +168,26 @@ func (h *apiHandlers) adminDelegators(w http.ResponseWriter, r *http.Request) {
 		hashes = []string{}
 	}
 	respond.JSON(w, http.StatusOK, map[string]any{"delegators": hashes, "page": page})
+}
+
+// primaryPoolID resolves the deployment's primary stake pool — the pool_id of the
+// first active pool_stake attestor — for cold roster queries (delegators). Returns
+// "" when no pool_stake attestor is configured.
+func (h *apiHandlers) primaryPoolID(ctx context.Context) string {
+	cfgs, err := h.d.Store.Attestors().ListActive(ctx)
+	if err != nil {
+		return ""
+	}
+	for _, c := range cfgs {
+		if c.Kind != attestor.KindPoolStake {
+			continue
+		}
+		var p attestor.PoolStakeParams
+		if json.Unmarshal(c.Params, &p) == nil && p.PoolID != "" {
+			return p.PoolID
+		}
+	}
+	return ""
 }
 
 // adminRevokeMember blacklists a member by stake credential hash and immediately

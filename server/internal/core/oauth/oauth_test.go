@@ -75,8 +75,8 @@ func newHarness(t *testing.T) *harness {
 		return attestor.NewSet([]attestor.Attestor{a}), nil
 	}
 	srv := New(Config{
-		Store: st, Wallet: walletauth.New(st, time.Minute), Keys: ks, Chain: mock, Attestors: attestorsFor,
-		PoolID: testPool, Network: "preview", Issuer: "ouropass:" + testPool, ServerSalt: []byte("salt"),
+		Store: st, Wallet: walletauth.New(st, time.Minute), Keys: ks, Attestors: attestorsFor,
+		Issuer: "ouropass:" + testPool, ServerSalt: []byte("salt"),
 		AccessTTL: time.Hour, RefreshTTL: 24 * time.Hour,
 	})
 

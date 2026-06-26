@@ -20,9 +20,9 @@ type Config struct {
 	ShutdownTimeout time.Duration // graceful-shutdown grace period
 
 	// Identity / network
-	PoolID  string // bech32 pool id this issuer serves
-	Network string // mainnet | preprod | preview
-	Issuer  string // token `iss`, e.g. "ouropass:<pool_id>"
+	Network string // default network for NEW attestors (mainnet | preprod | preview); per-attestor network lives in AttestorConfig (S0006 D4)
+	Issuer  string // token `iss` + issuer deployment identity (S0006 D3): a public base URL, e.g. https://pass.example.com
+	Scope   string // first-party subscription/channel/admin namespace; derived from Issuer (S0006: replaces the pool-scoped OUROPASS_POOL_ID)
 
 	// Persistence
 	DBDriver string // "sqlite" | "postgres"
@@ -67,7 +67,6 @@ func Load() (*Config, error) {
 	c := &Config{
 		Addr:            env("OUROPASS_ADDR", defaultAddr),
 		ShutdownTimeout: defaultShutdownTimeout,
-		PoolID:          env("OUROPASS_POOL_ID", ""),
 		Network:         env("OUROPASS_NETWORK", defaultNetwork),
 		DBDriver:        env("OUROPASS_DB_DRIVER", defaultDBDriver),
 		DBDSN:           env("OUROPASS_DB_DSN", defaultDBDSN),
@@ -84,7 +83,8 @@ func Load() (*Config, error) {
 		TrustedProxy:    envBool("OUROPASS_TRUSTED_PROXY", false),
 		TLS:             envBool("OUROPASS_TLS", true),
 	}
-	c.Issuer = env("OUROPASS_ISSUER", "ouropass:"+c.PoolID)
+	c.Issuer = env("OUROPASS_ISSUER", "")
+	c.Scope = c.Issuer // one first-party namespace per deployment, keyed by issuer identity
 
 	if d := env("OUROPASS_SHUTDOWN_TIMEOUT", ""); d != "" {
 		v, err := time.ParseDuration(d)
@@ -114,8 +114,8 @@ func (c *Config) validate() error {
 	if strings.TrimSpace(c.DBDSN) == "" {
 		return fmt.Errorf("OUROPASS_DB_DSN must not be empty")
 	}
-	if strings.TrimSpace(c.PoolID) == "" {
-		return fmt.Errorf("OUROPASS_POOL_ID must not be empty (issuer cannot evaluate eligibility without a pool)")
+	if strings.TrimSpace(c.Issuer) == "" {
+		return fmt.Errorf("OUROPASS_ISSUER must not be empty (token iss / issuer identity, e.g. https://pass.example.com)")
 	}
 	return nil
 }

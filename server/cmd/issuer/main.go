@@ -20,7 +20,6 @@ import (
 	"ouro-pass/server/internal/core/admin"
 	"ouro-pass/server/internal/core/attestor"
 	"ouro-pass/server/internal/core/keys"
-	"ouro-pass/server/internal/core/membership"
 	"ouro-pass/server/internal/core/oauth"
 	"ouro-pass/server/internal/core/walletauth"
 	"ouro-pass/server/internal/httpapi"
@@ -125,14 +124,14 @@ func run() error {
 			return tok
 		}
 		transport := telegram.NewBotAPITransport(tokenFn)
-		proc := telegram.NewProcessor(st, deps.OAuth, cfg.PoolID)
+		proc := telegram.NewProcessor(st, deps.OAuth, cfg.Scope)
 		startWorker("telegram", func() { telegram.NewWorker(proc, transport).Run(sigCtx) })
 		// The push worker delivers admin-created PushJobs over the same Telegram
 		// transport (the missing runtime driver, p12-4).
 		pushWorker := push.NewWorker(st, transport, pushPollInterval, push.Options{})
 		startWorker("push", func() { pushWorker.Run(sigCtx) })
 
-		recon := reconciliation.New(st, deps.OAuth, chainSrc, cfg.PoolID)
+		recon := reconciliation.New(st, deps.OAuth, chainSrc, cfg.Scope)
 		startWorker("reconciliation", func() { recon.Run(sigCtx, epochPollInterval) })
 	}
 
@@ -187,13 +186,13 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, chain.Sou
 	deps := httpapi.Deps{
 		Wallet:        walletSvc,
 		Store:         st,
-		PoolID:        cfg.PoolID,
+		PoolID:        cfg.Scope,
 		TelegramBot:   cfg.TelegramBot,
 		Network:       cfg.Network,
 		TrustedProxy:  cfg.TrustedProxy,
 		SecureCookies: cfg.TLS,
 		Admin: admin.New(admin.Config{
-			Wallet: walletSvc, Store: st, OwnerKeyHash: cfg.OwnerKeyHashes, PoolID: cfg.PoolID,
+			Wallet: walletSvc, Store: st, OwnerKeyHash: cfg.OwnerKeyHashes, PoolID: cfg.Scope,
 		}),
 	}
 	if cfg.FieldKeyHex != "" {
@@ -207,23 +206,38 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, chain.Sou
 		slog.Warn("OUROPASS_FIELD_KEY not set; signing-key/JWKS routes disabled")
 	}
 
-	rawChain, err := chain.NewSource(chain.Config{
-		Kind: cfg.ChainKind, KoiosBaseURL: cfg.KoiosBaseURL, APIKey: cfg.ChainAPIKey,
-		NodeSocket: cfg.NodeSocket, CardanoCLI: cfg.CardanoCLI, Network: cfg.Network,
-	})
+	// Per-network chain source factory (S0006 D4): each attestor declares its own
+	// network, so build and cache one source per network. The active-membership
+	// cache (S0004 §2.3) is re-introduced, generalized per attestor, in p5-1.
+	srcCache := map[string]chain.Source{}
+	var srcMu sync.Mutex
+	srcFor := func(network string) (chain.Source, error) {
+		if network == "" {
+			network = cfg.Network // default for attestors that omit it
+		}
+		srcMu.Lock()
+		defer srcMu.Unlock()
+		if s, ok := srcCache[network]; ok {
+			return s, nil
+		}
+		s, err := chain.NewSource(chain.Config{
+			Kind: cfg.ChainKind, KoiosBaseURL: cfg.KoiosBaseURL, APIKey: cfg.ChainAPIKey,
+			NodeSocket: cfg.NodeSocket, CardanoCLI: cfg.CardanoCLI, Network: network,
+		})
+		if err != nil {
+			return nil, err
+		}
+		srcCache[network] = s
+		return s, nil
+	}
+	chainSrc, err := srcFor(cfg.Network) // default-network source: reconciler epoch tick + admin delegator roster
 	if err != nil {
 		return httpapi.Deps{}, nil, err
 	}
-	// Wrap with the active-membership cache (S0004 §2.3): same-epoch `active`
-	// lookups skip the chain; pending/none stay live. Both the issuance path and
-	// the reconciler share it (the reconciler warms it across epoch boundaries).
-	chainSrc := membership.NewCachedSource(rawChain, st.SnapshotCache(), cfg.PoolID, cfg.Network, 10*time.Second)
-	deps.Chain = chainSrc // optional admin delegator roster (S0004 §2.7)
+	deps.Chain = chainSrc
 	// S0006: resolve the attestor set (one pool_stake per AttestorConfig) from the
-	// store per call so admin config changes take effect immediately. The real
-	// per-network source factory is p4-1; for now every attestor shares chainSrc.
+	// store per call so admin config changes take effect immediately.
 	reg := attestor.DefaultRegistry()
-	srcFor := func(string) (chain.Source, error) { return chainSrc, nil }
 	attestorsFor := func(ctx context.Context) (*attestor.Set, error) {
 		cfgs, err := st.Attestors().ListActive(ctx)
 		if err != nil {
@@ -233,8 +247,8 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, chain.Sou
 	}
 	if deps.Keys != nil && len(serverSalt) > 0 {
 		deps.OAuth = oauth.New(oauth.Config{
-			Store: st, Wallet: deps.Wallet, Keys: deps.Keys, Chain: chainSrc, Attestors: attestorsFor,
-			PoolID: cfg.PoolID, Network: cfg.Network, Issuer: cfg.Issuer, ServerSalt: serverSalt,
+			Store: st, Wallet: deps.Wallet, Keys: deps.Keys, Attestors: attestorsFor,
+			Issuer: cfg.Issuer, ServerSalt: serverSalt,
 			AccessTTL: accessTTL, RefreshTTL: refreshTTL,
 		})
 	} else {

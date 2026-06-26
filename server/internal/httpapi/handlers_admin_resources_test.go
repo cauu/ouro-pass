@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"ouro-pass/server/internal/core/admin"
+	"ouro-pass/server/internal/core/attestor"
 	"ouro-pass/server/internal/core/keys"
 	"ouro-pass/server/internal/core/walletauth"
 	"ouro-pass/server/internal/domain"
@@ -49,6 +50,13 @@ func adminResourceEnv(t *testing.T, role domain.AdminRole) (*httptest.Server, *h
 	} else {
 		st.AdminUsers().Upsert(ctx, domain.AdminUser{AdminID: crypto.RandomID(), PoolID: "pool1", OwnerKeyHash: keyHash, Role: role, CreatedAt: time.Now()})
 	}
+	// S0006: the served pool is configured as a pool_stake attestor; the delegator
+	// roster resolves the real pool_id from it.
+	atParams, _ := json.Marshal(attestor.PoolStakeParams{PoolID: "pool1", Network: "preview"})
+	st.Attestors().Create(ctx, domain.AttestorConfig{
+		AttestorID: "att-pool1", Kind: attestor.KindPoolStake, Label: "pool1", Params: atParams,
+		Status: domain.AttestorActive, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+	})
 	cipher, _ := crypto.NewFieldCipher(make([]byte, 32))
 	deps := Deps{
 		Wallet: wallet, Store: st, PoolID: "pool1", Keys: keys.New(st, cipher), Cipher: cipher,
