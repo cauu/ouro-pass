@@ -127,7 +127,7 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 - [x] p3-1 tier_rules 泛化语法(over 聚合)+ 订阅/渠道 tier 接入;单测(多池/边界)。
 - [x] p4-1 配置：删 `OUROPASS_POOL_ID` + 加 `OUROPASS_ISSUER`(=iss base URL);`network` 下放 attestor + `chain.Source` 按 network 工厂;冷启动未配置态;迁移既有部署。
 - [x] p5-1 新鲜度/缓存泛化：`CachedSource` per-attestor 策略;质押路径回归。
-- [ ] p6-1 admin API + UI：attestor CRUD + 全局 tier_rules 编辑(扩展 Tiers 页);RBAC + 审计。
+- [x] p6-1 admin API + UI：attestor CRUD + 全局 tier_rules 编辑(扩展 Tiers 页);RBAC + 审计。
 - [ ] p7-1 全量 `go test ./...` + `pnpm build/lint` + 二进制 smoke + 文档(凭证模型/token/tier/迁移)。
 
 ## 4. Test and Acceptance Criteria
@@ -167,6 +167,9 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 
 - 2026-06-26 p5-1 完成（缓存泛化:pool-agnostic + network-scoped）：重引入主动成员缓存(p4-1 暂移除)。`CachedSource` 去 `poolID`,改**pool-agnostic**:缓存判据 `snap.ActiveStakePoolID != ""`(active somewhere=epoch 稳定),`delegated_pool_id` 存**真实** active pool;同 network 所有 pool_stake attestor 共享一份 snapshot,各自 `DeriveState` 求 per-pool 状态。**network-scoped**:`StakeSnapshotCache` 加 `network` 列、复合主键 `(stake_credential_hash, network)`(迁移 `0013` 因缓存可重建,直接 DROP+CREATE);repo Get/Upsert/Delete 按 (sch, network) 定址。main.go `srcFor` 每 network 的 raw 源外包一层 `NewCachedSource`。**决策/已知边界**:已 active 的凭证在两池间迁移时,目的池的 pending 延迟到 epoch 边界才识别(active 本就 epoch 稳定);**onboarding(none→pending)仍即时**(active-nowhere 不缓存/删除),故入场对称性不变。
 - 2026-06-26 p5-1 | stack: go | command: `go test ./... && go build ./cmd/issuer` | result: pass | note: TC-7。`membership` 缓存测试更新:`ActiveHitsAndEpochRollover`(命中不再取源、epoch 翻转重取)、`PendingNeverCached`(active-nowhere 每次现算)、`PoolAgnosticUpdateAndBail`(迁池→缓存更新为新 active pool、us 见 none/other 见 active;active-nowhere→删行)全绿;store 全套(含新复合键迁移)+ main_test(源名=`mock+cache`)绿;全仓 0 失败、二进制 build 绿。
+
+- 2026-06-26 p6-1 完成（admin API + UI:attestor CRUD + tier 编辑）：**后端** `handlers_admin_attestors.go`——`GET /attestors`(viewer 列表,params 无密直返)、`POST /attestors`(operator 建,校验 kind+params、`pool_id` 必填、network 白名单、重复 (kind,label)→409、未支持 kind→400)、`POST /attestors/{id}`(operator 改 label/params/status,kind 不可变,坏 status→400)、`DELETE /attestors/{id}`(operator 删,缺→404);全部 `audit`(attestor.create/update/delete)。`adminGetPool`/`adminSetTierRules` 已于 p3-1 切到 IssuerConfig + tier DSL。**前端**:新 `AttestorsPage`(列表 + 加 pool_stake 表单[label/pool_id/network/ticker/name] + 启停 + 删,React Query 失效 `["attestors"]`)、路由 `/attestors`(operator)、侧栏导航项;`api/client.ts` 加 `del`;`api/admin.ts` 加 attestor CRUD;`lib/types.ts` 加 `TierCondition`/`Attestor`;`TiersPage` 改新布尔 DSL(SAMPLE/表格渲染 `when`/说明)。
+- 2026-06-26 p6-1 | stack: go+ui | command: `go test ./internal/httpapi/ ./...` + `pnpm build` + `pnpm lint` | result: pass | note: TC-8。`TestAdminAttestors_CRUD`(seed 1 + 建/列/重复 409/nft 400/缺 pool_id 400/改 status disabled/坏 status 400/删 200/再删 404)、`TestAdminAttestors_RBAC`(viewer GET 200、create/delete 403)绿;全仓 `go test ./...` 0 失败;前端 `tsc -b && vite build` 绿(JS 412KB/gzip 133KB)、`pnpm lint` 0 error(2 既有 warning,非本次文件)。
 
 ## 7. Change Requests (append-only)
 - 2026-06-26 初始决策（草案，用户已认可主线）：① subject 不变=钱包 stake credential;② pool 降格为 `AttestorConfig` 的一个 `Kind`(pool_stake),多池=多条,NFT 预留;③ token=`credentials` 自描述数组;④ tier_rules 全局、对**聚合事实**求值(订阅判定+tier);⑤ 薄闸=持任一 attestor(ANY,可配);⑥ 去 `OUROPASS_POOL_ID`,全走后端配置,加部署级 `OUROPASS_ISSUER`(`iss` 来源)。

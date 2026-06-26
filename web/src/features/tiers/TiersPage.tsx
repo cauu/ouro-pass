@@ -12,15 +12,16 @@ import { Textarea } from "@/ui/textarea";
 import { useToast } from "@/ui/toast";
 
 const SAMPLE: TierRule[] = [
-  { tier: "gold", min_state: "active", min_active_stake: "1000000000000" },
-  { tier: "silver", min_state: "active", min_active_stake: "100000000000" },
-  { tier: "basic", min_state: "active" },
+  { tier: "gold", when: { fact: "total_active_stake", op: ">=", value: "1000000000000" } },
+  { tier: "silver", when: { fact: "total_active_stake", op: ">=", value: "100000000000" } },
+  { tier: "basic", when: { fact: "any_active", op: "==", value: "true" } },
 ];
 
-// TiersPage edits the issuer's first-party tier mapping (PoolConfig.tier_rules,
-// S0004 §2.6). Rules are ordered, first match wins. This is the issuer's own
-// opinion for its channels (Telegram/Push); external relying parties ignore it
-// and read the raw token facts.
+// TiersPage edits the issuer's first-party tier mapping (issuer-global tier_rules,
+// S0006 §2.4). Rules are an ordered list; each pairs a tier with a boolean
+// condition over the aggregate facts an attestor set produces. First match wins.
+// This is the issuer's own opinion for its channels (Telegram/Push); external
+// relying parties ignore it and read the raw token facts.
 export function TiersPage() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["pool"], queryFn: getPool });
@@ -82,8 +83,7 @@ export function TiersPage() {
                 <TR>
                   <TH>#</TH>
                   <TH>Tier</TH>
-                  <TH>Min state</TH>
-                  <TH>Min active stake (lovelace)</TH>
+                  <TH>Condition (when)</TH>
                 </TR>
               </THead>
               <TBody>
@@ -93,8 +93,9 @@ export function TiersPage() {
                     <TD>
                       <Badge variant="success">{r.tier}</Badge>
                     </TD>
-                    <TD>{r.min_state ?? "active"}</TD>
-                    <TD className="font-mono text-xs">{r.min_active_stake || "—"}</TD>
+                    <TD className="font-mono text-xs">
+                      {r.when ? JSON.stringify(r.when) : "— (always)"}
+                    </TD>
                   </TR>
                 ))}
               </TBody>
@@ -106,8 +107,10 @@ export function TiersPage() {
           <CardHeader>
             <CardTitle>Edit rules (JSON)</CardTitle>
             <CardDescription>
-              Array of {`{ tier, min_state?, min_active_stake? }`}. min_state is "active" or "pending"
-              (default active); min_active_stake is decimal lovelace ("" = no minimum).
+              Array of {`{ tier, when }`}. when is a boolean condition: a leaf{" "}
+              {`{ fact, op, value }`} (op is == != &gt;= &gt; &lt;= &lt;) or a combinator{" "}
+              {`{ all: [...] }`} / {`{ any: [...] }`} / {`{ not: {...} }`}. Facts include
+              any_active, total_active_stake, pool:&lt;id&gt;.state. Omit when for a catch-all.
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">

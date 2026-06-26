@@ -1,5 +1,6 @@
 import { api } from "./client";
 import type {
+  Attestor,
   AuditEntry,
   ClientRegister,
   Me,
@@ -66,6 +67,17 @@ export const createPushJob = (body: PushCreate) =>
 export const getPool = () => api.get<PoolInfo>("/api/admin/pool");
 export const setTierRules = (tierRules: TierRule[]) =>
   api.post<{ pool_id: string }>("/api/admin/pool/tier-rules", { tier_rules: tierRules });
+
+// ---- attestors (on-chain credential sources) ----
+export const listAttestors = () => api.get<{ attestors: Attestor[] }>("/api/admin/attestors");
+export const createAttestor = (body: { kind: string; label: string; params: unknown }) =>
+  api.post<{ attestor_id: string }>("/api/admin/attestors", body);
+export const updateAttestor = (
+  id: string,
+  body: { label?: string; params?: unknown; status?: string },
+) => api.post<{ attestor_id: string }>(`/api/admin/attestors/${encodeURIComponent(id)}`, body);
+export const deleteAttestor = (id: string) =>
+  api.del<{ deleted: string }>(`/api/admin/attestors/${encodeURIComponent(id)}`);
 
 export const listClients = () => api.get<{ clients: OAuthClient[] }>("/api/admin/oauth-clients");
 export const registerClient = (body: ClientRegister & StepUpBody) =>

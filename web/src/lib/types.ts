@@ -80,10 +80,20 @@ export interface StepUpBody {
 
 // First-party tier mapping (S0004 §2.6): ordered, first match wins. Consumed only
 // by the issuer's own channels; external RPs read raw token facts.
+// TierCondition is the boolean DSL over aggregate facts (S0006 §2.4): exactly one
+// of all/any/not (combinators) or a {fact,op,value} leaf. Empty = catch-all.
+export interface TierCondition {
+  all?: TierCondition[];
+  any?: TierCondition[];
+  not?: TierCondition;
+  fact?: string;
+  op?: string; // == != >= > <= <
+  value?: string;
+}
+
 export interface TierRule {
   tier: string;
-  min_state?: string; // "active" | "pending" (default active)
-  min_active_stake?: string; // decimal lovelace; "" = no minimum
+  when?: TierCondition;
 }
 
 export interface PoolInfo {
@@ -91,6 +101,17 @@ export interface PoolInfo {
   network?: string;
   ticker?: string;
   tier_rules: TierRule[];
+}
+
+// Attestor is one configured on-chain credential source (S0006): the
+// generalization of "the served pool". params is kind-specific (pool_stake:
+// pool_id/network/ticker/name).
+export interface Attestor {
+  attestor_id: string;
+  kind: string;
+  label: string;
+  params: Record<string, unknown>;
+  status: string; // active | disabled
 }
 
 export interface ClientRegister {

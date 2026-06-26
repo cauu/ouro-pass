@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate, RouterProvider } from "react-router-dom";
 import { RequireAuth, RequireRole } from "./app/guards";
 import { Layout } from "./app/Layout";
+import { AttestorsPage } from "./features/attestors/AttestorsPage";
 import { AuditPage } from "./features/audit/AuditPage";
 import { LoginPage } from "./features/auth/LoginPage";
 import { ChannelsPage } from "./features/channels/ChannelsPage";
@@ -27,6 +28,14 @@ const router = createBrowserRouter([
       { path: "dashboard", element: <DashboardPage /> },
       { path: "members", element: <MembersPage /> },
       { path: "subscriptions", element: <SubscriptionsPage /> },
+      {
+        path: "attestors",
+        element: (
+          <RequireRole min="operator">
+            <AttestorsPage />
+          </RequireRole>
+        ),
+      },
       {
         path: "tiers",
         element: (
