@@ -16,16 +16,16 @@ const EQ_OPS = ["==", "!="];
 const STATIC_FACTS = ["any_active", "any_held", "total_active_stake"];
 const STATE_VALUES = ["active", "pending", "none"];
 
-type FactType = "bool" | "state" | "number" | "text";
+type FactType = "bool" | "state" | "ada" | "number" | "text";
 
 // factType decides which value editor + which operators a fact gets, so the value
-// component matches the fact (boolean → true/false, state → enum, stake → number).
+// component matches the fact (boolean → true/false, state → enum, stake → ADA,
+// counts → number).
 function factType(fact: string): FactType {
   if (fact === "any_active" || fact === "any_held") return "bool";
-  if (fact === "total_active_stake") return "number";
+  if (fact === "total_active_stake" || fact.endsWith(".active_stake_lovelace")) return "ada";
   if (fact.endsWith(".state")) return "state";
-  if (fact.endsWith(".active_stake_lovelace") || fact.endsWith(".epochs_active") || fact.endsWith(".count"))
-    return "number";
+  if (fact.endsWith(".epochs_active") || fact.endsWith(".count")) return "number";
   return "text";
 }
 function opsFor(t: FactType): string[] {
@@ -35,6 +35,24 @@ function defaultValueFor(t: FactType): string {
   if (t === "bool") return "true";
   if (t === "state") return "active";
   return "";
+}
+
+// ADA ⇄ lovelace at the UI/DSL boundary: the rules store lovelace (the on-chain
+// unit), but operators configure thresholds in ADA. Exact via BigInt.
+const LOVELACE = 1_000_000n;
+function adaToLovelace(ada: string): string {
+  const s = ada.trim();
+  if (s === "") return "";
+  if (!/^\d+(\.\d{1,6})?$/.test(s)) return s; // leave malformed input as-is
+  const [int, frac = ""] = s.split(".");
+  return (BigInt(int) * LOVELACE + BigInt((frac + "000000").slice(0, 6))).toString();
+}
+function lovelaceToAda(lov: string): string {
+  const s = lov.trim();
+  if (s === "" || !/^\d+$/.test(s)) return s;
+  const v = BigInt(s);
+  const frac = (v % LOVELACE).toString().padStart(6, "0").replace(/0+$/, "");
+  return frac ? `${v / LOVELACE}.${frac}` : (v / LOVELACE).toString();
 }
 
 interface Leaf {
@@ -68,8 +86,11 @@ function availableFacts(attestors: Attestor[]): string[] {
 // beyond a flat all/any of leaves (then the rule is edited as JSON).
 function flatten(when?: TierCondition): { combinator: "all" | "any"; leaves: Leaf[] } | null {
   if (!when || Object.keys(when).length === 0) return { combinator: "all", leaves: [] };
-  const leaf = (c: TierCondition): Leaf | null =>
-    c.fact && !c.all && !c.any && !c.not ? { fact: c.fact, op: c.op ?? "==", value: c.value ?? "" } : null;
+  const leaf = (c: TierCondition): Leaf | null => {
+    if (!(c.fact && !c.all && !c.any && !c.not)) return null;
+    const value = c.value ?? "";
+    return { fact: c.fact, op: c.op ?? "==", value: factType(c.fact) === "ada" ? lovelaceToAda(value) : value };
+  };
   const self = leaf(when);
   if (self) return { combinator: "all", leaves: [self] };
   const arr = when.all ?? when.any;
@@ -83,7 +104,11 @@ function flatten(when?: TierCondition): { combinator: "all" | "any"; leaves: Lea
 }
 
 function toWhen(combinator: "all" | "any", leaves: Leaf[]): TierCondition | undefined {
-  const ls = leaves.map((l) => ({ fact: l.fact, op: l.op, value: l.value }));
+  const ls = leaves.map((l) => ({
+    fact: l.fact,
+    op: l.op,
+    value: factType(l.fact) === "ada" ? adaToLovelace(l.value) : l.value,
+  }));
   if (ls.length === 0) return undefined; // catch-all
   if (ls.length === 1) return ls[0];
   return combinator === "all" ? { all: ls } : { any: ls };
@@ -326,13 +351,18 @@ export function TiersPage() {
                                   )}
                                 </Select>
                               ) : (
-                                <Input
-                                  className="max-w-[220px]"
-                                  inputMode={t === "number" ? "numeric" : undefined}
-                                  placeholder={t === "number" ? "lovelace, e.g. 1000000000000" : "value"}
-                                  value={l.value}
-                                  onChange={(e) => patchLeaf(i, j, { value: e.target.value })}
-                                />
+                                <div className="flex items-center gap-1">
+                                  <Input
+                                    className="max-w-[200px]"
+                                    inputMode={t === "ada" || t === "number" ? "numeric" : undefined}
+                                    placeholder={
+                                      t === "ada" ? "ADA, e.g. 100000" : t === "number" ? "e.g. 3" : "value"
+                                    }
+                                    value={l.value}
+                                    onChange={(e) => patchLeaf(i, j, { value: e.target.value })}
+                                  />
+                                  {t === "ada" && <span className="text-xs text-muted-foreground">ADA</span>}
+                                </div>
                               )}
                               <Button variant="ghost" size="sm" onClick={() => removeLeaf(i, j)}>
                                 ✕
