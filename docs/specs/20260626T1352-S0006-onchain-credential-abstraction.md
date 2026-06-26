@@ -1,11 +1,11 @@
 # Ouro Pass 链上身份凭证抽象（多凭证 / 多池 / NFT-ready）
 
 Spec-ID: S0006
-Status: draft
+Status: active
 Created Time: 2026-06-26T13:05:00+08:00
-Start Time:
+Start Time: 2026-06-26T13:52:00+08:00
 Completion Time:
-Previous Spec-ID:
+Previous Spec-ID: S0004
 Closure Reason:
 
 ## 1. Requirement Details
