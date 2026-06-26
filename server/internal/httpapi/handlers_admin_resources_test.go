@@ -139,11 +139,34 @@ func TestAdminChannelCRUD(t *testing.T) {
 		t.Fatalf("missing bot_token = %d, want 400", c)
 	}
 
-	// List shows both instances with names + bot_username, no secrets.
+	// List shows both instances with names + bot_username + token_hint, no secrets.
 	list := postGetJSON(t, client, srv.URL+"/api/admin/channels")
 	chans, _ := list["channels"].([]any)
 	if len(chans) != 2 {
 		t.Fatalf("list = %d instances, want 2", len(chans))
+	}
+	// The full token must never appear anywhere in the response; only a
+	// first4…last4 hint (S0005 p7-1).
+	rawList, _ := json.Marshal(list)
+	if strings.Contains(string(rawList), token) {
+		t.Fatalf("list response leaks full token: %s", rawList)
+	}
+	var sawHint bool
+	for _, ci := range chans {
+		m, _ := ci.(map[string]any)
+		if h, _ := m["token_hint"].(string); h != "" {
+			sawHint = true
+			// Hint reveals only the ends, not the middle secret.
+			if !strings.HasPrefix(h, "9876") || !strings.Contains(h, "…") {
+				t.Fatalf("token_hint = %q, want 9876…<last4>", h)
+			}
+			if strings.Contains(h, "secret") {
+				t.Fatalf("token_hint leaks the middle of the token: %q", h)
+			}
+		}
+	}
+	if !sawHint {
+		t.Fatal("no token_hint returned for any telegram instance")
 	}
 
 	// Rename + disable instance 1.

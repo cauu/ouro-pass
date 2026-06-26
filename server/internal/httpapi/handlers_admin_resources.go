@@ -268,15 +268,30 @@ func (h *apiHandlers) adminCancelSub(w http.ResponseWriter, r *http.Request) {
 // ---- channels (S0005 p4-1: per-instance CRUD) ----
 
 // channelView is the non-secret instance projection the Channels/Setup UI reads.
-func channelView(c domain.ChannelConfig) map[string]any {
+// tokenHint is a first4…last4 fingerprint (never the full token, S0005 p7-1).
+func channelView(c domain.ChannelConfig, tokenHint string) map[string]any {
 	v := map[string]any{
 		"channel_id": c.ChannelID, "channel_type": c.ChannelType, "name": c.Name,
 		"status": c.Status, "configured": c.Status == "active",
 	}
 	if c.ChannelType == "telegram" {
 		v["bot_username"] = telegram.DecodeUsername(c.Config) // public, never the token
+		v["token_hint"] = tokenHint
 	}
 	return v
+}
+
+// channelTokenHint decrypts a telegram instance's token and returns its non-secret
+// fingerprint (first4…last4). Returns "" for non-telegram, no cipher, or no token.
+func (h *apiHandlers) channelTokenHint(c domain.ChannelConfig) string {
+	if c.ChannelType != "telegram" || h.d.Cipher == nil {
+		return ""
+	}
+	tok, err := telegram.DecodeToken(h.d.Cipher, c.Config)
+	if err != nil {
+		return ""
+	}
+	return telegram.TokenHint(tok)
 }
 
 // adminListChannels lists all of the pool's channel instances (no secrets).
@@ -288,7 +303,7 @@ func (h *apiHandlers) adminListChannels(w http.ResponseWriter, r *http.Request) 
 	}
 	out := make([]map[string]any, 0, len(insts))
 	for _, c := range insts {
-		out = append(out, channelView(c))
+		out = append(out, channelView(c, h.channelTokenHint(c)))
 	}
 	respond.JSON(w, http.StatusOK, map[string]any{"channels": out})
 }
@@ -377,7 +392,7 @@ func (h *apiHandlers) adminUpdateChannel(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	h.audit(r, "channel.update", id)
-	respond.JSON(w, http.StatusOK, channelView(*inst))
+	respond.JSON(w, http.StatusOK, channelView(*inst, h.channelTokenHint(*inst)))
 }
 
 func (h *apiHandlers) adminEnableChannel(w http.ResponseWriter, r *http.Request)  { h.setChannelStatus(w, r, "active") }

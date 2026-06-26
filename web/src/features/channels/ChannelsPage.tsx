@@ -143,6 +143,7 @@ export function ChannelsPage() {
                   <TH>Name</TH>
                   <TH>Type</TH>
                   <TH>Bot</TH>
+                  <TH>Token</TH>
                   <TH>Status</TH>
                   <TH className="text-right">Actions</TH>
                 </TR>
@@ -153,6 +154,9 @@ export function ChannelsPage() {
                     <TD>{c.name}</TD>
                     <TD className="font-mono text-xs">{c.channel_type}</TD>
                     <TD className="font-mono text-xs">{c.bot_username ? `@${c.bot_username}` : "—"}</TD>
+                    <TD className="font-mono text-xs text-muted-foreground" title="First and last 4 characters of the bot token (the full token is never shown)">
+                      {c.token_hint || "—"}
+                    </TD>
                     <TD>
                       <Badge variant={c.status === "active" ? "success" : "muted"}>{c.status}</Badge>
                     </TD>

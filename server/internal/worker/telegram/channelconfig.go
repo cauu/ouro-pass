@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"ouro-pass/server/internal/utils/crypto"
 )
@@ -33,6 +34,22 @@ func EncodeConfig(cipher *crypto.FieldCipher, plain, username string) (json.RawM
 		return nil, err
 	}
 	return json.Marshal(tgConfig{BotTokenEnc: hex.EncodeToString(enc), BotUsername: username})
+}
+
+// TokenHint returns a non-secret fingerprint of a bot token — its first and last
+// four characters (e.g. "1234…wXyZ") — so an operator can recognise which token
+// an instance holds, and tell whether it changed, without the full secret being
+// returned (S0005 p7-1, a deliberate, bounded relaxation of C2). Empty for no
+// token; fully masked when the token is too short to split without overexposure.
+func TokenHint(plain string) string {
+	if plain == "" {
+		return ""
+	}
+	r := []rune(plain)
+	if len(r) <= 8 {
+		return strings.Repeat("•", len(r))
+	}
+	return string(r[:4]) + "…" + string(r[len(r)-4:])
 }
 
 // DecodeUsername returns the public bot username from a stored config blob (no

@@ -70,6 +70,22 @@ func TestActivate_InstanceBinding(t *testing.T) {
 	}
 }
 
+// TestTokenHint covers the non-secret fingerprint: empty stays empty, a normal
+// token shows only first4…last4, and a too-short token is fully masked.
+func TestTokenHint(t *testing.T) {
+	cases := map[string]string{
+		"":                          "",
+		"123456:ABC-DEF_long-secret": "1234…cret",
+		"short":                      "•••••",
+		"exactly8":                   "••••••••",
+	}
+	for in, want := range cases {
+		if got := TokenHint(in); got != want {
+			t.Errorf("TokenHint(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
 // TestDecodeUsername round-trips the public bot username used for deep links.
 func TestDecodeUsername(t *testing.T) {
 	cipher, err := crypto.NewFieldCipherHex("00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff")

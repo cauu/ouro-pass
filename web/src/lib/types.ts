@@ -140,4 +140,5 @@ export interface ChannelInstance {
   status: string; // active | disabled
   configured: boolean;
   bot_username?: string;
+  token_hint?: string; // first4…last4 fingerprint (never the full token)
 }
