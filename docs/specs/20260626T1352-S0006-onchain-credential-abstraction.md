@@ -121,7 +121,7 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 
 ## 3. Execution Plan
 - [x] p1-1 Attestor 接口 + 注册表 + `pool_stake` evaluator（包 S0004 membership/facts），多池;纯函数/单测。
-- [ ] p1-2 `AttestorConfig` 模型 + 迁移：现池→`pool_stake` attestor;`tier_rules`→全局 issuer 配置;repo CRUD;单测。
+- [x] p1-2 `AttestorConfig` 模型 + 迁移：现池→`pool_stake` attestor;`tier_rules`→全局 issuer 配置;repo CRUD;单测。
 - [ ] p2-1 多 attestor 求值 + 聚合事实 + 薄闸 ANY;替换 oauth/reconciler 里的单 `PoolID` 路径。
 - [ ] p2-2 token claims→`credentials` 数组 + `iss` 解耦(部署级 issuer id);e2e;RP 迁移说明。
 - [ ] p3-1 tier_rules 泛化语法(over 聚合)+ 订阅/渠道 tier 接入;单测(多池/边界)。
@@ -148,6 +148,9 @@ S0004 把 issuer 定位为"**相对单个池的质押身份证明提供方**"：
 
 ## 6. Validation Evidence (append-only)
 - 2026-06-26 p1-1 | stack: go | command: `go build ./... && go test ./internal/core/attestor/ && go vet ./internal/core/attestor/` | result: pass | note: TC-1。`TestPoolStake_MultiPool`(两 pool_stake attestor over 同 subjects,各自独立 active/pending/none + Held)、`TestPoolStake_ClaimAndFacts`(claim 携带 active_stake/epochs/member_since;命名事实 `pool:<id>.*`)、`TestRegistry`(default 注册 pool_stake;NFT 未注册报错;缺 pool_id 报错)全绿;全仓 build 绿、vet 净。
+
+- 2026-06-26 p1-2 完成：新模型 `domain.AttestorConfig{AttestorID,Kind,Label,Params,Status}` + 迁移 `0012_attestor_config`(sqlite/postgres)——建 `AttestorConfig`(`UNIQUE(kind,label)`)+ `IssuerConfig`(单例,持全局 tier_rules);**backfill**:每条 `PoolConfig` → 一条 `pool_stake` attestor(pool_id/network/ticker/name 折进 params json),其 `tier_rules` 抬到 `IssuerConfig`。repo:`Attestors()` CRUD(Create/Get/List/ListActive/Update/SetStatus/Delete by id)+ `Issuer()` GetTierRules/SetTierRules(单例 upsert;无行返 `[]`)。**注**:`PoolConfig` 表暂留(旧 `oauth.firstPartyTier`/network 读路径在后续 item 切换),本 item 仅加新模型 + backfill,保证逐 commit 不破。
+- 2026-06-26 p1-2 | stack: go | command: `go test ./internal/store/ && go vet ./internal/store/ ./internal/domain/` | result: pass | note: TC-2。`TestAttestorConfigRepo_CRUD`(增/查/列/改/启停/删 + `UNIQUE(kind,label)` 冲突 + 删后 NotFound)、`TestIssuerConfig_TierRules`(无行=`[]`、set→get、单例重 upsert 不增行)、`TestMigration_BackfillPoolToAttestor`(部分迁移到 0011 → 注入 PoolConfig → 跑 0012,断言 pool_stake attestor + params 含 pool_id/network/ticker、tier_rules 抬到 IssuerConfig)全绿;全 store 套件 + vet 净。
 
 ## 7. Change Requests (append-only)
 - 2026-06-26 初始决策（草案，用户已认可主线）：① subject 不变=钱包 stake credential;② pool 降格为 `AttestorConfig` 的一个 `Kind`(pool_stake),多池=多条,NFT 预留;③ token=`credentials` 自描述数组;④ tier_rules 全局、对**聚合事实**求值(订阅判定+tier);⑤ 薄闸=持任一 attestor(ANY,可配);⑥ 去 `OUROPASS_POOL_ID`,全走后端配置,加部署级 `OUROPASS_ISSUER`(`iss` 来源)。
