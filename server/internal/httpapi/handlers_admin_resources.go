@@ -39,7 +39,11 @@ func (h *apiHandlers) mountAdminResources(r chi.Router) {
 	r.Method(http.MethodGet, "/subscriptions", viewer(h.adminSubscriptions))
 	r.Method(http.MethodPost, "/subscriptions/{id}/cancel", operator(h.adminCancelSub))
 	r.Method(http.MethodGet, "/channels", viewer(h.adminListChannels))
-	r.Method(http.MethodPost, "/channels/{type}/configure", operator(h.adminConfigureChannel))
+	r.Method(http.MethodPost, "/channels", operator(h.adminCreateChannel))
+	r.Method(http.MethodPost, "/channels/{id}", operator(h.adminUpdateChannel))
+	r.Method(http.MethodPost, "/channels/{id}/enable", operator(h.adminEnableChannel))
+	r.Method(http.MethodPost, "/channels/{id}/disable", operator(h.adminDisableChannel))
+	r.Method(http.MethodDelete, "/channels/{id}", operator(h.adminDeleteChannel))
 	r.Method(http.MethodGet, "/push/jobs", operator(h.adminListPushJobs))
 	r.Method(http.MethodPost, "/push/jobs", operator(h.adminCreatePushJob))
 	r.Method(http.MethodGet, "/oauth-clients", owner(h.adminListClients))
@@ -261,71 +265,215 @@ func (h *apiHandlers) adminCancelSub(w http.ResponseWriter, r *http.Request) {
 
 // ---- rules ----
 
-// ---- channels ----
+// ---- channels (S0005 p4-1: per-instance CRUD) ----
 
-// adminListChannels reports which delivery channels are configured (no secrets):
-// the Channels/Setup UI uses it to show "configured" state.
+// channelView is the non-secret instance projection the Channels/Setup UI reads.
+func channelView(c domain.ChannelConfig) map[string]any {
+	v := map[string]any{
+		"channel_id": c.ChannelID, "channel_type": c.ChannelType, "name": c.Name,
+		"status": c.Status, "configured": c.Status == "active",
+	}
+	if c.ChannelType == "telegram" {
+		v["bot_username"] = telegram.DecodeUsername(c.Config) // public, never the token
+	}
+	return v
+}
+
+// adminListChannels lists all of the pool's channel instances (no secrets).
 func (h *apiHandlers) adminListChannels(w http.ResponseWriter, r *http.Request) {
-	_, err := h.d.Store.Channels().GetByType(r.Context(), "telegram")
-	telegramConfigured := err == nil
-	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+	insts, err := h.d.Store.Channels().List(r.Context(), h.d.PoolID)
+	if err != nil {
 		serverError(w, r, err)
 		return
 	}
-	respond.JSON(w, http.StatusOK, map[string]any{
-		"channels": []map[string]any{
-			{"channel_type": "telegram", "configured": telegramConfigured},
-		},
-	})
+	out := make([]map[string]any, 0, len(insts))
+	for _, c := range insts {
+		out = append(out, channelView(c))
+	}
+	respond.JSON(w, http.StatusOK, map[string]any{"channels": out})
 }
 
-func (h *apiHandlers) adminConfigureChannel(w http.ResponseWriter, r *http.Request) {
-	channelType := chi.URLParam(r, "type")
-	if !domain.ValidChannelType(channelType) {
+// adminCreateChannel creates a new channel instance. Telegram bot tokens are
+// encrypted at rest (field cipher); the public bot username is stored in clear
+// for deep links. A duplicate name within (pool, type) returns 409.
+func (h *apiHandlers) adminCreateChannel(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ChannelType string          `json:"channel_type"`
+		Name        string          `json:"name"`
+		Config      json.RawMessage `json:"config"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" {
+		respond.Error(w, http.StatusBadRequest, "invalid_request", "channel_type and name required")
+		return
+	}
+	if !domain.ValidChannelType(body.ChannelType) {
 		respond.Error(w, http.StatusBadRequest, "invalid_request", "unsupported channel_type")
 		return
 	}
-	var body struct {
-		Config json.RawMessage `json:"config"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		respond.Error(w, http.StatusBadRequest, "invalid_request", "config required")
+	config, ok := h.encodeChannelConfig(w, r, body.ChannelType, body.Config, nil)
+	if !ok {
 		return
-	}
-	// Telegram: the bot token is a secret — encrypt it at rest (field cipher) and
-	// store only the ciphertext, never plaintext (S0004 p8-1).
-	if channelType == "telegram" {
-		if h.d.Cipher == nil {
-			notImplemented(w, r)
-			return
-		}
-		var in struct {
-			BotToken string `json:"bot_token"`
-		}
-		if err := json.Unmarshal(body.Config, &in); err != nil || in.BotToken == "" {
-			respond.Error(w, http.StatusBadRequest, "invalid_request", "bot_token required")
-			return
-		}
-		enc, err := telegram.EncodeToken(h.d.Cipher, in.BotToken)
-		if err != nil {
-			serverError(w, r, err)
-			return
-		}
-		body.Config = enc
 	}
 	now := time.Now()
 	id := crypto.RandomID()
-	// One instance per channel type (current design): replace any previous config
-	// for this (pool, type) so re-saving reliably updates instead of piling up rows.
-	if err := h.d.Store.Channels().ReplaceByType(r.Context(), domain.ChannelConfig{
-		ChannelID: id, PoolID: h.d.PoolID, ChannelType: channelType, Name: "default", Config: body.Config,
-		Status: "active", CreatedAt: now, UpdatedAt: now,
-	}); err != nil {
+	err := h.d.Store.Channels().Create(r.Context(), domain.ChannelConfig{
+		ChannelID: id, PoolID: h.d.PoolID, ChannelType: body.ChannelType, Name: body.Name,
+		Config: config, Status: "active", CreatedAt: now, UpdatedAt: now,
+	})
+	if errors.Is(err, domain.ErrConflict) {
+		respond.Error(w, http.StatusConflict, "conflict", "an instance with that name already exists for this channel type")
+		return
+	}
+	if err != nil {
 		serverError(w, r, err)
 		return
 	}
-	h.audit(r, "channel.configure", channelType)
+	h.audit(r, "channel.create", id)
 	respond.JSON(w, http.StatusOK, map[string]string{"channel_id": id})
+}
+
+// adminUpdateChannel updates an instance's name, status, and/or secret config by
+// id. A telegram config with only a bot_username preserves the existing token.
+func (h *apiHandlers) adminUpdateChannel(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	inst, err := h.d.Store.Channels().Get(r.Context(), id)
+	if errors.Is(err, domain.ErrNotFound) {
+		respond.Error(w, http.StatusNotFound, "not_found", "no such channel instance")
+		return
+	}
+	if err != nil {
+		serverError(w, r, err)
+		return
+	}
+	var body struct {
+		Name   *string         `json:"name"`
+		Status *string         `json:"status"`
+		Config json.RawMessage `json:"config"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		respond.Error(w, http.StatusBadRequest, "invalid_request", "malformed JSON body")
+		return
+	}
+	if body.Name != nil && *body.Name != "" {
+		inst.Name = *body.Name
+	}
+	if body.Status != nil {
+		if *body.Status != "active" && *body.Status != "disabled" {
+			respond.Error(w, http.StatusBadRequest, "invalid_request", "status must be active or disabled")
+			return
+		}
+		inst.Status = *body.Status
+	}
+	if len(body.Config) > 0 {
+		config, ok := h.encodeChannelConfig(w, r, inst.ChannelType, body.Config, inst.Config)
+		if !ok {
+			return
+		}
+		inst.Config = config
+	}
+	inst.UpdatedAt = time.Now()
+	if err := h.d.Store.Channels().Upsert(r.Context(), *inst); err != nil {
+		serverError(w, r, err)
+		return
+	}
+	h.audit(r, "channel.update", id)
+	respond.JSON(w, http.StatusOK, channelView(*inst))
+}
+
+func (h *apiHandlers) adminEnableChannel(w http.ResponseWriter, r *http.Request)  { h.setChannelStatus(w, r, "active") }
+func (h *apiHandlers) adminDisableChannel(w http.ResponseWriter, r *http.Request) { h.setChannelStatus(w, r, "disabled") }
+
+func (h *apiHandlers) setChannelStatus(w http.ResponseWriter, r *http.Request, status string) {
+	id := chi.URLParam(r, "id")
+	if _, err := h.d.Store.Channels().Get(r.Context(), id); errors.Is(err, domain.ErrNotFound) {
+		respond.Error(w, http.StatusNotFound, "not_found", "no such channel instance")
+		return
+	} else if err != nil {
+		serverError(w, r, err)
+		return
+	}
+	if err := h.d.Store.Channels().SetStatus(r.Context(), id, status, time.Now()); err != nil {
+		serverError(w, r, err)
+		return
+	}
+	h.audit(r, "channel."+map[string]string{"active": "enable", "disabled": "disable"}[status], id)
+	respond.JSON(w, http.StatusOK, map[string]string{"channel_id": id, "status": status})
+}
+
+// adminDeleteChannel removes an instance and cascades by cancelling its active
+// subscriptions (D7), then audits the action with the affected count.
+func (h *apiHandlers) adminDeleteChannel(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if _, err := h.d.Store.Channels().Get(r.Context(), id); errors.Is(err, domain.ErrNotFound) {
+		respond.Error(w, http.StatusNotFound, "not_found", "no such channel instance")
+		return
+	} else if err != nil {
+		serverError(w, r, err)
+		return
+	}
+	cancelled, err := h.d.Store.Subscriptions().CancelByChannelID(r.Context(), id)
+	if err != nil {
+		serverError(w, r, err)
+		return
+	}
+	if err := h.d.Store.Channels().Delete(r.Context(), id); err != nil {
+		serverError(w, r, err)
+		return
+	}
+	h.audit(r, "channel.delete", id)
+	respond.JSON(w, http.StatusOK, map[string]any{"deleted": true, "sessions_cancelled": cancelled})
+}
+
+// encodeChannelConfig validates and encrypts an inbound channel config. For
+// telegram it encrypts the bot token (required on create; on update a token-less
+// body keeps the prior token) and stores the public bot_username in clear. For
+// other types the raw config passes through. prior is the existing stored config
+// on update (nil on create). Returns (config, ok); on failure it has written the
+// error response and ok is false.
+func (h *apiHandlers) encodeChannelConfig(w http.ResponseWriter, r *http.Request, channelType string, in, prior json.RawMessage) (json.RawMessage, bool) {
+	if channelType != "telegram" {
+		return in, true
+	}
+	if h.d.Cipher == nil {
+		notImplemented(w, r)
+		return nil, false
+	}
+	var cfg struct {
+		BotToken    string `json:"bot_token"`
+		BotUsername string `json:"bot_username"`
+	}
+	if len(in) > 0 {
+		if err := json.Unmarshal(in, &cfg); err != nil {
+			respond.Error(w, http.StatusBadRequest, "invalid_request", "malformed config")
+			return nil, false
+		}
+	}
+	// Username defaults to the prior stored value when not supplied.
+	username := cfg.BotUsername
+	if username == "" && prior != nil {
+		username = telegram.DecodeUsername(prior)
+	}
+	token := cfg.BotToken
+	if token == "" {
+		// No new token: on update, preserve the existing one (e.g. username-only
+		// edit); on create, the token is required.
+		if prior == nil {
+			respond.Error(w, http.StatusBadRequest, "invalid_request", "bot_token required")
+			return nil, false
+		}
+		existing, err := telegram.DecodeToken(h.d.Cipher, prior)
+		if err != nil || existing == "" {
+			respond.Error(w, http.StatusBadRequest, "invalid_request", "bot_token required")
+			return nil, false
+		}
+		token = existing
+	}
+	enc, err := telegram.EncodeConfig(h.d.Cipher, token, username)
+	if err != nil {
+		serverError(w, r, err)
+		return nil, false
+	}
+	return enc, true
 }
 
 // ---- push jobs ----

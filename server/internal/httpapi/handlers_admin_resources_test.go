@@ -23,6 +23,7 @@ import (
 	"ouro-pass/server/internal/store"
 	"ouro-pass/server/internal/utils/chain"
 	"ouro-pass/server/internal/utils/crypto"
+	"ouro-pass/server/internal/worker/telegram"
 )
 
 // adminResourceEnv builds a full admin-capable server and logs in as the role
@@ -89,51 +90,103 @@ func TestAdminRBAC_Matrix(t *testing.T) {
 	if code := postCode(t, client, srv.URL+"/api/admin/push/jobs", `{"title":"x"}`); code != http.StatusForbidden {
 		t.Errorf("viewer POST push = %d, want 403", code)
 	}
+	// viewer can list channels but not create one (operator-gated, S0005 p4-1).
+	if code := getCode(t, client, srv.URL+"/api/admin/channels"); code != 200 {
+		t.Errorf("viewer GET channels = %d, want 200", code)
+	}
+	if code := postCode(t, client, srv.URL+"/api/admin/channels", `{"channel_type":"telegram","name":"x","config":{"bot_token":"t"}}`); code != http.StatusForbidden {
+		t.Errorf("viewer POST channels = %d, want 403", code)
+	}
 	if code := getCode(t, client, srv.URL+"/api/admin/oauth-clients"); code != http.StatusForbidden {
 		t.Errorf("viewer GET clients = %d, want 403 (owner only)", code)
 	}
 }
 
-// TestAdminConfigureChannel: configuring the Telegram bot token stores it
-// ENCRYPTED (never plaintext) and surfaces a "configured" status (S0004 p8-1).
-func TestAdminConfigureChannel(t *testing.T) {
+// TestAdminChannelCRUD (S0005 p4-1): operator can create multiple telegram
+// instances (tokens stored ENCRYPTED, never plaintext), rename/disable them,
+// and delete with subscription cascade (D7). Names are unique per (pool, type).
+func TestAdminChannelCRUD(t *testing.T) {
+	ctx := context.Background()
 	srv, client, _, _, st := adminResourceEnv(t, domain.RoleOperator)
 	const token = "987654:XYZ-secret-bot-token"
 
-	if c := postCode(t, client, srv.URL+"/api/admin/channels/telegram/configure",
-		`{"config":{"bot_token":"`+token+`"}}`); c != 200 {
-		t.Fatalf("configure telegram = %d, want 200", c)
+	// Create instance "members".
+	res := postJSON(t, client, srv.URL+"/api/admin/channels",
+		`{"channel_type":"telegram","name":"members","config":{"bot_token":"`+token+`","bot_username":"MembersBot"}}`)
+	id1, _ := res["channel_id"].(string)
+	if id1 == "" {
+		t.Fatalf("create members: no channel_id (%v)", res)
+	}
+	// Token stored encrypted.
+	inst, err := st.Channels().Get(ctx, id1)
+	if err != nil || strings.Contains(string(inst.Config), token) {
+		t.Fatalf("token not encrypted: %v %s", err, inst.Config)
 	}
 
-	// Stored config must be encrypted (no plaintext token in the row).
-	cfg, err := st.Channels().GetByType(context.Background(), "telegram")
-	if err != nil {
-		t.Fatalf("channel not stored: %v", err)
+	// Second instance of the same type with a different name is allowed.
+	if c := postCode(t, client, srv.URL+"/api/admin/channels",
+		`{"channel_type":"telegram","name":"announce","config":{"bot_token":"`+token+`2","bot_username":"AnnounceBot"}}`); c != 200 {
+		t.Fatalf("create announce = %d, want 200", c)
 	}
-	if strings.Contains(string(cfg.Config), token) {
-		t.Fatalf("bot token stored in PLAINTEXT: %s", cfg.Config)
+	// Duplicate name → 409.
+	if c := postCode(t, client, srv.URL+"/api/admin/channels",
+		`{"channel_type":"telegram","name":"members","config":{"bot_token":"x"}}`); c != http.StatusConflict {
+		t.Fatalf("duplicate name = %d, want 409", c)
 	}
-
-	// Status endpoint reports telegram configured.
-	resp, err := client.Get(srv.URL + "/api/admin/channels")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer resp.Body.Close()
-	var body struct {
-		Channels []struct {
-			ChannelType string `json:"channel_type"`
-			Configured  bool   `json:"configured"`
-		} `json:"channels"`
-	}
-	json.NewDecoder(resp.Body).Decode(&body)
-	if len(body.Channels) != 1 || body.Channels[0].ChannelType != "telegram" || !body.Channels[0].Configured {
-		t.Fatalf("status = %+v, want telegram configured", body.Channels)
+	// Missing bot_token on create → 400.
+	if c := postCode(t, client, srv.URL+"/api/admin/channels",
+		`{"channel_type":"telegram","name":"nope","config":{}}`); c != http.StatusBadRequest {
+		t.Fatalf("missing bot_token = %d, want 400", c)
 	}
 
-	// Missing bot_token → 400.
-	if c := postCode(t, client, srv.URL+"/api/admin/channels/telegram/configure", `{"config":{}}`); c != http.StatusBadRequest {
-		t.Fatalf("empty bot_token = %d, want 400", c)
+	// List shows both instances with names + bot_username, no secrets.
+	list := postGetJSON(t, client, srv.URL+"/api/admin/channels")
+	chans, _ := list["channels"].([]any)
+	if len(chans) != 2 {
+		t.Fatalf("list = %d instances, want 2", len(chans))
+	}
+
+	// Rename + disable instance 1.
+	if c := postCode(t, client, srv.URL+"/api/admin/channels/"+id1,
+		`{"name":"vip","status":"disabled"}`); c != 200 {
+		t.Fatalf("update = %d, want 200", c)
+	}
+	inst, _ = st.Channels().Get(ctx, id1)
+	if inst.Name != "vip" || inst.Status != "disabled" {
+		t.Fatalf("after update = %+v, want name=vip status=disabled", inst)
+	}
+	// Username-only update preserves the token.
+	if c := postCode(t, client, srv.URL+"/api/admin/channels/"+id1,
+		`{"config":{"bot_username":"VipBot"}}`); c != 200 {
+		t.Fatalf("username update = %d, want 200", c)
+	}
+	inst, _ = st.Channels().Get(ctx, id1)
+	if got, _ := decodeTok(t, inst.Config); got != token {
+		t.Fatalf("token not preserved on username-only update: %q", got)
+	}
+
+	// Seed an active subscription on instance 1, then delete → cascade cancel (D7).
+	now := time.Now()
+	st.Subscriptions().Upsert(ctx, domain.SubscriptionSession{
+		SessionID: "sub-x", PoolID: "pool1", StakeCredentialHash: "h", ChannelID: id1,
+		ChannelType: "telegram", ChannelUserID: "u1", Status: domain.SubActive, Tier: "gold",
+		CreatedAt: now, LastVerifiedAt: now, ExpiresAt: now.Add(time.Hour),
+	})
+	del := delJSON(t, client, srv.URL+"/api/admin/channels/"+id1)
+	if del["deleted"] != true {
+		t.Fatalf("delete result = %v", del)
+	}
+	if got := st.Subscriptions(); func() bool { s, _ := got.GetByInstanceUser(ctx, id1, "u1"); return s != nil && s.Status == domain.SubActive }() {
+		t.Fatal("subscription should be cancelled by delete cascade")
+	}
+	if _, err := st.Channels().Get(ctx, id1); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("instance still present after delete: %v", err)
+	}
+
+	// Audit recorded the mutations.
+	entries, _ := st.Audit().Recent(ctx, 20)
+	if len(entries) < 4 {
+		t.Fatalf("expected channel audit entries, got %d", len(entries))
 	}
 }
 
@@ -246,7 +299,7 @@ func TestAdminF2_RejectsInvalidEnums(t *testing.T) {
 	if c := postCode(t, op, srvOp.URL+"/api/admin/push/jobs", `{"title":"hi","channel_type":"carrier-pigeon"}`); c != http.StatusBadRequest {
 		t.Errorf("bad push channel_type = %d, want 400", c)
 	}
-	if c := postCode(t, op, srvOp.URL+"/api/admin/channels/carrier-pigeon/configure", `{"config":{}}`); c != http.StatusBadRequest {
+	if c := postCode(t, op, srvOp.URL+"/api/admin/channels", `{"channel_type":"carrier-pigeon","name":"x","config":{}}`); c != http.StatusBadRequest {
 		t.Errorf("bad channel type = %d, want 400", c)
 	}
 
@@ -480,6 +533,37 @@ func postJSON(t *testing.T, c *http.Client, url, body string) map[string]any {
 	var m map[string]any
 	json.NewDecoder(resp.Body).Decode(&m)
 	return m
+}
+
+func postGetJSON(t *testing.T, c *http.Client, url string) map[string]any {
+	resp, err := c.Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var m map[string]any
+	json.NewDecoder(resp.Body).Decode(&m)
+	return m
+}
+
+func delJSON(t *testing.T, c *http.Client, url string) map[string]any {
+	req, _ := http.NewRequest(http.MethodDelete, url, nil)
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var m map[string]any
+	json.NewDecoder(resp.Body).Decode(&m)
+	return m
+}
+
+// decodeTok decrypts a telegram instance config using the same zero-key field
+// cipher the admin test env is built with.
+func decodeTok(t *testing.T, config []byte) (string, error) {
+	t.Helper()
+	cipher, _ := crypto.NewFieldCipher(make([]byte, 32))
+	return telegram.DecodeToken(cipher, config)
 }
 
 // TestAdminStepUpChallenge_Route covers the S0002 p2-0 enabler: the logged-in
