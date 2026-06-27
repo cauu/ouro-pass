@@ -67,7 +67,7 @@ function CreatePushDialog({ onCreated }: { onCreated: () => void }) {
       return createPushJob(body);
     },
     onSuccess: () => {
-      toast({ title: "Push job scheduled", variant: "success" });
+      toast({ title: "Push job created", variant: "success" });
       setOpen(false);
       reset();
       onCreated();
@@ -113,7 +113,7 @@ function CreatePushDialog({ onCreated }: { onCreated: () => void }) {
           </div>
           <DialogFooter>
             <Button type="submit" disabled={create.isPending}>
-              Schedule
+              Create push
             </Button>
           </DialogFooter>
         </form>
