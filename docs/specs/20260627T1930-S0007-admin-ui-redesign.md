@@ -130,7 +130,7 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - [x] p3-7 OAuth Clients：表精简 + 注册向导 + 一次性 secret + 重置 secret（TC-4, TC-7）。
 - [x] p3-8 Signing Keys：单状态卡 + 表（含 retire）（TC-4, TC-7）。
 - [x] p3-9 Attestors：表精简 + 删除走 `ConfirmDialog`（TC-4, TC-5, TC-7）。
-- [ ] p3-10 Audit：五列只读表（TC-4, TC-7）。
+- [x] p3-10 Audit：五列只读表（TC-4, TC-7）。
 - [ ] p3-11 Setup：上线清单按新 token 重排（语义不变）（TC-4, TC-7）。
 - [ ] p3-12 Login / StepUpDialog / WalletPicker 重置样式（逻辑不动）（TC-2, TC-7）。
 
@@ -185,6 +185,8 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - 2026-06-27 p3-9 完成：Attestors——状态列改 StatusBadge、表加 footer 计数 + 空态 EmptyState；表单 Label/Pool ID 加 required 星标；label 单元加粗。删除走 p2-2 的 ConfirmDialog。status 仅 active/disabled，无产出事实/同步进度列（无对应字段）。
 
+- 2026-06-27 p3-10 完成：Audit——五列只读表（Time/Actor/Action/Target/IP）；Action 改 outline mono Badge、Target 截断 + title 全量、IP mono；表加 footer 计数。无结果列/过滤/导出/分页（无对应字段/参数）。
+
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: ui|node | command: ... | result: pass|fail | note: ...` 追加）
 
@@ -237,6 +239,9 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - TC-1 | stack: node | command: tsc -b --noEmit + eslint AttestorsPage | result: pass | note: p3-9 绿
 - TC-4 | stack: ui | command: 字段对照 | result: pass | note: 列=label/kind/params(pool_id,network)/status；写=create/toggle/delete
 - TC-5 | stack: ui | command: review | result: pass | note: 删除走 ConfirmDialog
+
+- TC-1 | stack: node | command: tsc -b --noEmit + eslint AuditPage | result: pass | note: p3-10 绿
+- TC-4 | stack: ui | command: 字段对照 | result: pass | note: 仅 AuditEntry 的 CreatedAt/Actor/Action/Target/IP
 
 ## 7. Change Requests (append-only)
 - （无）
