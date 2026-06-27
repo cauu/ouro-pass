@@ -1,12 +1,12 @@
 # Ouro Pass Admin 前端重构 — 设计规范化与页面统一（Linear/Vercel 极简风）
 
 Spec-ID: S0007
-Status: active
+Status: completed
 Created Time: 2026-06-27T18:30:00+08:00
 Start Time: 2026-06-27T19:30:00+08:00
-Completion Time:
+Completion Time: 2026-06-27T22:05:00+08:00
 Previous Spec-ID: S0005
-Closure Reason:
+Closure Reason: delivered
 
 > 本 spec 是**纯 `web/` 表现层重构**：在不改后端、不动 `web/src/api/admin.ts` 端点面、不新增数据查询的前提下，按已评审通过的 scoped 原型（`docs/prototype/admin-redesign-scoped.html`）重做整套 Admin 后台的视觉规范与页面布局/交互。所有页面只渲染 `web/src/lib/types.ts` 中已存在的字段。北极星版（`docs/prototype/admin-redesign.html`，含搜索/排序/分页/批量/详情抽屉/图表等）是**未来功能**的参考，**不在本 spec 范围**。
 
@@ -288,3 +288,4 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 ## 7. Change Requests (append-only)
 - （无）
+- 2026-06-27 S0007 关闭（active→completed，Closure Reason: `delivered`）：p1–p6 全部交付，宿主复核 typecheck/lint/build/test 全绿；三条红线（零后端、只渲染现有字段、行为/RBAC 零回归）守住。后续的**信息架构与内容编排重构**（Setup 并入 Dashboard、Attestors+Tiers 合并 Eligibility、常驻创建表单改 modal、详情抽屉等）属新范围，另立 **S0008**（Previous Spec-ID: S0007），依据 `docs/prototype/admin-ia-content-review.md`。
