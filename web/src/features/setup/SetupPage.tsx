@@ -1,23 +1,25 @@
 import { useQuery } from "@tanstack/react-query";
-import { Check, Circle } from "lucide-react";
+import { Check } from "lucide-react";
 import { Link } from "react-router-dom";
 import { fetchJwks, listChannels, listClients } from "@/api/admin";
 import { PageHeader } from "@/app/page";
+import { cn } from "@/lib/cn";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 
 function Step({ done, title, children }: { done: boolean; title: string; children: React.ReactNode }) {
   return (
     <div className="flex gap-3">
-      <div className="mt-0.5">
-        {done ? (
-          <Check className="h-5 w-5 text-success" />
-        ) : (
-          <Circle className="h-5 w-5 text-muted-foreground" />
+      <div
+        className={cn(
+          "mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full",
+          done ? "bg-success/15 text-success" : "border-2 text-muted-foreground",
         )}
+      >
+        {done ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : null}
       </div>
       <div>
-        <div className="font-medium">{title}</div>
-        <div className="text-sm text-muted-foreground">{children}</div>
+        <div className="text-sm font-medium">{title}</div>
+        <div className="mt-0.5 text-sm text-muted-foreground">{children}</div>
       </div>
     </div>
   );

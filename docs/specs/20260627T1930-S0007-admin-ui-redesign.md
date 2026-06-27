@@ -131,7 +131,7 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - [x] p3-8 Signing Keys：单状态卡 + 表（含 retire）（TC-4, TC-7）。
 - [x] p3-9 Attestors：表精简 + 删除走 `ConfirmDialog`（TC-4, TC-5, TC-7）。
 - [x] p3-10 Audit：五列只读表（TC-4, TC-7）。
-- [ ] p3-11 Setup：上线清单按新 token 重排（语义不变）（TC-4, TC-7）。
+- [x] p3-11 Setup：上线清单按新 token 重排（语义不变）（TC-4, TC-7）。
 - [ ] p3-12 Login / StepUpDialog / WalletPicker 重置样式（逻辑不动）（TC-2, TC-7）。
 
 ### p4 收尾
@@ -186,6 +186,8 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - 2026-06-27 p3-9 完成：Attestors——状态列改 StatusBadge、表加 footer 计数 + 空态 EmptyState；表单 Label/Pool ID 加 required 星标；label 单元加粗。删除走 p2-2 的 ConfirmDialog。status 仅 active/disabled，无产出事实/同步进度列（无对应字段）。
 
 - 2026-06-27 p3-10 完成：Audit——五列只读表（Time/Actor/Action/Target/IP）；Action 改 outline mono Badge、Target 截断 + title 全量、IP mono；表加 footer 计数。无结果列/过滤/导出/分页（无对应字段/参数）。
+
+- 2026-06-27 p3-11 完成：Setup——保留真实上线清单语义（由 fetchJwks/listClients/listChannels 推导三步完成态），Step 改圆形图标徽章（done=success 软底勾、未完成=描边圈），间距/字号按新 token 重排。逻辑与跳转链接不变。删除 Circle 未用导入。
 
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: ui|node | command: ... | result: pass|fail | note: ...` 追加）
@@ -242,6 +244,9 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - TC-1 | stack: node | command: tsc -b --noEmit + eslint AuditPage | result: pass | note: p3-10 绿
 - TC-4 | stack: ui | command: 字段对照 | result: pass | note: 仅 AuditEntry 的 CreatedAt/Actor/Action/Target/IP
+
+- TC-1 | stack: node | command: tsc -b --noEmit + eslint SetupPage | result: pass | note: p3-11 绿
+- TC-4 | stack: ui | command: review | result: pass | note: 仍为清单（无新增配置/管理面板）；完成态推导自既有三查询
 
 ## 7. Change Requests (append-only)
 - （无）
