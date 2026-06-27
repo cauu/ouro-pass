@@ -1,12 +1,12 @@
 # Ouro Pass Admin 前端信息架构与内容编排重构（IA / modal / 抽屉）
 
 Spec-ID: S0008
-Status: active
+Status: completed
 Created Time: 2026-06-27T22:10:00+08:00
 Start Time: 2026-06-27T22:10:00+08:00
-Completion Time:
+Completion Time: 2026-06-27T22:45:00+08:00
 Previous Spec-ID: S0007
-Closure Reason:
+Closure Reason: delivered
 
 > 本 spec 在 S0007（纯视觉规范化，已 delivered）之上，按已评审通过的 `docs/prototype/admin-ia-content-review.md` 结论，做**纯 `web/` 表现层的信息架构（IA）与内容编排重构**：把摆错位置的内容（常驻创建表单、双重常驻的规则编辑器、一次性上手清单常驻顶层页）改到合适的承载方式（modal / 抽屉 / 上手卡），并合并/取消冗余页面。沿用 S0007 三条红线：**零后端、不改 `web/src/api/admin.ts`、只渲染 `lib/types.ts` 已有字段**。
 
@@ -196,3 +196,4 @@ ui/drawer.tsx   # 新增：基于 @radix-ui/react-dialog 的右侧抽屉
 
 ## 7. Change Requests (append-only)
 - （无）
+- 2026-06-27 S0008 关闭（active→completed，Closure Reason: `delivered`）：P1+P2+P3 全部交付（p1-1..p4-1，逐项独立提交），宿主 typecheck/lint/test/build 全绿；三条红线（零后端、`api/admin.ts`/`package.json` 零改动、只渲染现有字段）守住。Subscriptions 按用户决定保持现状；会员详情抽屉、Subscriptions 更名/并入/Session 抽屉等为 `[需后端]`/未来范围，未来如启动另立新 spec（Previous Spec-ID: S0008）。
