@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { createPushJob, listPushJobs } from "@/api/admin";
 import { ApiError } from "@/api/client";
 import { PageHeader, QueryState } from "@/app/page";
 import { fmtTime } from "@/lib/format";
-import type { PushCreate } from "@/lib/types";
+import type { PushCreate, PushJob } from "@/lib/types";
 import { Button } from "@/ui/button";
 import {
   Dialog,
@@ -16,6 +17,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/ui/dialog";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/ui/drawer";
 import { Field } from "@/ui/field";
 import { Input } from "@/ui/input";
 import { StatusBadge } from "@/ui/status-badge";
@@ -114,10 +122,69 @@ function CreatePushDialog({ onCreated }: { onCreated: () => void }) {
   );
 }
 
+// DetailRow is one label/value line in the push detail drawer.
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid gap-1">
+      <dt className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</dt>
+      <dd className="text-sm">{children}</dd>
+    </div>
+  );
+}
+
+// PushDetailDrawer surfaces the full job (S0008 p2-3): the list keeps the title,
+// the drawer carries the full content, targeting and provenance — all already in
+// the list response.
+function PushDetailDrawer({
+  job,
+  onOpenChange,
+}: {
+  job: PushJob | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const target =
+    [
+      job?.TargetTier && `tier: ${job.TargetTier}`,
+      job?.TargetTopic && `topic: ${job.TargetTopic}`,
+      job?.RequiredEntitlement && `entitlement: ${job.RequiredEntitlement}`,
+    ]
+      .filter(Boolean)
+      .join(" · ") || "all members";
+
+  return (
+    <Drawer open={!!job} onOpenChange={onOpenChange}>
+      <DrawerContent>
+        {job ? (
+          <>
+            <DrawerHeader>
+              <DrawerTitle>{job.Title}</DrawerTitle>
+              <DrawerDescription>Push job detail</DrawerDescription>
+            </DrawerHeader>
+            <dl className="grid gap-4">
+              <DetailRow label="Status">
+                <StatusBadge status={job.Status} />
+              </DetailRow>
+              <DetailRow label="Channel">{job.ChannelType}</DetailRow>
+              <DetailRow label="Target">{target}</DetailRow>
+              <DetailRow label="Content">
+                <p className="whitespace-pre-wrap rounded-md border bg-surface p-3 text-sm">{job.Content}</p>
+              </DetailRow>
+              <DetailRow label="Created by">{job.CreatedBy || "—"}</DetailRow>
+              <DetailRow label="Created">{fmtTime(job.CreatedAt)}</DetailRow>
+              <DetailRow label="Scheduled">{job.ScheduledAt ? fmtTime(job.ScheduledAt) : "sent immediately"}</DetailRow>
+            </dl>
+          </>
+        ) : null}
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
 export function PushPage() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["push-jobs"], queryFn: listPushJobs });
   const jobs = q.data?.jobs ?? [];
+  const [selected, setSelected] = useState<PushJob | null>(null);
 
   return (
     <>
@@ -135,11 +202,12 @@ export function PushPage() {
               <TH>Target</TH>
               <TH>Status</TH>
               <TH>Scheduled</TH>
+              <TH className="w-8" />
             </TR>
           </THead>
           <TBody>
             {jobs.map((j) => (
-              <TR key={j.JobID}>
+              <TR key={j.JobID} className="cursor-pointer" onClick={() => setSelected(j)}>
                 <TD className="font-medium">{j.Title}</TD>
                 <TD>{j.ChannelType}</TD>
                 <TD className="text-xs text-muted-foreground">
@@ -151,11 +219,21 @@ export function PushPage() {
                   <StatusBadge status={j.Status} />
                 </TD>
                 <TD className="text-muted-foreground">{j.ScheduledAt ? fmtTime(j.ScheduledAt) : "now"}</TD>
+                <TD className="text-right text-muted-foreground">
+                  <ChevronRight className="h-4 w-4" />
+                </TD>
               </TR>
             ))}
           </TBody>
         </Table>
       </QueryState>
+
+      <PushDetailDrawer
+        job={selected}
+        onOpenChange={(o) => {
+          if (!o) setSelected(null);
+        }}
+      />
     </>
   );
 }
