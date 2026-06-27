@@ -6,6 +6,7 @@ import { StepUpDialog } from "@/features/auth/StepUpDialog";
 import { short } from "@/lib/format";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
+import { CopyButton } from "@/ui/copy-button";
 import { Table, TBody, TD, TH, THead, TR } from "@/ui/table";
 
 export function MembersPage() {
@@ -17,9 +18,17 @@ export function MembersPage() {
 
   return (
     <>
-      <PageHeader title="Members" description="Active members keyed by on-chain stake credential." />
-      <QueryState isLoading={q.isLoading} error={q.error} empty={members.length === 0} emptyText="No members yet.">
-        <Table>
+      <PageHeader
+        title="Members"
+        description="Active members keyed by on-chain stake credential. There is no Member table — the roster is derived from the active snapshot."
+      />
+      <QueryState
+        isLoading={q.isLoading}
+        error={q.error}
+        empty={members.length === 0}
+        emptyText="No eligible members yet. They appear here once a wallet proves delegation that satisfies a tier rule."
+      >
+        <Table footer={<span>{members.length} member(s)</span>}>
           <THead>
             <TR>
               <TH>Stake credential</TH>
@@ -31,13 +40,17 @@ export function MembersPage() {
           <TBody>
             {members.map((m) => (
               <TR key={`${m.stake_credential_hash}:${m.channel_type}`}>
-                <TD className="font-mono text-xs" title={m.stake_credential_hash}>
-                  {short(m.stake_credential_hash, 20)}
+                <TD>
+                  <CopyButton
+                    value={m.stake_credential_hash}
+                    display={short(m.stake_credential_hash, 20)}
+                    toastLabel="Stake credential copied"
+                  />
                 </TD>
                 <TD>
-                  <Badge>{m.tier}</Badge>
+                  <Badge className="capitalize">{m.tier}</Badge>
                 </TD>
-                <TD>{m.channel_type}</TD>
+                <TD className="text-muted-foreground">{m.channel_type}</TD>
                 {canRevoke ? (
                   <TD className="text-right">
                     <StepUpDialog
