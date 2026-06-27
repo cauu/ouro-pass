@@ -2,42 +2,86 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ============================================================
+   Design tokens (S0007) — Linear/Vercel 极简风
+   Semantic CSS variables bridged to Tailwind v4 via @theme inline.
+   Existing token names are preserved for backward compatibility;
+   new ones (surface/warning/info + soft tints, ring) are additive.
+   ============================================================ */
 :root {
   --background: oklch(0.99 0 0);
-  --foreground: oklch(0.18 0.01 270);
+  --foreground: oklch(0.2 0.01 270);
   --card: oklch(1 0 0);
+  /* subtle raised/sunken surfaces for toolbars, table headers, footers */
+  --surface: oklch(0.975 0.003 270);
+  --surface-strong: oklch(0.955 0.004 270);
   --primary: oklch(0.54 0.2 268);
   --primary-foreground: oklch(0.98 0 0);
-  --muted: oklch(0.96 0.005 270);
+  --primary-soft: oklch(0.95 0.03 268);
+  --muted: oklch(0.965 0.004 270);
   --muted-foreground: oklch(0.5 0.01 270);
-  --border: oklch(0.9 0.005 270);
+  --border: oklch(0.91 0.004 270);
+  --border-strong: oklch(0.86 0.005 270);
   --destructive: oklch(0.58 0.22 27);
   --destructive-foreground: oklch(0.98 0 0);
-  --success: oklch(0.62 0.16 150);
-  --radius: 0.55rem;
+  --destructive-soft: oklch(0.95 0.04 27);
+  --success: oklch(0.58 0.14 150);
+  --success-soft: oklch(0.95 0.05 150);
+  --warning: oklch(0.62 0.13 75);
+  --warning-soft: oklch(0.95 0.06 80);
+  --info: oklch(0.55 0.15 250);
+  --info-soft: oklch(0.95 0.04 250);
+  --ring: oklch(0.54 0.2 268 / 0.4);
+  --radius: 0.5rem;
 }
 
 .dark {
-  --background: oklch(0.19 0.01 270);
+  --background: oklch(0.17 0.008 270);
   --foreground: oklch(0.96 0 0);
-  --card: oklch(0.22 0.01 270);
-  --muted: oklch(0.27 0.01 270);
+  --card: oklch(0.205 0.009 270);
+  --surface: oklch(0.225 0.009 270);
+  --surface-strong: oklch(0.25 0.01 270);
+  --primary: oklch(0.66 0.18 268);
+  --primary-foreground: oklch(0.16 0.01 270);
+  --primary-soft: oklch(0.3 0.06 268);
+  --muted: oklch(0.245 0.009 270);
   --muted-foreground: oklch(0.7 0.01 270);
-  --border: oklch(0.32 0.01 270);
+  --border: oklch(0.3 0.01 270);
+  --border-strong: oklch(0.37 0.012 270);
+  --destructive: oklch(0.66 0.19 25);
+  --destructive-soft: oklch(0.32 0.09 25);
+  --success: oklch(0.7 0.15 152);
+  --success-soft: oklch(0.3 0.07 152);
+  --warning: oklch(0.78 0.14 80);
+  --warning-soft: oklch(0.32 0.07 80);
+  --info: oklch(0.7 0.13 250);
+  --info-soft: oklch(0.3 0.07 250);
+  --ring: oklch(0.66 0.18 268 / 0.5);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
+  --color-surface: var(--surface);
+  --color-surface-strong: var(--surface-strong);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive-soft: var(--destructive-soft);
   --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-ring: var(--ring);
   --radius-md: var(--radius);
   --radius-lg: calc(var(--radius) + 0.25rem);
 }
@@ -46,12 +90,32 @@
   border-color: var(--border);
 }
 
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
 body {
   margin: 0;
   background: var(--background);
   color: var(--foreground);
   font-family:
+    "Inter",
     system-ui,
     -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
     sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* tabular numerals for counts/ids; subtle scrollbars */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+* {
+  scrollbar-width: thin;
 }

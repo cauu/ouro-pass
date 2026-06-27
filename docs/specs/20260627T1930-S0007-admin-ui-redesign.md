@@ -112,7 +112,7 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 ## 3. Execution Plan
 ### p1 设计系统与应用壳
-- [ ] p1-1 `index.css` 扩展语义化 token（中性灰阶/状态色/字号/间距/圆角/阴影/等宽，亮+暗），同步 `@theme inline`；不改业务组件类名前提下全站换肤（TC-1, TC-2）。
+- [x] p1-1 `index.css` 扩展语义化 token（中性灰阶/状态色/字号/间距/圆角/阴影/等宽，亮+暗），同步 `@theme inline`；不改业务组件类名前提下全站换肤（TC-1, TC-2）。
 - [ ] p1-2 `Layout.tsx` 分组侧栏（NAV 增 `group` 字段，按 Overview/Membership/Delivery/Identity&Security/System 分组渲染分组标题）+ 顶栏（面包屑 + 主题切换 + 用户/角色 + 登出）；RBAC 过滤与路由不变（TC-3, TC-7）。
 
 ### p2 共享 UI 基元
@@ -157,8 +157,14 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - 2026-06-27 S0007 激活（active）：draft→`docs/specs/20260627T1930-S0007-admin-ui-redesign.md`，记 Start Time 与 Previous Spec-ID=S0005。环境说明：本沙箱 registry 受限且 node_modules 携带 macOS 原生二进制（esbuild darwin-arm64 + 缺 rollup linux），`vite build`/`vitest` 无法在沙箱运行；沙箱内以 `tsc -b --noEmit`(typecheck) + `eslint .`(lint) 为门禁，`pnpm build`/`pnpm test`（TC-1）由宿主/CI 复核（Exception #3：外部阻塞）。
 
+- 2026-06-27 p1-1 完成：`index.css` 扩展语义 token——新增 `surface/surface-strong`、`warning/info` 及各色 `-soft` 软背景、`border-strong`、`ring`、`primary-soft`，并在 `.dark` 给出对应暗色值；全部经 `@theme inline` 暴露为 `--color-*`，业务组件继续用 Tailwind 类名。既有 token（background/foreground/card/primary/muted/border/destructive/success）保持不变，零破坏。radius 收紧到 0.5rem，body 字体加 Inter 与抗锯齿。
+
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: ui|node | command: ... | result: pass|fail | note: ...` 追加）
+
+- TC-1 | stack: node | command: tsc -b --noEmit | result: pass | note: p1-1 后 typecheck 绿（CSS 改动不影响 TS）
+- TC-1 | stack: node | command: eslint . | result: pass | note: 0 error / 2 既有 warning
+- TC-2 | stack: ui | command: manual review index.css | result: pass | note: 亮/暗双套 token 完整，旧 token 名保留，新增状态色经 @theme 暴露（bg-warning/text-info/bg-success-soft 等可用）；vite build 由宿主复核
 
 ## 7. Change Requests (append-only)
 - （无）
