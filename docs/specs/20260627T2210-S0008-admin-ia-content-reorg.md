@@ -108,7 +108,7 @@ ui/drawer.tsx   # 新增：基于 @radix-ui/react-dialog 的右侧抽屉
 
 ### p2 补回被裁信息（P2，零新接口）
 - [x] p2-1 新增 `ui/drawer.tsx`（Radix Dialog 右侧抽屉基元；ESC/遮罩关闭、焦点环、零新依赖）（TC-1, TC-7）。
-- [ ] p2-2 OAuth Client 详情抽屉：行→抽屉，展示 `RedirectURIs/AllowedAudiences/ClientType/Status/CreatedAt` + secret 状态 + 重置动作（TC-1, TC-4, TC-5, TC-6）。
+- [x] p2-2 OAuth Client 详情抽屉：行→抽屉，展示 `RedirectURIs/AllowedAudiences/ClientType/Status/CreatedAt` + secret 状态 + 重置动作（TC-1, TC-4, TC-5, TC-6）。
 - [ ] p2-3 Push 任务详情抽屉：行→抽屉，展示完整 `Content`/定向/`CreatedBy/CreatedAt/ScheduledAt/Status`（TC-1, TC-4, TC-5）。
 - [ ] p2-4 Eligibility>Tier rules 编辑器进抽屉：默认只读摘要，「Edit rules」打开抽屉承载 builder + JSON 双模（消除常驻双份）（TC-1, TC-5, TC-6）。
 
@@ -131,6 +131,7 @@ ui/drawer.tsx   # 新增：基于 @radix-ui/react-dialog 的右侧抽屉
 ## 5. Execution Log (append-only)
 - 2026-06-27 S0008 创建并激活（active）：前置 S0007 已 delivered；依据 `admin-ia-content-review.md`，经用户确认范围=全部 P1+P2+P3、Subscriptions 保持现状。red lines 沿用 S0007（零后端/只用现有字段/RBAC 不回归）。
 - 2026-06-27 p1-1 完成：`ChannelsPage` 抽出 `CreateChannelDialog`（Radix Dialog），「Add instance」按钮置于 PageHeader action；删除原列表上方常驻 add-form Card；列表改用 `QueryState` 的 `empty` 态、去掉外层 Card（Table 基元自带卡片样式）。create mutation 移入 dialog，成功后关闭+reset+invalidate；retoken/remove/toggle 行为不变。
+- 2026-06-27 p2-2 完成：`ClientsPage` 行 → `ClientDetailDrawer`（点击行打开，行尾加 ChevronRight 提示）。抽屉展示 `Name/ClientID(共享 CopyButton)/ClientType/Status/ClientSecretHash(Set/None)/RedirectURIs/AllowedAudiences/CreatedAt`，confidential 客户端在抽屉底部保留 `RegenerateSecretAction`（step-up 重置，行为不变）。表格列精简为 Client/Type/Audiences/Status/chevron；顺带删除页内本地 `CopyButton`、改用共享 `@/ui/copy-button`（同时消除 S0007 评审标记的重复定义）。找回了 S0007 精简后无处可见的 redirect/audiences/createdAt 信息，零新接口。
 - 2026-06-27 p2-1 完成：新增 `ui/drawer.tsx`（基于 `@radix-ui/react-dialog`，零新依赖）。导出 Drawer/DrawerTrigger/DrawerClose/DrawerContent（右侧固定全高 sheet，max-w-md，overflow-y-auto）/DrawerHeader/DrawerFooter/DrawerTitle/DrawerDescription；继承 Radix 焦点陷阱、ESC + 遮罩关闭，关闭按钮带 focus-visible 环。
 - 2026-06-27 p1-5 完成：Eligibility>Sources「添加 attestor」常驻 Card → `CreateAttestorDialog`（Radix Dialog，「Add attestor」按钮在 Sources 顶部 action 行）；create mutation 移入 dialog（成功关闭+reset+invalidate）；列表改用 `QueryState` 的 `empty` 态、去外层 Card。toggle/remove 不变。**至此 P1（信息架构纠偏）全部完成。**
 - 2026-06-27 p1-4 完成：侧栏 `NAV_GROUPS` 按评审 §4 重排为 5 组——Overview(Dashboard) / Identities(Members, Subscriptions) / Access & Rules(OAuth Clients, Eligibility) / Delivery(Channels, Push) / Security(Signing Keys, Audit log)。RBAC `min` 与组内 rank 过滤、空组隐藏逻辑不变。
@@ -163,6 +164,11 @@ ui/drawer.tsx   # 新增：基于 @radix-ui/react-dialog 的右侧抽屉
 
 - TC-1 | stack: node | command: pnpm typecheck + eslint drawer | result: pass | note: p2-1 绿；复用 @radix-ui/react-dialog，package.json 无新增
 - TC-7 | stack: ui | command: review drawer.tsx | result: pass | note: Radix 焦点陷阱 + ESC/遮罩关闭 + 关闭按钮 focus-visible ring
+
+- TC-1 | stack: node | command: pnpm typecheck + eslint ClientsPage | result: pass | note: p2-2 绿
+- TC-4 | stack: ui | command: 字段对照 | result: pass | note: 抽屉字段均出自 OAuthClient（RedirectURIs/AllowedAudiences/ClientType/Status/ClientSecretHash/CreatedAt）；无新字段
+- TC-5 | stack: ui | command: review | result: pass | note: 行→抽屉承载详情；注册仍为 modal；重置 secret 移入抽屉
+- TC-6 | stack: ui | command: review | result: pass | note: register/regenerateClientSecret + step-up 流程不变；api/admin.ts 未改
 
 ## 7. Change Requests (append-only)
 - （无）

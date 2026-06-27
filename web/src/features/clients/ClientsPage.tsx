@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { listClients, regenerateClientSecret, registerClient } from "@/api/admin";
@@ -7,9 +8,11 @@ import { PageHeader, QueryState } from "@/app/page";
 import { useStepUp } from "@/auth/useStepUp";
 import { StepUpDialog } from "@/features/auth/StepUpDialog";
 import { WalletPicker } from "@/features/auth/WalletPicker";
-import type { ClientRegister } from "@/lib/types";
+import { fmtTime } from "@/lib/format";
+import type { ClientRegister, OAuthClient } from "@/lib/types";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
+import { CopyButton } from "@/ui/copy-button";
 import {
   Dialog,
   DialogContent,
@@ -18,6 +21,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/ui/dialog";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/ui/drawer";
 import { Field } from "@/ui/field";
 import { Input } from "@/ui/input";
 import { Select } from "@/ui/select";
@@ -170,24 +181,6 @@ function RegisterClientDialog({ onRegistered }: { onRegistered: () => void }) {
   );
 }
 
-// CopyButton copies a value to the clipboard (used to reveal/copy the public
-// client_id straight from the roster).
-function CopyButton({ value, label = "Copy" }: { value: string; label?: string }) {
-  const { toast } = useToast();
-  return (
-    <Button
-      size="sm"
-      variant="ghost"
-      onClick={() => {
-        void navigator.clipboard?.writeText(value);
-        toast({ title: "Copied", variant: "success" });
-      }}
-    >
-      {label}
-    </Button>
-  );
-}
-
 // RegenerateSecretAction issues a fresh secret for a confidential client (step-up)
 // and reveals it once — secrets are stored hashed, so the old one is gone.
 function RegenerateSecretAction({ clientId, onDone }: { clientId: string; onDone: () => void }) {
@@ -225,17 +218,93 @@ function RegenerateSecretAction({ clientId, onDone }: { clientId: string; onDone
   );
 }
 
+// DetailRow is one label/value line in the client detail drawer.
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid gap-1">
+      <dt className="text-xs font-medium uppercase tracking-wider text-muted-foreground">{label}</dt>
+      <dd className="text-sm">{children}</dd>
+    </div>
+  );
+}
+
+// ClientDetailDrawer surfaces fields the list omits (S0008 p2-2): redirect URIs,
+// audiences, created time, secret status — all already in the list response — plus
+// the regenerate-secret action for confidential clients.
+function ClientDetailDrawer({
+  client,
+  onOpenChange,
+  onChanged,
+}: {
+  client: OAuthClient | null;
+  onOpenChange: (open: boolean) => void;
+  onChanged: () => void;
+}) {
+  const list = (xs: string[] | null) =>
+    xs && xs.length > 0 ? (
+      <ul className="grid gap-1">
+        {xs.map((x) => (
+          <li key={x} className="break-all font-mono text-xs">
+            {x}
+          </li>
+        ))}
+      </ul>
+    ) : (
+      <span className="text-muted-foreground">—</span>
+    );
+
+  return (
+    <Drawer open={!!client} onOpenChange={onOpenChange}>
+      <DrawerContent>
+        {client ? (
+          <>
+            <DrawerHeader>
+              <DrawerTitle>{client.Name}</DrawerTitle>
+              <DrawerDescription>OAuth client detail</DrawerDescription>
+            </DrawerHeader>
+            <dl className="grid gap-4">
+              <DetailRow label="Client ID">
+                <CopyButton value={client.ClientID} toastLabel="Client ID copied" />
+              </DetailRow>
+              <DetailRow label="Type">
+                <Badge variant={client.ClientType === "confidential" ? "default" : "outline"}>
+                  {client.ClientType}
+                </Badge>
+              </DetailRow>
+              <DetailRow label="Status">
+                <StatusBadge status={client.Status} />
+              </DetailRow>
+              <DetailRow label="Client secret">
+                {client.ClientSecretHash ? "Set (stored hashed)" : "None (public client)"}
+              </DetailRow>
+              <DetailRow label="Redirect URIs">{list(client.RedirectURIs)}</DetailRow>
+              <DetailRow label="Audiences">{list(client.AllowedAudiences)}</DetailRow>
+              <DetailRow label="Created">{fmtTime(client.CreatedAt)}</DetailRow>
+            </dl>
+            {client.ClientType === "confidential" && (
+              <DrawerFooter>
+                <RegenerateSecretAction clientId={client.ClientID} onDone={onChanged} />
+              </DrawerFooter>
+            )}
+          </>
+        ) : null}
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
 export function ClientsPage() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["clients"], queryFn: listClients });
   const clients = q.data?.clients ?? [];
   const refresh = () => qc.invalidateQueries({ queryKey: ["clients"] });
+  const [selected, setSelected] = useState<OAuthClient | null>(null);
 
   return (
     <>
       <PageHeader
         title="OAuth Clients"
-        description="Applications that may request staking-identity logins."
+        description="Applications that may request staking-identity logins. Select a client to see its redirect URIs, audiences and secret status."
         action={<RegisterClientDialog onRegistered={refresh} />}
       />
       <QueryState isLoading={q.isLoading} error={q.error} empty={clients.length === 0} emptyText="No clients yet.">
@@ -246,18 +315,19 @@ export function ClientsPage() {
               <TH>Type</TH>
               <TH>Audiences</TH>
               <TH>Status</TH>
-              <TH className="text-right">Actions</TH>
+              <TH className="w-8" />
             </TR>
           </THead>
           <TBody>
             {clients.map((c) => (
-              <TR key={c.ClientID}>
+              <TR
+                key={c.ClientID}
+                className="cursor-pointer"
+                onClick={() => setSelected(c)}
+              >
                 <TD>
                   <div className="font-medium">{c.Name}</div>
-                  <div className="flex items-center gap-1">
-                    <span className="font-mono text-xs text-muted-foreground">{c.ClientID}</span>
-                    <CopyButton value={c.ClientID} label="Copy ID" />
-                  </div>
+                  <div className="font-mono text-xs text-muted-foreground">{c.ClientID}</div>
                 </TD>
                 <TD>
                   <Badge variant={c.ClientType === "confidential" ? "default" : "outline"}>
@@ -268,16 +338,22 @@ export function ClientsPage() {
                 <TD>
                   <StatusBadge status={c.Status} />
                 </TD>
-                <TD className="text-right">
-                  {c.ClientType === "confidential" && (
-                    <RegenerateSecretAction clientId={c.ClientID} onDone={refresh} />
-                  )}
+                <TD className="text-right text-muted-foreground">
+                  <ChevronRight className="h-4 w-4" />
                 </TD>
               </TR>
             ))}
           </TBody>
         </Table>
       </QueryState>
+
+      <ClientDetailDrawer
+        client={selected}
+        onOpenChange={(o) => {
+          if (!o) setSelected(null);
+        }}
+        onChanged={refresh}
+      />
     </>
   );
 }
