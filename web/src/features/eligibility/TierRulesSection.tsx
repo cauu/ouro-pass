@@ -8,6 +8,14 @@ import type { Attestor, TierCondition, TierRule } from "@/lib/types";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/ui/drawer";
 import { Input } from "@/ui/input";
 import { Select } from "@/ui/select";
 import { Table, TBody, TD, TH, THead, TR } from "@/ui/table";
@@ -155,7 +163,9 @@ function toEdit(rules: TierRule[]): EditRule[] {
 // TierRulesSection is the "Tier rules" half of Eligibility (S0008): the issuer's
 // first-party tier mapping (S0006 §2.4) — an ordered list of rules, each pairing a
 // tier with a boolean condition over the aggregate facts the attestor set (the
-// sibling Sources section) produces. First match wins; no match → no tier.
+// sibling Sources section) produces. First match wins; no match → no tier. The
+// read-only summary is the resident view; editing happens in a drawer (p2-4) so
+// the heavy builder no longer sits permanently alongside the summary.
 export function TierRulesSection() {
   const qc = useQueryClient();
   const pool = useQuery({ queryKey: ["pool"], queryFn: getPool });
@@ -163,6 +173,7 @@ export function TierRulesSection() {
   const facts = availableFacts(attestorsQ.data?.attestors ?? []);
   const { toast } = useToast();
 
+  const [editOpen, setEditOpen] = useState(false);
   const [rules, setRules] = useState<EditRule[]>([]);
   const [mode, setMode] = useState<"builder" | "json">("builder");
   const [jsonDraft, setJsonDraft] = useState("");
@@ -171,6 +182,14 @@ export function TierRulesSection() {
   useEffect(() => {
     if (pool.data) setRules(toEdit(pool.data.tier_rules ?? []));
   }, [pool.data]);
+
+  // Opening the editor starts from the saved rules (discards any abandoned edits
+  // from a previous open) in builder mode.
+  function openEditor() {
+    setRules(toEdit(pool.data?.tier_rules ?? []));
+    setMode("builder");
+    setEditOpen(true);
+  }
 
   const update = (i: number, fn: (r: EditRule) => EditRule) =>
     setRules((rs) => rs.map((r, idx) => (idx === i ? fn(r) : r)));
@@ -212,6 +231,7 @@ export function TierRulesSection() {
       await setTierRules(out);
       await qc.invalidateQueries({ queryKey: ["pool"] });
       toast({ title: "Tier rules saved", variant: "success" });
+      setEditOpen(false);
     } catch (e) {
       toast({
         title: "Save failed",
@@ -240,14 +260,21 @@ export function TierRulesSection() {
 
   return (
     <QueryState isLoading={pool.isLoading} error={pool.error}>
-      <Card className="mb-4">
+      <Card>
         <CardHeader>
-          <CardTitle>Configured tiers</CardTitle>
-          <CardDescription>
-            {(pool.data?.tier_rules ?? []).length === 0
-              ? "No tiers configured — tokens carry no tier opinion until you add a rule below."
-              : `${(pool.data?.tier_rules ?? []).length} rule(s), evaluated top-down (first match wins).`}
-          </CardDescription>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <CardTitle>Configured tiers</CardTitle>
+              <CardDescription>
+                {(pool.data?.tier_rules ?? []).length === 0
+                  ? "No tiers configured — tokens carry no tier opinion until you add a rule."
+                  : `${(pool.data?.tier_rules ?? []).length} rule(s), evaluated top-down (first match wins).`}
+              </CardDescription>
+            </div>
+            <Button size="sm" onClick={openEditor}>
+              Edit rules
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <Table>
@@ -273,213 +300,220 @@ export function TierRulesSection() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Edit rules</CardTitle>
-            <Button variant="ghost" size="sm" onClick={mode === "builder" ? switchToJson : switchToBuilder}>
-              {mode === "builder" ? "Edit as JSON" : "Back to builder"}
-            </Button>
-          </div>
-          <CardDescription>
-            Each rule = a tier + a condition over facts. Facts:{" "}
-            <span className="font-mono text-xs">any_active</span>,{" "}
-            <span className="font-mono text-xs">total_active_stake</span>, per-pool{" "}
-            <span className="font-mono text-xs">pool:&lt;id&gt;.state</span>. JSON mode supports nested
-            all/any/not.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-4">
-          {mode === "json" ? (
-            <Textarea
-              className="min-h-[260px] font-mono text-xs"
-              value={jsonDraft}
-              onChange={(e) => setJsonDraft(e.target.value)}
-              spellCheck={false}
-            />
-          ) : (
-            <>
-              {rules.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  No tiers — tokens carry no tier opinion until you add a rule.
-                </p>
-              )}
-              {rules.map((r, i) => (
-                <div key={i} className="grid gap-3 rounded-md border p-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">{i + 1}</span>
-                    <Input
-                      className="max-w-[200px]"
-                      placeholder="tier name (e.g. gold)"
-                      value={r.tier}
-                      onChange={(e) => update(i, (x) => ({ ...x, tier: e.target.value }))}
-                    />
-                    <div className="ml-auto flex gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        title="Move up"
-                        onClick={() => move(i, -1)}
-                        disabled={i === 0}
-                      >
-                        <ArrowUp className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7"
-                        title="Move down"
-                        onClick={() => move(i, 1)}
-                        disabled={i === rules.length - 1}
-                      >
-                        <ArrowDown className="h-3.5 w-3.5" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setRules((rs) => rs.filter((_, idx) => idx !== i))}
-                      >
-                        Remove
-                      </Button>
-                    </div>
-                  </div>
+      <Drawer open={editOpen} onOpenChange={setEditOpen}>
+        <DrawerContent className="max-w-xl">
+          <DrawerHeader>
+            <div className="flex items-center justify-between gap-4 pr-8">
+              <DrawerTitle>Edit tier rules</DrawerTitle>
+              <Button variant="ghost" size="sm" onClick={mode === "builder" ? switchToJson : switchToBuilder}>
+                {mode === "builder" ? "Edit as JSON" : "Back to builder"}
+              </Button>
+            </div>
+            <DrawerDescription>
+              Each rule = a tier + a condition over facts. Facts:{" "}
+              <span className="font-mono text-xs">any_active</span>,{" "}
+              <span className="font-mono text-xs">total_active_stake</span>, per-pool{" "}
+              <span className="font-mono text-xs">pool:&lt;id&gt;.state</span>. JSON mode supports nested
+              all/any/not.
+            </DrawerDescription>
+          </DrawerHeader>
 
-                  {r.advancedWhen ? (
-                    <p className="font-mono text-xs text-muted-foreground">
-                      advanced condition — edit in JSON mode: {JSON.stringify(r.advancedWhen)}
-                    </p>
-                  ) : (
-                    <>
-                      <div className="flex items-center gap-2 text-sm">
-                        <span className="text-muted-foreground">
-                          {r.leaves.length === 0 ? "Always matches (catch-all)" : "Match"}
-                        </span>
-                        {r.leaves.length > 1 && (
-                          <Select
-                            className="max-w-[90px]"
-                            value={r.combinator}
-                            onChange={(e) =>
-                              update(i, (x) => ({ ...x, combinator: e.target.value as "all" | "any" }))
-                            }
-                          >
-                            <option value="all">ALL</option>
-                            <option value="any">ANY</option>
-                          </Select>
-                        )}
-                        {r.leaves.length > 1 && <span className="text-muted-foreground">of:</span>}
-                      </div>
-                      {r.leaves.map((l, j) => {
-                        const t = factType(l.fact);
-                        return (
-                          <div key={j} className="flex items-center gap-2">
-                            <Select
-                              value={facts.includes(l.fact) ? l.fact : "__custom"}
-                              onChange={(e) => {
-                                if (e.target.value !== "__custom") setFact(i, j, e.target.value);
-                              }}
-                            >
-                              {facts.map((f) => (
-                                <option key={f} value={f}>
-                                  {f}
-                                </option>
-                              ))}
-                              {!facts.includes(l.fact) && (
-                                <option value="__custom">{l.fact || "(custom)"}</option>
-                              )}
-                            </Select>
-                            <Select
-                              className="max-w-[80px]"
-                              value={l.op}
-                              onChange={(e) => patchLeaf(i, j, { op: e.target.value })}
-                            >
-                              {opsFor(t).map((o) => (
-                                <option key={o} value={o}>
-                                  {o}
-                                </option>
-                              ))}
-                            </Select>
-                            {t === "bool" ? (
-                              <Select value={l.value || "true"} onChange={(e) => patchLeaf(i, j, { value: e.target.value })}>
-                                <option value="true">true</option>
-                                <option value="false">false</option>
-                              </Select>
-                            ) : t === "state" ? (
-                              <Select value={l.value || "active"} onChange={(e) => patchLeaf(i, j, { value: e.target.value })}>
-                                {STATE_VALUES.map((s) => (
-                                  <option key={s} value={s}>
-                                    {s}
-                                  </option>
-                                ))}
-                                {l.value && !STATE_VALUES.includes(l.value) && (
-                                  <option value={l.value}>{l.value}</option>
-                                )}
-                              </Select>
-                            ) : (
-                              <div className="flex items-center gap-1">
-                                <Input
-                                  className="max-w-[200px]"
-                                  inputMode={t === "ada" || t === "number" ? "numeric" : undefined}
-                                  placeholder={
-                                    t === "ada" ? "ADA, e.g. 100000" : t === "number" ? "e.g. 3" : "value"
-                                  }
-                                  value={l.value}
-                                  onChange={(e) => patchLeaf(i, j, { value: e.target.value })}
-                                />
-                                {t === "ada" && <span className="text-xs text-muted-foreground">ADA</span>}
-                              </div>
-                            )}
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7 shrink-0"
-                              title="Remove condition"
-                              onClick={() => removeLeaf(i, j)}
-                            >
-                              <X className="h-3.5 w-3.5" />
-                            </Button>
-                          </div>
-                        );
-                      })}
-                      <div>
+          <div className="grid gap-4">
+            {mode === "json" ? (
+              <Textarea
+                className="min-h-[260px] font-mono text-xs"
+                value={jsonDraft}
+                onChange={(e) => setJsonDraft(e.target.value)}
+                spellCheck={false}
+              />
+            ) : (
+              <>
+                {rules.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    No tiers — tokens carry no tier opinion until you add a rule.
+                  </p>
+                )}
+                {rules.map((r, i) => (
+                  <div key={i} className="grid gap-3 rounded-md border p-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground">{i + 1}</span>
+                      <Input
+                        className="max-w-[200px]"
+                        placeholder="tier name (e.g. gold)"
+                        value={r.tier}
+                        onChange={(e) => update(i, (x) => ({ ...x, tier: e.target.value }))}
+                      />
+                      <div className="ml-auto flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title="Move up"
+                          onClick={() => move(i, -1)}
+                          disabled={i === 0}
+                        >
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title="Move down"
+                          onClick={() => move(i, 1)}
+                          disabled={i === rules.length - 1}
+                        >
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => {
-                            const f0 = facts[0] ?? "any_active";
-                            update(i, (x) => ({
-                              ...x,
-                              leaves: [...x.leaves, { fact: f0, op: "==", value: defaultValueFor(factType(f0)) }],
-                            }));
-                          }}
+                          onClick={() => setRules((rs) => rs.filter((_, idx) => idx !== i))}
                         >
-                          <Plus className="h-3.5 w-3.5" />
-                          Add condition
+                          Remove
                         </Button>
                       </div>
-                    </>
-                  )}
+                    </div>
+
+                    {r.advancedWhen ? (
+                      <p className="font-mono text-xs text-muted-foreground">
+                        advanced condition — edit in JSON mode: {JSON.stringify(r.advancedWhen)}
+                      </p>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2 text-sm">
+                          <span className="text-muted-foreground">
+                            {r.leaves.length === 0 ? "Always matches (catch-all)" : "Match"}
+                          </span>
+                          {r.leaves.length > 1 && (
+                            <Select
+                              className="max-w-[90px]"
+                              value={r.combinator}
+                              onChange={(e) =>
+                                update(i, (x) => ({ ...x, combinator: e.target.value as "all" | "any" }))
+                              }
+                            >
+                              <option value="all">ALL</option>
+                              <option value="any">ANY</option>
+                            </Select>
+                          )}
+                          {r.leaves.length > 1 && <span className="text-muted-foreground">of:</span>}
+                        </div>
+                        {r.leaves.map((l, j) => {
+                          const t = factType(l.fact);
+                          return (
+                            <div key={j} className="flex items-center gap-2">
+                              <Select
+                                value={facts.includes(l.fact) ? l.fact : "__custom"}
+                                onChange={(e) => {
+                                  if (e.target.value !== "__custom") setFact(i, j, e.target.value);
+                                }}
+                              >
+                                {facts.map((f) => (
+                                  <option key={f} value={f}>
+                                    {f}
+                                  </option>
+                                ))}
+                                {!facts.includes(l.fact) && (
+                                  <option value="__custom">{l.fact || "(custom)"}</option>
+                                )}
+                              </Select>
+                              <Select
+                                className="max-w-[80px]"
+                                value={l.op}
+                                onChange={(e) => patchLeaf(i, j, { op: e.target.value })}
+                              >
+                                {opsFor(t).map((o) => (
+                                  <option key={o} value={o}>
+                                    {o}
+                                  </option>
+                                ))}
+                              </Select>
+                              {t === "bool" ? (
+                                <Select value={l.value || "true"} onChange={(e) => patchLeaf(i, j, { value: e.target.value })}>
+                                  <option value="true">true</option>
+                                  <option value="false">false</option>
+                                </Select>
+                              ) : t === "state" ? (
+                                <Select value={l.value || "active"} onChange={(e) => patchLeaf(i, j, { value: e.target.value })}>
+                                  {STATE_VALUES.map((s) => (
+                                    <option key={s} value={s}>
+                                      {s}
+                                    </option>
+                                  ))}
+                                  {l.value && !STATE_VALUES.includes(l.value) && (
+                                    <option value={l.value}>{l.value}</option>
+                                  )}
+                                </Select>
+                              ) : (
+                                <div className="flex items-center gap-1">
+                                  <Input
+                                    className="max-w-[200px]"
+                                    inputMode={t === "ada" || t === "number" ? "numeric" : undefined}
+                                    placeholder={
+                                      t === "ada" ? "ADA, e.g. 100000" : t === "number" ? "e.g. 3" : "value"
+                                    }
+                                    value={l.value}
+                                    onChange={(e) => patchLeaf(i, j, { value: e.target.value })}
+                                  />
+                                  {t === "ada" && <span className="text-xs text-muted-foreground">ADA</span>}
+                                </div>
+                              )}
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 shrink-0"
+                                title="Remove condition"
+                                onClick={() => removeLeaf(i, j)}
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </Button>
+                            </div>
+                          );
+                        })}
+                        <div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const f0 = facts[0] ?? "any_active";
+                              update(i, (x) => ({
+                                ...x,
+                                leaves: [...x.leaves, { fact: f0, op: "==", value: defaultValueFor(factType(f0)) }],
+                              }));
+                            }}
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            Add condition
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))}
+                <div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setRules((rs) => [...rs, { tier: "", combinator: "all", leaves: [] }])}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add rule
+                  </Button>
                 </div>
-              ))}
-              <div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setRules((rs) => [...rs, { tier: "", combinator: "all", leaves: [] }])}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Add rule
-                </Button>
-              </div>
-            </>
-          )}
-          <div>
+              </>
+            )}
+          </div>
+
+          <DrawerFooter>
+            <Button variant="ghost" onClick={() => setEditOpen(false)} disabled={busy}>
+              Cancel
+            </Button>
             <Button onClick={() => void save()} disabled={busy}>
               {busy ? "Saving…" : "Save tiers"}
             </Button>
-          </div>
-        </CardContent>
-      </Card>
+          </DrawerFooter>
+        </DrawerContent>
+      </Drawer>
     </QueryState>
   );
 }
