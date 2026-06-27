@@ -36,17 +36,29 @@ export function LoginPage() {
 
   return (
     <div className="grid min-h-dvh place-items-center p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle>Ouro Pass Admin</CardTitle>
-          <CardDescription>
-            Sign in with your pool owner wallet. Only configured owner keys are admitted.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <WalletPicker onPick={pick} busy={busy} />
-        </CardContent>
-      </Card>
+      <div className="w-full max-w-sm">
+        <div className="mb-6 flex items-center gap-3">
+          <div className="grid h-9 w-9 place-items-center rounded-lg bg-primary text-sm font-bold text-primary-foreground">
+            OP
+          </div>
+          <div>
+            <div className="font-semibold leading-tight">Ouro Pass Admin</div>
+            <div className="text-xs text-muted-foreground">Staking identity · operator console</div>
+          </div>
+        </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Sign in</CardTitle>
+            <CardDescription>
+              Sign a one-time nonce with your pool owner wallet. Only configured owner keys are
+              admitted; operators and viewers are added later by an owner.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <WalletPicker onPick={pick} busy={busy} />
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

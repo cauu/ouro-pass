@@ -1,3 +1,4 @@
+import { Lock } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { ApiError } from "@/api/client";
 import { useStepUp } from "@/auth/useStepUp";
@@ -60,7 +61,12 @@ export function StepUpDialog({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
-        <p className="text-sm">Approve a fresh signature with your owner wallet to continue.</p>
+        <div className="flex items-start gap-2.5 rounded-md border bg-surface p-3 text-sm text-muted-foreground">
+          <Lock className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <span>
+            Sensitive action — approve a fresh signature with your owner wallet to continue.
+          </span>
+        </div>
         <WalletPicker onPick={pick} busy={busy} />
       </DialogContent>
     </Dialog>
