@@ -1,4 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getPool, listAttestors, setTierRules } from "@/api/admin";
 import { ApiError } from "@/api/client";
@@ -319,11 +320,25 @@ export function TiersPage() {
                         onChange={(e) => update(i, (x) => ({ ...x, tier: e.target.value }))}
                       />
                       <div className="ml-auto flex gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => move(i, -1)} disabled={i === 0}>
-                          ↑
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title="Move up"
+                          onClick={() => move(i, -1)}
+                          disabled={i === 0}
+                        >
+                          <ArrowUp className="h-3.5 w-3.5" />
                         </Button>
-                        <Button variant="ghost" size="sm" onClick={() => move(i, 1)} disabled={i === rules.length - 1}>
-                          ↓
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          title="Move down"
+                          onClick={() => move(i, 1)}
+                          disabled={i === rules.length - 1}
+                        >
+                          <ArrowDown className="h-3.5 w-3.5" />
                         </Button>
                         <Button
                           variant="ghost"
@@ -419,8 +434,14 @@ export function TiersPage() {
                                   {t === "ada" && <span className="text-xs text-muted-foreground">ADA</span>}
                                 </div>
                               )}
-                              <Button variant="ghost" size="sm" onClick={() => removeLeaf(i, j)}>
-                                ✕
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 shrink-0"
+                                title="Remove condition"
+                                onClick={() => removeLeaf(i, j)}
+                              >
+                                <X className="h-3.5 w-3.5" />
                               </Button>
                             </div>
                           );
@@ -437,7 +458,8 @@ export function TiersPage() {
                               }));
                             }}
                           >
-                            + Add condition
+                            <Plus className="h-3.5 w-3.5" />
+                            Add condition
                           </Button>
                         </div>
                       </>
@@ -450,7 +472,8 @@ export function TiersPage() {
                     size="sm"
                     onClick={() => setRules((rs) => [...rs, { tier: "", combinator: "all", leaves: [] }])}
                   >
-                    + Add rule
+                    <Plus className="h-3.5 w-3.5" />
+                    Add rule
                   </Button>
                 </div>
               </>

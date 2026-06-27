@@ -124,7 +124,7 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - [x] p3-1 Dashboard：3 统计卡 + 等级分布（客户端聚合 `listMembers`）（TC-4, TC-7）。
 - [x] p3-2 Members：精简表 + 撤销 step-up（TC-4, TC-5, TC-7）。
 - [x] p3-3 Subscriptions：精简表 + 取消（TC-4, TC-7）。
-- [ ] p3-4 Tiers：图标按钮替换文本按钮，保留 builder/JSON 双模与 describe 渲染（TC-4, TC-7）。
+- [x] p3-4 Tiers：图标按钮替换文本按钮，保留 builder/JSON 双模与 describe 渲染（TC-4, TC-7）。
 - [ ] p3-5 Channels：表精简 + 添加/换 token/删除走对话框（TC-4, TC-5, TC-7）。
 - [ ] p3-6 Push：列表精简 + 创建弹窗去排程/草稿（TC-4, TC-7）。
 - [ ] p3-7 OAuth Clients：表精简 + 注册向导 + 一次性 secret + 重置 secret（TC-4, TC-7）。
@@ -173,6 +173,8 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - 2026-06-27 p3-3 完成：Subscriptions 对齐 scoped——列=Stake credential(CopyButton) / Channel / Tier(Badge) / Status(StatusBadge 取代本地 statusVariant) / Expires(fmtTime) / Cancel(active 时可用，行为不变)；Table footer 计数；空态 EmptyState。删搜索/状态分段/导出/分页/绑定时间列。
 
+- 2026-06-27 p3-4 完成：Tiers 交互精修——将 builder 中的纯文本按钮 ↑/↓/✕ 替换为 lucide 图标按钮（ArrowUp/ArrowDown/X，h-7 w-7 + title 提示），「Add condition / Add rule」加 Plus 图标。builder/JSON 双模、describe() 只读摘要、ADA⇄lovelace 与规则序列化逻辑全部保持不变（scoped 原型的「命中数」本就不在真实 TiersPage 中，无需删除）。
+
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: ui|node | command: ... | result: pass|fail | note: ...` 追加）
 
@@ -203,6 +205,10 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - TC-1 | stack: node | command: tsc -b --noEmit + eslint SubscriptionsPage | result: pass | note: p3-3 绿
 - TC-4 | stack: ui | command: 字段对照 | result: pass | note: 仅 Subscription 的 StakeCredentialHash/ChannelType/Tier/Status/ExpiresAt；cancel 走既有端点
+
+- TC-1 | stack: node | command: tsc -b --noEmit + eslint TiersPage | result: pass | note: p3-4 绿
+- TC-4 | stack: ui | command: review | result: pass | note: 仅改按钮表现层；规则数据流(getPool/setTierRules)未动
+- TC-7 | stack: ui | command: review | result: pass | note: builder/JSON 切换、保存、序列化行为等价
 
 ## 7. Change Requests (append-only)
 - （无）
