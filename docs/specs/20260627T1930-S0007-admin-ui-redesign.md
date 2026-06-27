@@ -135,7 +135,7 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - [x] p3-12 Login / StepUpDialog / WalletPicker 重置样式（逻辑不动）（TC-2, TC-7）。
 
 ### p4 收尾
-- [ ] p4-1 亮/暗主题切换 + `localStorage` 持久化；首屏无闪烁（TC-2）。
+- [x] p4-1 亮/暗主题切换 + `localStorage` 持久化；首屏无闪烁（TC-2）。
 - [ ] p4-2 可达性与响应式：`focus-visible` ring、对话框 ESC/遮罩关闭、窄屏侧栏收起、关键文本/状态色 AA 对比抽检（TC-2, TC-6）。
 - [ ] p4-3 **（可选 stretch，不计验收）** 命令面板 ⌘K（仅跳转 + 已有操作入口，零新接口）。
 
@@ -190,6 +190,8 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - 2026-06-27 p3-11 完成：Setup——保留真实上线清单语义（由 fetchJwks/listClients/listChannels 推导三步完成态），Step 改圆形图标徽章（done=success 软底勾、未完成=描边圈），间距/字号按新 token 重排。逻辑与跳转链接不变。删除 Circle 未用导入。
 
 - 2026-06-27 p3-12 完成：登录与 step-up 重置样式（逻辑零改动）。LoginPage 加品牌头（OP 标记 + 名称/副标题）、卡片标题改 Sign in、文案补 owner-only 说明；StepUpDialog 的提示行改为带 Lock 图标的描边提示框。WalletPicker 保持不变。钱包连接/签名/会话/网络 guard 流程未动。
+
+- 2026-06-27 p4-1 完成：主题持久化无闪烁——index.html 在首屏渲染前同步读取 localStorage('op-admin-theme')，为 dark 时即给 <html> 加 .dark，避免 FOUC；与 Layout useTheme 的 toggle/回读形成闭环。
 
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: ui|node | command: ... | result: pass|fail | note: ...` 追加）
@@ -253,6 +255,8 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - TC-1 | stack: node | command: tsc -b --noEmit + eslint LoginPage,StepUpDialog | result: pass | note: p3-12 绿
 - TC-2 | stack: ui | command: review | result: pass | note: 仅表现层；亮/暗 token 适配
 - TC-7 | stack: ui | command: review | result: pass | note: login/useStepUp/WalletPicker 调用与回调签名不变
+
+- TC-2 | stack: ui | command: review index.html | result: pass | note: 预渲染脚本读 localStorage 设 .dark；切换后刷新保持，无明暗闪烁（宿主复核）
 
 ## 7. Change Requests (append-only)
 - （无）

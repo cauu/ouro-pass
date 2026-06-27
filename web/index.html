@@ -4,6 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ouro Pass Admin</title>
+    <script>
+      // Apply the saved theme before first paint to avoid a flash of the wrong
+      // theme (S0007 p4-1). The Layout's useTheme keeps localStorage in sync.
+      try {
+        if (localStorage.getItem("op-admin-theme") === "dark") {
+          document.documentElement.classList.add("dark");
+        }
+      } catch (e) {
+        /* ignore */
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
