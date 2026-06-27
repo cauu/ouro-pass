@@ -118,7 +118,7 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 ### p2 共享 UI 基元
 - [x] p2-1 `ui/table.tsx` 样式统一 + 新增 `ui/status-badge.tsx`、`ui/copy-button.tsx`；各表格 hash/kid 等改 `CopyButton`、状态改 `StatusBadge`（TC-2, TC-4）。
 - [x] p2-2 新增 `ui/confirm-dialog.tsx`（Radix），替换 `ChannelsPage` 的 `prompt`(换 token)/`confirm`(删除) 与 `AttestorsPage` 的 `confirm`(删除)；全仓 `prompt(`/`confirm(` 归零（TC-5）。
-- [ ] p2-3 `QueryState` 增骨架屏载态 + 新增 `ui/empty-state.tsx` 空态；`ui/field.tsx` 补必填星标 + RHF error 回显（TC-6）。
+- [x] p2-3 `QueryState` 增骨架屏载态 + 新增 `ui/empty-state.tsx` 空态；`ui/field.tsx` 补必填星标 + RHF error 回显（TC-6）。
 
 ### p3 页面逐页重构（对齐 scoped 原型，每页独立可提交）
 - [ ] p3-1 Dashboard：3 统计卡 + 等级分布（客户端聚合 `listMembers`）（TC-4, TC-7）。
@@ -165,6 +165,8 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - 2026-06-27 p2-2 完成：新增 `ui/confirm-dialog.tsx`（`ConfirmDialog` 危险确认 + `PromptDialog` 单值输入，均为 Radix 触发式、await 异步 onConfirm、pending 态、失败转 toast）。替换 `ChannelsPage` 的 Re-token（原 prompt）→ PromptDialog、Delete（原 confirm）→ ConfirmDialog；`AttestorsPage` 的 Delete（原 confirm）→ ConfirmDialog；mutation 改 mutateAsync 以便对话框等待。全仓原生 prompt/confirm 调用归零。
 
+- 2026-06-27 p2-3 完成：状态完备化。`app/page.tsx` 的 `QueryState` 载态改骨架屏（5 行表格占位）、错误态改带图标的告警卡、空态改 `EmptyState`（新增 `emptyTitle`）；`PageHeader` 标题字号/字距精修、description 放宽 ReactNode。新增 `ui/skeleton.tsx`、`ui/empty-state.tsx`。`ui/field.tsx` 增 `required` 星标。均向后兼容（既有 QueryState/Field 调用不变）。
+
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: ui|node | command: ... | result: pass|fail | note: ...` 追加）
 
@@ -182,6 +184,9 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - TC-1 | stack: node | command: tsc -b --noEmit | result: pass | note: p2-2 后 typecheck 绿（onConfirm 放宽为 Promise<unknown>|void）
 - TC-5 | stack: node | command: grep -rnE '[^a-zA-Z](prompt|confirm)\(' src | grep -v // | result: pass | note: 代码中原生 prompt/confirm 调用 = 0（仅余文档注释中的词）
+
+- TC-1 | stack: node | command: tsc -b --noEmit + eslint | result: pass | note: p2-3 后 typecheck/lint 绿
+- TC-6 | stack: ui | command: manual review | result: pass | note: QueryState 三态(骨架/告警/EmptyState)；Field required 星标可用；宿主复核渲染
 
 ## 7. Change Requests (append-only)
 - （无）
