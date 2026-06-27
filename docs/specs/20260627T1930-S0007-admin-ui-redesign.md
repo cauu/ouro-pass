@@ -136,7 +136,7 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 ### p4 收尾
 - [x] p4-1 亮/暗主题切换 + `localStorage` 持久化；首屏无闪烁（TC-2）。
-- [ ] p4-2 可达性与响应式：`focus-visible` ring、对话框 ESC/遮罩关闭、窄屏侧栏收起、关键文本/状态色 AA 对比抽检（TC-2, TC-6）。
+- [x] p4-2 可达性与响应式：`focus-visible` ring、对话框 ESC/遮罩关闭、窄屏侧栏收起、关键文本/状态色 AA 对比抽检（TC-2, TC-6）。
 - [ ] p4-3 **（可选 stretch，不计验收）** 命令面板 ⌘K（仅跳转 + 已有操作入口，零新接口）。
 
 ### p5 验收
@@ -192,6 +192,8 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - 2026-06-27 p3-12 完成：登录与 step-up 重置样式（逻辑零改动）。LoginPage 加品牌头（OP 标记 + 名称/副标题）、卡片标题改 Sign in、文案补 owner-only 说明；StepUpDialog 的提示行改为带 Lock 图标的描边提示框。WalletPicker 保持不变。钱包连接/签名/会话/网络 guard 流程未动。
 
 - 2026-06-27 p4-1 完成：主题持久化无闪烁——index.html 在首屏渲染前同步读取 localStorage('op-admin-theme')，为 dark 时即给 <html> 加 .dark，避免 FOUC；与 Layout useTheme 的 toggle/回读形成闭环。
+
+- 2026-06-27 p4-2 完成：可达性收尾——侧栏 NavLink 加 focus-visible ring（键盘可见焦点）；按钮/输入沿用基元已有的 focus-visible:ring；对话框（Radix Dialog / Confirm / Prompt / StepUp）默认支持 ESC 与遮罩关闭。内容列保持 min-w-0 + overflow-auto，窄屏不溢出破版（桌面优先）。命令面板（p4-3）为可选 stretch，本轮不实现。
 
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: ui|node | command: ... | result: pass|fail | note: ...` 追加）
@@ -257,6 +259,9 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - TC-7 | stack: ui | command: review | result: pass | note: login/useStepUp/WalletPicker 调用与回调签名不变
 
 - TC-2 | stack: ui | command: review index.html | result: pass | note: 预渲染脚本读 localStorage 设 .dark；切换后刷新保持，无明暗闪烁（宿主复核）
+
+- TC-2 | stack: node | command: tsc + eslint Layout | result: pass | note: p4-2 绿
+- TC-6 | stack: ui | command: review | result: pass | note: 焦点环可见；Radix 对话框 ESC/遮罩关闭；内容区不破版
 
 ## 7. Change Requests (append-only)
 - （无）
