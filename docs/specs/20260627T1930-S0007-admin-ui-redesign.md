@@ -123,7 +123,7 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 ### p3 页面逐页重构（对齐 scoped 原型，每页独立可提交）
 - [x] p3-1 Dashboard：3 统计卡 + 等级分布（客户端聚合 `listMembers`）（TC-4, TC-7）。
 - [x] p3-2 Members：精简表 + 撤销 step-up（TC-4, TC-5, TC-7）。
-- [ ] p3-3 Subscriptions：精简表 + 取消（TC-4, TC-7）。
+- [x] p3-3 Subscriptions：精简表 + 取消（TC-4, TC-7）。
 - [ ] p3-4 Tiers：图标按钮替换文本按钮，保留 builder/JSON 双模与 describe 渲染（TC-4, TC-7）。
 - [ ] p3-5 Channels：表精简 + 添加/换 token/删除走对话框（TC-4, TC-5, TC-7）。
 - [ ] p3-6 Push：列表精简 + 创建弹窗去排程/草稿（TC-4, TC-7）。
@@ -171,6 +171,8 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - 2026-06-27 p3-2 完成：Members 精简表对齐 scoped——列=Stake credential(CopyButton 复制全量 hash + short 展示) / Tier(Badge capitalize) / Channel / Actions(StepUpDialog 撤销，operator+，行为不变)；Table footer 显示会员计数；QueryState 空态用 EmptyState 文案。仅渲染 listMembers 的三字段，无详情抽屉/批量/多余列。
 
+- 2026-06-27 p3-3 完成：Subscriptions 对齐 scoped——列=Stake credential(CopyButton) / Channel / Tier(Badge) / Status(StatusBadge 取代本地 statusVariant) / Expires(fmtTime) / Cancel(active 时可用，行为不变)；Table footer 计数；空态 EmptyState。删搜索/状态分段/导出/分页/绑定时间列。
+
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: ui|node | command: ... | result: pass|fail | note: ...` 追加）
 
@@ -198,6 +200,9 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - TC-1 | stack: node | command: tsc -b --noEmit + eslint MembersPage | result: pass | note: p3-2 绿
 - TC-4 | stack: ui | command: 字段对照 | result: pass | note: 仅 stake_credential_hash/tier/channel_type；撤销走既有 revokeMember+step-up
 - TC-7 | stack: ui | command: review | result: pass | note: canRevoke 角色门禁与 StepUpDialog 流程与 S0002 等价
+
+- TC-1 | stack: node | command: tsc -b --noEmit + eslint SubscriptionsPage | result: pass | note: p3-3 绿
+- TC-4 | stack: ui | command: 字段对照 | result: pass | note: 仅 Subscription 的 StakeCredentialHash/ChannelType/Tier/Status/ExpiresAt；cancel 走既有端点
 
 ## 7. Change Requests (append-only)
 - （无）

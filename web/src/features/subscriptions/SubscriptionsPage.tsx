@@ -6,14 +6,10 @@ import { useAuth } from "@/auth/AuthContext";
 import { fmtTime, short } from "@/lib/format";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
+import { CopyButton } from "@/ui/copy-button";
+import { StatusBadge } from "@/ui/status-badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/ui/table";
 import { useToast } from "@/ui/toast";
-
-function statusVariant(s: string): "success" | "destructive" | "muted" {
-  if (s === "active") return "success";
-  if (s === "cancelled" || s === "expired") return "destructive";
-  return "muted";
-}
 
 export function SubscriptionsPage() {
   const qc = useQueryClient();
@@ -39,14 +35,17 @@ export function SubscriptionsPage() {
 
   return (
     <>
-      <PageHeader title="Subscriptions" description="Per-channel membership sessions." />
+      <PageHeader
+        title="Subscriptions"
+        description="Per-channel membership sessions. The reconciliation job downgrades or expires them on epoch boundaries; cancel is available while active."
+      />
       <QueryState
         isLoading={q.isLoading}
         error={q.error}
         empty={subs.length === 0}
-        emptyText="No subscriptions yet."
+        emptyText="No subscriptions yet. They appear when members activate a delivery channel."
       >
-        <Table>
+        <Table footer={<span>{subs.length} session(s)</span>}>
           <THead>
             <TR>
               <TH>Stake credential</TH>
@@ -60,15 +59,19 @@ export function SubscriptionsPage() {
           <TBody>
             {subs.map((s) => (
               <TR key={s.SessionID}>
-                <TD className="font-mono text-xs" title={s.StakeCredentialHash}>
-                  {short(s.StakeCredentialHash, 18)}
-                </TD>
-                <TD>{s.ChannelType}</TD>
                 <TD>
-                  <Badge>{s.Tier}</Badge>
+                  <CopyButton
+                    value={s.StakeCredentialHash}
+                    display={short(s.StakeCredentialHash, 18)}
+                    toastLabel="Stake credential copied"
+                  />
+                </TD>
+                <TD className="text-muted-foreground">{s.ChannelType}</TD>
+                <TD>
+                  <Badge className="capitalize">{s.Tier}</Badge>
                 </TD>
                 <TD>
-                  <Badge variant={statusVariant(s.Status)}>{s.Status}</Badge>
+                  <StatusBadge status={s.Status} />
                 </TD>
                 <TD className="text-muted-foreground">{fmtTime(s.ExpiresAt)}</TD>
                 {canCancel ? (
