@@ -6,7 +6,6 @@ import { ApiError } from "@/api/client";
 import { PageHeader, QueryState } from "@/app/page";
 import { fmtTime } from "@/lib/format";
 import type { PushCreate } from "@/lib/types";
-import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import {
   Dialog,
@@ -19,6 +18,7 @@ import {
 } from "@/ui/dialog";
 import { Field } from "@/ui/field";
 import { Input } from "@/ui/input";
+import { StatusBadge } from "@/ui/status-badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/ui/table";
 import { Textarea } from "@/ui/textarea";
 import { useToast } from "@/ui/toast";
@@ -78,14 +78,14 @@ function CreatePushDialog({ onCreated }: { onCreated: () => void }) {
           <DialogDescription>Target an audience by tier / topic / entitlement (blank = all).</DialogDescription>
         </DialogHeader>
         <form className="grid gap-3" onSubmit={handleSubmit((v) => create.mutate(v))}>
-          <Field label="Title">
+          <Field label="Title" required>
             <Input {...register("title", { required: true })} />
           </Field>
-          <Field label="Content">
+          <Field label="Content" required>
             <Textarea rows={3} {...register("content", { required: true })} className="font-sans" />
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Channel">
+            <Field label="Channel" required>
               <Input {...register("channel_type")} />
             </Field>
             <Field label="Target tier">
@@ -122,7 +122,7 @@ export function PushPage() {
         action={<CreatePushDialog onCreated={() => qc.invalidateQueries({ queryKey: ["push-jobs"] })} />}
       />
       <QueryState isLoading={q.isLoading} error={q.error} empty={jobs.length === 0} emptyText="No push jobs yet.">
-        <Table>
+        <Table footer={<span>{jobs.length} job(s)</span>}>
           <THead>
             <TR>
               <TH>Title</TH>
@@ -143,9 +143,7 @@ export function PushPage() {
                     .join(" · ") || "all"}
                 </TD>
                 <TD>
-                  <Badge variant={j.Status === "done" ? "success" : j.Status === "failed" ? "destructive" : "muted"}>
-                    {j.Status}
-                  </Badge>
+                  <StatusBadge status={j.Status} />
                 </TD>
                 <TD className="text-muted-foreground">{j.ScheduledAt ? fmtTime(j.ScheduledAt) : "now"}</TD>
               </TR>

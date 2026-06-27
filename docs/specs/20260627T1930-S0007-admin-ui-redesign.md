@@ -126,7 +126,7 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - [x] p3-3 Subscriptions：精简表 + 取消（TC-4, TC-7）。
 - [x] p3-4 Tiers：图标按钮替换文本按钮，保留 builder/JSON 双模与 describe 渲染（TC-4, TC-7）。
 - [x] p3-5 Channels：表精简 + 添加/换 token/删除走对话框（TC-4, TC-5, TC-7）。
-- [ ] p3-6 Push：列表精简 + 创建弹窗去排程/草稿（TC-4, TC-7）。
+- [x] p3-6 Push：列表精简 + 创建弹窗去排程/草稿（TC-4, TC-7）。
 - [ ] p3-7 OAuth Clients：表精简 + 注册向导 + 一次性 secret + 重置 secret（TC-4, TC-7）。
 - [ ] p3-8 Signing Keys：单状态卡 + 表（含 retire）（TC-4, TC-7）。
 - [ ] p3-9 Attestors：表精简 + 删除走 `ConfirmDialog`（TC-4, TC-5, TC-7）。
@@ -177,6 +177,8 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - 2026-06-27 p3-5 完成：Channels 布局收尾（接 p2-2 对话框）——状态列改 StatusBadge；表加 footer 计数 + 空态 EmptyState；添加实例表单 Name/Bot token 加 required 星标；name 单元加粗。删订阅数列/测试按钮（无端点/字段）。换 token / 删除沿用 p2-2 的 Prompt/ConfirmDialog。
 
+- 2026-06-27 p3-6 完成：Push——列表状态列改 StatusBadge、表加 footer 计数（空态已由 QueryState 覆盖）；创建弹窗 Title/Content/Channel 加 required 星标。创建表单字段沿用现有 title/content/channel_type/tier/topic/entitlement（PushCreate），未加排程/草稿/进度/重试（无对应端点/字段）。
+
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: ui|node | command: ... | result: pass|fail | note: ...` 追加）
 
@@ -215,6 +217,9 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - TC-1 | stack: node | command: tsc -b --noEmit + eslint ChannelsPage | result: pass | note: p3-5 绿
 - TC-4 | stack: ui | command: 字段对照 | result: pass | note: 仅 ChannelInstance 的 name/channel_type/bot_username/token_hint/status
 - TC-5 | stack: ui | command: review | result: pass | note: 换 token/删除均 Radix 对话框
+
+- TC-1 | stack: node | command: tsc -b --noEmit + eslint PushPage | result: pass | note: p3-6 绿
+- TC-4 | stack: ui | command: 字段对照 | result: pass | note: 列=Title/ChannelType/Target*/Status/ScheduledAt；创建体=PushCreate；无新接口
 
 ## 7. Change Requests (append-only)
 - （无）
