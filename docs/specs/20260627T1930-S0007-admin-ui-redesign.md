@@ -116,7 +116,7 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - [x] p1-2 `Layout.tsx` 分组侧栏（NAV 增 `group` 字段，按 Overview/Membership/Delivery/Identity&Security/System 分组渲染分组标题）+ 顶栏（面包屑 + 主题切换 + 用户/角色 + 登出）；RBAC 过滤与路由不变（TC-3, TC-7）。
 
 ### p2 共享 UI 基元
-- [ ] p2-1 `ui/table.tsx` 样式统一 + 新增 `ui/status-badge.tsx`、`ui/copy-button.tsx`；各表格 hash/kid 等改 `CopyButton`、状态改 `StatusBadge`（TC-2, TC-4）。
+- [x] p2-1 `ui/table.tsx` 样式统一 + 新增 `ui/status-badge.tsx`、`ui/copy-button.tsx`；各表格 hash/kid 等改 `CopyButton`、状态改 `StatusBadge`（TC-2, TC-4）。
 - [ ] p2-2 新增 `ui/confirm-dialog.tsx`（Radix），替换 `ChannelsPage` 的 `prompt`(换 token)/`confirm`(删除) 与 `AttestorsPage` 的 `confirm`(删除)；全仓 `prompt(`/`confirm(` 归零（TC-5）。
 - [ ] p2-3 `QueryState` 增骨架屏载态 + 新增 `ui/empty-state.tsx` 空态；`ui/field.tsx` 补必填星标 + RHF error 回显（TC-6）。
 
@@ -161,6 +161,8 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - 2026-06-27 p1-2 完成：`app/Layout.tsx` 重做应用壳——侧栏按 5 组渲染（Overview / Membership / Delivery / Identity & Security / System），分组标题小字大写；NavLink active 用 `bg-muted` 高亮；owner-only 项加锁图标；RBAC 过滤改为「组内按 rank 过滤、空组不渲染」，与原 roleRank 守卫等价。新增顶栏（面包屑=当前路由 group/label + 主题切换）；侧栏底部保留角色徽章 + 头像缩写 + 登出。主题 useTheme（toggle .dark + localStorage 持久化，mount 回读）。路由表与 RBAC 不变。
 
+- 2026-06-27 p2-1 完成：统一表格与状态/复制基元。`ui/table.tsx`——外框 `bg-card shadow-sm`、表头 `bg-surface` + `TH` 改 11px 大写字距、`TR` 悬停过渡、`Table` 新增可选 `footer` 槽（计数行落在边框内）。`ui/badge.tsx` 增 `warning`/`info` 两个变体（用新 token）。新增 `ui/status-badge.tsx`（status 字符串→变体单一映射 + 圆点，取代各页散落的 statusVariant），`ui/copy-button.tsx`（等宽值 + 悬停复制图标，clipboard + toast）。均为新增/兼容改造，未改调用方。
+
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: ui|node | command: ... | result: pass|fail | note: ...` 追加）
 
@@ -171,6 +173,10 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - TC-1 | stack: node | command: tsc -b --noEmit | result: pass | note: p1-2 后 typecheck 绿
 - TC-1 | stack: node | command: eslint src/app/Layout.tsx | result: pass | note: 0 problem
 - TC-3 | stack: ui | command: manual review Layout.tsx | result: pass | note: 5 组导航 + 组内 rank 过滤(空组隐藏)；面包屑随路由；顶栏主题切换；路由 to 与 App.tsx 一致；宿主复核视觉
+
+- TC-1 | stack: node | command: tsc -b --noEmit | result: pass | note: p2-1 后 typecheck 绿
+- TC-1 | stack: node | command: eslint src/ui/{badge,status-badge,copy-button,table}.tsx | result: pass | note: 0 problem
+- TC-2 | stack: ui | command: manual review | result: pass | note: StatusBadge 映射覆盖 active/grace/cancelled/failed/disabled/rotating/syncing 等；CopyButton 复制全量值
 
 ## 7. Change Requests (append-only)
 - （无）
