@@ -10,12 +10,13 @@ import {
 import { ApiError } from "@/api/client";
 import { PageHeader, QueryState } from "@/app/page";
 import type { ChannelInstance } from "@/lib/types";
-import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
+import { ConfirmDialog, PromptDialog } from "@/ui/confirm-dialog";
+import { EmptyState } from "@/ui/empty-state";
 import { Field } from "@/ui/field";
 import { Input } from "@/ui/input";
-import { ConfirmDialog, PromptDialog } from "@/ui/confirm-dialog";
+import { StatusBadge } from "@/ui/status-badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/ui/table";
 import { useToast } from "@/ui/toast";
 
@@ -109,10 +110,14 @@ export function ChannelsPage() {
         </CardHeader>
         <CardContent>
           <form className="grid gap-3" onSubmit={handleSubmit((v) => create.mutate(v))}>
-            <Field label="Name" hint="A unique label for this instance, e.g. members or announcements">
+            <Field
+              label="Name"
+              required
+              hint="A unique label for this instance, e.g. members or announcements"
+            >
               <Input autoComplete="off" {...register("name", { required: true })} />
             </Field>
-            <Field label="Bot token" hint="From @BotFather, e.g. 123456:ABC-DEF…">
+            <Field label="Bot token" required hint="From @BotFather, e.g. 123456:ABC-DEF…">
               <Input type="password" autoComplete="off" {...register("botToken", { required: true })} />
             </Field>
             <Field label="Bot username" hint="Public @username (no @), used for activation deep links">
@@ -138,7 +143,13 @@ export function ChannelsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
+            {instances.length === 0 ? (
+              <EmptyState
+                title="No instances yet"
+                description="Add a Telegram instance above to start delivering memberships."
+              />
+            ) : (
+            <Table footer={<span>{instances.length} instance(s)</span>}>
               <THead>
                 <TR>
                   <TH>Name</TH>
@@ -152,14 +163,14 @@ export function ChannelsPage() {
               <TBody>
                 {instances.map((c) => (
                   <TR key={c.channel_id}>
-                    <TD>{c.name}</TD>
+                    <TD className="font-medium">{c.name}</TD>
                     <TD className="font-mono text-xs">{c.channel_type}</TD>
                     <TD className="font-mono text-xs">{c.bot_username ? `@${c.bot_username}` : "—"}</TD>
                     <TD className="font-mono text-xs text-muted-foreground" title="First and last 4 characters of the bot token (the full token is never shown)">
                       {c.token_hint || "—"}
                     </TD>
                     <TD>
-                      <Badge variant={c.status === "active" ? "success" : "muted"}>{c.status}</Badge>
+                      <StatusBadge status={c.status} />
                     </TD>
                     <TD className="space-x-2 text-right">
                       <Button variant="ghost" onClick={() => toggle.mutate(c)} disabled={toggle.isPending}>
@@ -188,6 +199,7 @@ export function ChannelsPage() {
                 ))}
               </TBody>
             </Table>
+            )}
           </CardContent>
         </Card>
       </QueryState>
