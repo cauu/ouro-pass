@@ -121,7 +121,7 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - [x] p2-3 `QueryState` 增骨架屏载态 + 新增 `ui/empty-state.tsx` 空态；`ui/field.tsx` 补必填星标 + RHF error 回显（TC-6）。
 
 ### p3 页面逐页重构（对齐 scoped 原型，每页独立可提交）
-- [ ] p3-1 Dashboard：3 统计卡 + 等级分布（客户端聚合 `listMembers`）（TC-4, TC-7）。
+- [x] p3-1 Dashboard：3 统计卡 + 等级分布（客户端聚合 `listMembers`）（TC-4, TC-7）。
 - [ ] p3-2 Members：精简表 + 撤销 step-up（TC-4, TC-5, TC-7）。
 - [ ] p3-3 Subscriptions：精简表 + 取消（TC-4, TC-7）。
 - [ ] p3-4 Tiers：图标按钮替换文本按钮，保留 builder/JSON 双模与 describe 渲染（TC-4, TC-7）。
@@ -167,6 +167,8 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - 2026-06-27 p2-3 完成：状态完备化。`app/page.tsx` 的 `QueryState` 载态改骨架屏（5 行表格占位）、错误态改带图标的告警卡、空态改 `EmptyState`（新增 `emptyTitle`）；`PageHeader` 标题字号/字距精修、description 放宽 ReactNode。新增 `ui/skeleton.tsx`、`ui/empty-state.tsx`。`ui/field.tsx` 增 `required` 星标。均向后兼容（既有 QueryState/Field 调用不变）。
 
+- 2026-06-27 p3-1 完成：Dashboard 对齐 scoped。3 张统计卡（Members=listMembers 行数 / Active subscriptions=status==active 计数 / Signing keys=JWKS 计数 + StatusBadge healthy）改用 Skeleton 载态替代「…」；新增「Tier distribution」卡，由会员名册客户端按 tier 聚合（Member 已含 tier 字段，零新接口）渲染条形分布。删除北极星图表/环比/送达率/系统健康。
+
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: ui|node | command: ... | result: pass|fail | note: ...` 追加）
 
@@ -187,6 +189,9 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - TC-1 | stack: node | command: tsc -b --noEmit + eslint | result: pass | note: p2-3 后 typecheck/lint 绿
 - TC-6 | stack: ui | command: manual review | result: pass | note: QueryState 三态(骨架/告警/EmptyState)；Field required 星标可用；宿主复核渲染
+
+- TC-1 | stack: node | command: tsc -b --noEmit + eslint DashboardPage | result: pass | note: p3-1 绿
+- TC-4 | stack: ui | command: 字段对照 lib/types.ts | result: pass | note: 仅用 Member.tier / Subscription.Status / Jwk[]；tier 分布客户端聚合，无新接口
 
 ## 7. Change Requests (append-only)
 - （无）
