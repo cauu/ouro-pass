@@ -116,7 +116,7 @@ ui/drawer.tsx   # 新增：基于 @radix-ui/react-dialog 的右侧抽屉
 - [x] p3-1 Push「schedule」措辞改「create」（toast/按钮）（TC-1, TC-6）。
 
 ### p4 验收
-- [ ] p4-1 全量校验：`pnpm typecheck && pnpm lint && pnpm test && pnpm build` 绿；`api/admin.ts` git diff 空；无新依赖；路由/RBAC/字段逐项对照（TC-1..TC-7 汇总）。
+- [x] p4-1 全量校验：`pnpm typecheck && pnpm lint && pnpm test && pnpm build` 绿；`api/admin.ts` git diff 空；无新依赖；路由/RBAC/字段逐项对照（TC-1..TC-7 汇总）。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 **构建/类型/静态检查**：`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build` 全绿，`package.json` 无新依赖（diff 核对）。
@@ -131,6 +131,7 @@ ui/drawer.tsx   # 新增：基于 @radix-ui/react-dialog 的右侧抽屉
 ## 5. Execution Log (append-only)
 - 2026-06-27 S0008 创建并激活（active）：前置 S0007 已 delivered；依据 `admin-ia-content-review.md`，经用户确认范围=全部 P1+P2+P3、Subscriptions 保持现状。red lines 沿用 S0007（零后端/只用现有字段/RBAC 不回归）。
 - 2026-06-27 p1-1 完成：`ChannelsPage` 抽出 `CreateChannelDialog`（Radix Dialog），「Add instance」按钮置于 PageHeader action；删除原列表上方常驻 add-form Card；列表改用 `QueryState` 的 `empty` 态、去掉外层 Card（Table 基元自带卡片样式）。create mutation 移入 dialog，成功后关闭+reset+invalidate；retoken/remove/toggle 行为不变。
+- 2026-06-27 p4-1 完成（总收口）：宿主全量 `pnpm typecheck`（绿）、`pnpm lint`（0 error / 2 既有 warning：AuthContext、toast）、`pnpm test`（vitest 11/11）、`pnpm build`（vite v6，1740 modules，dist 正常）。close-out 不变量核对：`web/src/api/admin.ts` 自 S0008 起 git diff 为空（最近改动在 S0005/S0006）；`web/package.json` 自 S0002 scaffold 未动（无新依赖）；`grep` 原生 prompt/confirm = 0；路由：/eligibility(operator) 新增、/attestors /tiers → /eligibility、/setup → /dashboard。P1+P2+P3 全部交付；Subscriptions 按用户决定保持现状。
 - 2026-06-27 p3-1 完成：Push 措辞与 Non-goal（无排程）对齐——成功 toast「Push job scheduled」→「Push job created」，创建按钮「Schedule」→「Create push」。列「Scheduled」保留（映射真实 wire 字段 `ScheduledAt`，抽屉中 null 显示「sent immediately」）。**至此 P3 完成。**
 - 2026-06-27 p2-4 完成：Tier rules 编辑器进抽屉。`TierRulesSection` 现以只读「Configured tiers」摘要为主视图，header 加「Edit rules」按钮 → `openEditor()`（从已保存 tier_rules 重置 + builder 模式）打开 `Drawer`，抽屉内承载原 builder + JSON 双模 + Edit as JSON 切换 + Cancel/Save；保存成功后 invalidate 并关闭抽屉。消除了「摘要 + 重型 builder 同时常驻、规则出现两遍」。所有算法（factType/opsFor/ADA⇄lovelace/describe/flatten/toWhen/serialize/toEdit/save）逐字保留。**至此 P2 全部完成。**
 - 2026-06-27 p2-3 完成：`PushPage` 行 → `PushDetailDrawer`（点击行打开 + 行尾 ChevronRight）。抽屉展示 `Status/ChannelType/Target(tier·topic·entitlement)/Content(完整, whitespace-pre-wrap)/CreatedBy/CreatedAt/ScheduledAt`。列表保持精简（标题/渠道/定向/状态/排程）。找回列表只放标题后无处可见的正文/CreatedBy。措辞「schedule」改「create」留 p3-1。
@@ -183,6 +184,15 @@ ui/drawer.tsx   # 新增：基于 @radix-ui/react-dialog 的右侧抽屉
 
 - TC-1 | stack: node | command: pnpm typecheck + eslint PushPage | result: pass | note: p3-1 绿
 - TC-6 | stack: ui | command: review | result: pass | note: 仅文案改动（toast/按钮），createPushJob 调用与字段不变
+
+- TC-1 | stack: node | command: pnpm typecheck | result: pass | note: p4-1 全量 tsc 绿
+- TC-1 | stack: node | command: pnpm lint | result: pass | note: 0 error / 2 既有 warning（AuthContext, toast）
+- TC-1 | stack: node | command: pnpm test | result: pass | note: vitest 11/11（adapter 8 + guards 3）
+- TC-1 | stack: node | command: pnpm build | result: pass | note: vite v6 1740 modules，dist 输出正常
+- TC-1 | stack: node | command: git diff 1f13760^ HEAD -- web/package.json | result: pass | note: 空——无新依赖
+- TC-3 | stack: ui | command: grep App.tsx routes | result: pass | note: /eligibility(operator)；/attestors、/tiers→/eligibility；/setup→/dashboard；basename:/admin 不变
+- TC-7 | stack: node | command: git diff 1f13760^ HEAD -- web/src/api/admin.ts | result: pass | note: 空——零后端/端点面改动
+- TC-5 | stack: node | command: grep -rnE '[^a-zA-Z](prompt\|confirm)\(' web/src | result: pass | note: 原生对话框 = 0（沿用 S0007）
 
 ## 7. Change Requests (append-only)
 - （无）
