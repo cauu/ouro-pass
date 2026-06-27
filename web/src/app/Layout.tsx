@@ -11,7 +11,6 @@ import {
   Moon,
   ScrollText,
   Send,
-  Settings,
   SlidersHorizontal,
   Sun,
   Users,
@@ -66,10 +65,7 @@ const NAV_GROUPS: { group: string; items: NavItem[] }[] = [
   },
   {
     group: "System",
-    items: [
-      { to: "/audit", label: "Audit log", min: "owner", icon: ScrollText },
-      { to: "/setup", label: "Setup", min: "owner", icon: Settings },
-    ],
+    items: [{ to: "/audit", label: "Audit log", min: "owner", icon: ScrollText }],
   },
 ];
 

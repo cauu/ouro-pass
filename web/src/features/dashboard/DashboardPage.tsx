@@ -1,10 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, BellRing, KeyRound, Users } from "lucide-react";
+import { AlertCircle, BellRing, Check, KeyRound, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { fetchJwks, listMembers, listSubscriptions } from "@/api/admin";
+import { Link } from "react-router-dom";
+import { fetchJwks, listChannels, listClients, listMembers, listSubscriptions } from "@/api/admin";
 import { PageHeader } from "@/app/page";
 import { useAuth } from "@/auth/AuthContext";
-import { Card, CardContent, CardHeader, CardTitle } from "@/ui/card";
+import { cn } from "@/lib/cn";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Skeleton } from "@/ui/skeleton";
 import { StatusBadge } from "@/ui/status-badge";
 
@@ -48,6 +50,103 @@ function StatCard({
   );
 }
 
+// QuickStart folds the former Setup checklist into the Dashboard (S0008 p1-2):
+// it shows the three onboarding steps and disappears once all are done. Owner-only
+// (the steps are owner/operator actions; matches the old /setup RBAC).
+function QuickStartStep({
+  done,
+  title,
+  children,
+}: {
+  done: boolean;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="flex gap-3">
+      <div
+        className={cn(
+          "mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-full",
+          done ? "bg-success/15 text-success" : "border-2 text-muted-foreground",
+        )}
+      >
+        {done ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : null}
+      </div>
+      <div>
+        <div className="text-sm font-medium">{title}</div>
+        <div className="mt-0.5 text-sm text-muted-foreground">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function QuickStart() {
+  const jwks = useQuery({ queryKey: ["jwks"], queryFn: fetchJwks });
+  const clients = useQuery({ queryKey: ["clients"], queryFn: listClients });
+  const channels = useQuery({ queryKey: ["channels"], queryFn: listChannels });
+
+  const hasKey = (jwks.data?.keys?.length ?? 0) > 0;
+  const hasClient = (clients.data?.clients?.length ?? 0) > 0;
+  const hasTelegram =
+    channels.data?.channels.some((c) => c.channel_type === "telegram" && c.configured) ?? false;
+
+  // Hold until all three queries resolve, then hide entirely once onboarding is done.
+  const ready = !jwks.isLoading && !clients.isLoading && !channels.isLoading;
+  if (!ready || (hasKey && hasClient && hasTelegram)) return null;
+
+  return (
+    <Card className="mb-4 max-w-2xl border-primary/30 bg-primary/5">
+      <CardHeader>
+        <CardTitle className="text-sm">Quick start</CardTitle>
+        <CardDescription>
+          Finish bringing the issuer online — this card disappears once all steps are done.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="grid gap-4">
+        <QuickStartStep done={hasKey} title="Signing key">
+          {hasKey ? (
+            "An active signing key is published in JWKS."
+          ) : (
+            <>
+              Generate one on the{" "}
+              <Link className="underline" to="/keys">
+                Signing Keys
+              </Link>{" "}
+              page to enable token issuance.
+            </>
+          )}
+        </QuickStartStep>
+        <QuickStartStep done={hasClient} title="OAuth client">
+          {hasClient ? (
+            "At least one client can request logins."
+          ) : (
+            <>
+              Register one on the{" "}
+              <Link className="underline" to="/clients">
+                OAuth Clients
+              </Link>{" "}
+              page.
+            </>
+          )}
+        </QuickStartStep>
+        <QuickStartStep done={hasTelegram} title="Telegram channel">
+          {hasTelegram ? (
+            "The Telegram bot token is configured — memberships can be delivered."
+          ) : (
+            <>
+              Configure the bot token on the{" "}
+              <Link className="underline" to="/channels">
+                Channels
+              </Link>{" "}
+              page to deliver memberships.
+            </>
+          )}
+        </QuickStartStep>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function DashboardPage() {
   const { role } = useAuth();
   const members = useQuery({ queryKey: ["members"], queryFn: listMembers });
@@ -70,6 +169,8 @@ export function DashboardPage() {
   return (
     <>
       <PageHeader title="Dashboard" description={`Signed in as ${role ?? "—"}.`} />
+
+      {role === "owner" ? <QuickStart /> : null}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard

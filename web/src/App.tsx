@@ -10,7 +10,6 @@ import { DashboardPage } from "./features/dashboard/DashboardPage";
 import { KeysPage } from "./features/keys/KeysPage";
 import { MembersPage } from "./features/members/MembersPage";
 import { PushPage } from "./features/push/PushPage";
-import { SetupPage } from "./features/setup/SetupPage";
 import { SubscriptionsPage } from "./features/subscriptions/SubscriptionsPage";
 import { TiersPage } from "./features/tiers/TiersPage";
 
@@ -84,14 +83,7 @@ const router = createBrowserRouter([
           </RequireRole>
         ),
       },
-      {
-        path: "setup",
-        element: (
-          <RequireRole min="owner">
-            <SetupPage />
-          </RequireRole>
-        ),
-      },
+      { path: "setup", element: <Navigate to="/dashboard" replace /> },
       { path: "*", element: <Navigate to="/dashboard" replace /> },
     ],
   },
