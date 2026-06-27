@@ -15,6 +15,7 @@ import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { Field } from "@/ui/field";
 import { Input } from "@/ui/input";
+import { ConfirmDialog, PromptDialog } from "@/ui/confirm-dialog";
 import { Table, TBody, TD, TH, THead, TR } from "@/ui/table";
 import { useToast } from "@/ui/toast";
 
@@ -164,26 +165,24 @@ export function ChannelsPage() {
                       <Button variant="ghost" onClick={() => toggle.mutate(c)} disabled={toggle.isPending}>
                         {c.status === "active" ? "Disable" : "Enable"}
                       </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => {
-                          const token = prompt(`New bot token for "${c.name}"?`);
-                          if (token) retoken.mutate({ id: c.channel_id, token });
-                        }}
-                        disabled={retoken.isPending}
-                      >
-                        Re-token
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => {
-                          if (confirm(`Remove instance "${c.name}"? Active subscriptions are cancelled.`))
-                            remove.mutate(c.channel_id);
-                        }}
-                        disabled={remove.isPending}
-                      >
-                        Delete
-                      </Button>
+                      <PromptDialog
+                        trigger={<Button variant="ghost">Re-token</Button>}
+                        title={`Re-token "${c.name}"`}
+                        description="Set a new bot token for this instance. The previous token stops working immediately."
+                        label="New bot token"
+                        placeholder="123456:ABC-DEF…"
+                        inputType="password"
+                        confirmLabel="Save token"
+                        onConfirm={(token) => retoken.mutateAsync({ id: c.channel_id, token })}
+                      />
+                      <ConfirmDialog
+                        trigger={<Button variant="ghost">Delete</Button>}
+                        title={`Remove instance "${c.name}"?`}
+                        description="Active subscriptions on this instance are cancelled. This cannot be undone."
+                        confirmLabel="Delete instance"
+                        destructive
+                        onConfirm={() => remove.mutateAsync(c.channel_id)}
+                      />
                     </TD>
                   </TR>
                 ))}

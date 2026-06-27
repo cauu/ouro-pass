@@ -117,7 +117,7 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 ### p2 共享 UI 基元
 - [x] p2-1 `ui/table.tsx` 样式统一 + 新增 `ui/status-badge.tsx`、`ui/copy-button.tsx`；各表格 hash/kid 等改 `CopyButton`、状态改 `StatusBadge`（TC-2, TC-4）。
-- [ ] p2-2 新增 `ui/confirm-dialog.tsx`（Radix），替换 `ChannelsPage` 的 `prompt`(换 token)/`confirm`(删除) 与 `AttestorsPage` 的 `confirm`(删除)；全仓 `prompt(`/`confirm(` 归零（TC-5）。
+- [x] p2-2 新增 `ui/confirm-dialog.tsx`（Radix），替换 `ChannelsPage` 的 `prompt`(换 token)/`confirm`(删除) 与 `AttestorsPage` 的 `confirm`(删除)；全仓 `prompt(`/`confirm(` 归零（TC-5）。
 - [ ] p2-3 `QueryState` 增骨架屏载态 + 新增 `ui/empty-state.tsx` 空态；`ui/field.tsx` 补必填星标 + RHF error 回显（TC-6）。
 
 ### p3 页面逐页重构（对齐 scoped 原型，每页独立可提交）
@@ -163,6 +163,8 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - 2026-06-27 p2-1 完成：统一表格与状态/复制基元。`ui/table.tsx`——外框 `bg-card shadow-sm`、表头 `bg-surface` + `TH` 改 11px 大写字距、`TR` 悬停过渡、`Table` 新增可选 `footer` 槽（计数行落在边框内）。`ui/badge.tsx` 增 `warning`/`info` 两个变体（用新 token）。新增 `ui/status-badge.tsx`（status 字符串→变体单一映射 + 圆点，取代各页散落的 statusVariant），`ui/copy-button.tsx`（等宽值 + 悬停复制图标，clipboard + toast）。均为新增/兼容改造，未改调用方。
 
+- 2026-06-27 p2-2 完成：新增 `ui/confirm-dialog.tsx`（`ConfirmDialog` 危险确认 + `PromptDialog` 单值输入，均为 Radix 触发式、await 异步 onConfirm、pending 态、失败转 toast）。替换 `ChannelsPage` 的 Re-token（原 prompt）→ PromptDialog、Delete（原 confirm）→ ConfirmDialog；`AttestorsPage` 的 Delete（原 confirm）→ ConfirmDialog；mutation 改 mutateAsync 以便对话框等待。全仓原生 prompt/confirm 调用归零。
+
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: ui|node | command: ... | result: pass|fail | note: ...` 追加）
 
@@ -177,6 +179,9 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - TC-1 | stack: node | command: tsc -b --noEmit | result: pass | note: p2-1 后 typecheck 绿
 - TC-1 | stack: node | command: eslint src/ui/{badge,status-badge,copy-button,table}.tsx | result: pass | note: 0 problem
 - TC-2 | stack: ui | command: manual review | result: pass | note: StatusBadge 映射覆盖 active/grace/cancelled/failed/disabled/rotating/syncing 等；CopyButton 复制全量值
+
+- TC-1 | stack: node | command: tsc -b --noEmit | result: pass | note: p2-2 后 typecheck 绿（onConfirm 放宽为 Promise<unknown>|void）
+- TC-5 | stack: node | command: grep -rnE '[^a-zA-Z](prompt|confirm)\(' src | grep -v // | result: pass | note: 代码中原生 prompt/confirm 调用 = 0（仅余文档注释中的词）
 
 ## 7. Change Requests (append-only)
 - （无）

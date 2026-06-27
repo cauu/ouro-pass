@@ -7,6 +7,7 @@ import type { Attestor } from "@/lib/types";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
+import { ConfirmDialog } from "@/ui/confirm-dialog";
 import { Field } from "@/ui/field";
 import { Input } from "@/ui/input";
 import { Select } from "@/ui/select";
@@ -147,15 +148,14 @@ export function AttestorsPage() {
                       <Button variant="ghost" onClick={() => toggle.mutate(a)} disabled={toggle.isPending}>
                         {a.status === "active" ? "Disable" : "Enable"}
                       </Button>
-                      <Button
-                        variant="ghost"
-                        onClick={() => {
-                          if (confirm(`Remove attestor "${a.label}"?`)) remove.mutate(a.attestor_id);
-                        }}
-                        disabled={remove.isPending}
-                      >
-                        Delete
-                      </Button>
+                      <ConfirmDialog
+                        trigger={<Button variant="ghost">Delete</Button>}
+                        title={`Remove attestor "${a.label}"?`}
+                        description="Subjects relying solely on this attestor will stop being issued tokens. This cannot be undone."
+                        confirmLabel="Delete attestor"
+                        destructive
+                        onConfirm={() => remove.mutateAsync(a.attestor_id)}
+                      />
                     </TD>
                   </TR>
                 ))}
