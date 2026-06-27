@@ -35,7 +35,12 @@ export function ChannelsPage() {
   const q = useQuery({ queryKey: ["channels"], queryFn: listChannels });
   const instances = q.data?.channels ?? [];
 
-  const { register, handleSubmit, reset } = useForm<ChannelForm>({
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<ChannelForm>({
     defaultValues: { name: "", botToken: "", botUsername: "" },
   });
 
@@ -70,6 +75,8 @@ export function ChannelsPage() {
     onError: onErr,
   });
 
+  // retoken/remove are only invoked through Prompt/ConfirmDialog, which surfaces
+  // failures itself — no onError here, or the dialog's catch double-toasts.
   const retoken = useMutation({
     mutationFn: ({ id, token }: { id: string; token: string }) =>
       updateChannel(id, { config: { bot_token: token } }),
@@ -77,7 +84,6 @@ export function ChannelsPage() {
       toast({ title: "Token updated", variant: "success" });
       invalidate();
     },
-    onError: onErr,
   });
 
   const remove = useMutation({
@@ -90,7 +96,6 @@ export function ChannelsPage() {
       });
       invalidate();
     },
-    onError: onErr,
   });
 
   return (
@@ -114,10 +119,16 @@ export function ChannelsPage() {
               label="Name"
               required
               hint="A unique label for this instance, e.g. members or announcements"
+              error={errors.name && "Name is required"}
             >
               <Input autoComplete="off" {...register("name", { required: true })} />
             </Field>
-            <Field label="Bot token" required hint="From @BotFather, e.g. 123456:ABC-DEF…">
+            <Field
+              label="Bot token"
+              required
+              hint="From @BotFather, e.g. 123456:ABC-DEF…"
+              error={errors.botToken && "Bot token is required"}
+            >
               <Input type="password" autoComplete="off" {...register("botToken", { required: true })} />
             </Field>
             <Field label="Bot username" hint="Public @username (no @), used for activation deep links">

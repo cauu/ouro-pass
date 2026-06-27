@@ -7,6 +7,7 @@ import {
   Lock,
   LogOut,
   Megaphone,
+  Menu,
   Moon,
   ScrollText,
   Send,
@@ -108,6 +109,10 @@ export function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [dark, toggleTheme] = useTheme();
+  // Narrow-screen nav drawer (S0007 p4-2): the sidebar is a static column on md+
+  // and an overlay drawer below md, opened from the header hamburger.
+  const [navOpen, setNavOpen] = useState(false);
+  useEffect(() => setNavOpen(false), [location.pathname]);
   const rank = role ? roleRank[role] : 0;
 
   const visibleGroups = NAV_GROUPS.map((g) => ({
@@ -126,8 +131,20 @@ export function Layout() {
   }
 
   return (
-    <div className="grid min-h-dvh grid-cols-[15rem_1fr]">
-      <aside className="flex flex-col border-r bg-card">
+    <div className="min-h-dvh md:grid md:grid-cols-[15rem_1fr]">
+      {navOpen ? (
+        <div
+          className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          aria-hidden
+          onClick={() => setNavOpen(false)}
+        />
+      ) : null}
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r bg-card transition-transform md:static md:z-auto md:w-auto md:translate-x-0",
+          navOpen ? "translate-x-0" : "-translate-x-full",
+        )}
+      >
         <div className="flex h-14 items-center gap-2 border-b px-4">
           <div className="grid h-7 w-7 place-items-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
             OP
@@ -181,7 +198,16 @@ export function Layout() {
       </aside>
 
       <div className="flex min-w-0 flex-col">
-        <header className="flex h-14 items-center gap-3 border-b bg-card/60 px-6 backdrop-blur">
+        <header className="flex h-14 items-center gap-3 border-b bg-card/60 px-4 backdrop-blur md:px-6">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={() => setNavOpen(true)}
+            title="Open menu"
+          >
+            <Menu className="h-4 w-4" />
+          </Button>
           <div className="flex items-center gap-2 text-sm">
             {current ? (
               <>

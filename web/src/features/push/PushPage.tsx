@@ -35,7 +35,12 @@ interface PushForm {
 function CreatePushDialog({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
-  const { register, handleSubmit, reset } = useForm<PushForm>({
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<PushForm>({
     defaultValues: { title: "", content: "", channel_type: "telegram", tier: "", topic: "", entitlement: "" },
   });
 
@@ -78,10 +83,10 @@ function CreatePushDialog({ onCreated }: { onCreated: () => void }) {
           <DialogDescription>Target an audience by tier / topic / entitlement (blank = all).</DialogDescription>
         </DialogHeader>
         <form className="grid gap-3" onSubmit={handleSubmit((v) => create.mutate(v))}>
-          <Field label="Title" required>
+          <Field label="Title" required error={errors.title && "Title is required"}>
             <Input {...register("title", { required: true })} />
           </Field>
-          <Field label="Content" required>
+          <Field label="Content" required error={errors.content && "Content is required"}>
             <Textarea rows={3} {...register("content", { required: true })} className="font-sans" />
           </Field>
           <div className="grid grid-cols-2 gap-3">

@@ -33,7 +33,12 @@ export function AttestorsPage() {
   const q = useQuery({ queryKey: ["attestors"], queryFn: listAttestors });
   const attestors = q.data?.attestors ?? [];
 
-  const { register, handleSubmit, reset } = useForm<AttestorForm>({
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<AttestorForm>({
     defaultValues: { label: "", poolId: "", network: "mainnet" },
   });
 
@@ -67,13 +72,14 @@ export function AttestorsPage() {
     onError: onErr,
   });
 
+  // remove is only invoked through ConfirmDialog, which surfaces failures itself —
+  // no onError here, or the dialog's catch double-toasts.
   const remove = useMutation({
     mutationFn: (id: string) => deleteAttestor(id),
     onSuccess: () => {
       toast({ title: "Attestor removed", variant: "success" });
       invalidate();
     },
-    onError: onErr,
   });
 
   return (
@@ -94,10 +100,16 @@ export function AttestorsPage() {
               label="Label"
               required
               hint="This attestor's display name (unique), e.g. members or announcements"
+              error={errors.label && "Label is required"}
             >
               <Input autoComplete="off" {...register("label", { required: true })} />
             </Field>
-            <Field label="Pool ID" required hint="bech32 pool id (pool1…)">
+            <Field
+              label="Pool ID"
+              required
+              hint="bech32 pool id (pool1…)"
+              error={errors.poolId && "Pool ID is required"}
+            >
               <Input autoComplete="off" {...register("poolId", { required: true })} />
             </Field>
             <Field label="Network">

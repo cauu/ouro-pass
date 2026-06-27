@@ -142,6 +142,9 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 ### p5 验收
 - [x] p5-1 全量校验：`pnpm typecheck && pnpm lint && pnpm test && pnpm build` 绿；全仓 `prompt(`/`confirm(` = 0；逐页字段对照 `lib/types.ts` 与 scoped 原型（TC-1..TC-7 汇总）。
 
+### p6 评审后修复（review remediation）
+- [x] p6-1 依 multi-agent-review（claude + cursor）P2 结论修复 4 项：对话框驱动 mutation 失败双 toast、Dashboard 吞查询错误、必填校验内联不可见、窄屏侧栏无收起（TC-6, TC-8, TC-9；并补齐 p5-1 留待宿主的 TC-1 build/test）。
+
 ## 4. Test and Acceptance Criteria
 - TC-1 **构建/类型/静态检查**：`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build` 全绿，无新依赖进 `package.json`（diff 核对）。
 - TC-2 **设计系统**：新 token 生效；亮色与暗色两套均正确渲染（顶栏切换 + 持久化）；强调色仅出现在主操作/焦点。
@@ -150,6 +153,8 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - TC-5 **无原生对话框**：`grep -rn "prompt(\|confirm(" web/src` 结果为 0；Channels 换 token/删除、Attestors 删除均走 Radix 对话框；危险操作仍走 step-up（行为不变）。
 - TC-6 **状态完备**：列表/表单具备载态（骨架屏）、空态（EmptyState）、错误态；表单必填有星标、校验错误可见。
 - TC-7 **行为零回归**：现有 query/mutation、step-up、RBAC 守卫、错误 toast、network guard 行为等价；`api/admin.ts` 无改动（git diff 为空）；端到端手测各页 CRUD 与 S0002 一致。
+- TC-8 **对话框失败仅一次提示**（p6-1 追加）：经 `Confirm/PromptDialog` 触发的 mutation 失败时只弹一次 toast——由对话框 `catch` 统一兜底，dialog-only mutation 不再各自挂 `onError`；普通按钮 mutation（如 toggle）保留 `onError`。
+- TC-9 **窄屏可用**（p6-1 追加）：< `md` 断点侧栏收为汉堡抽屉（遮罩点击 / 路由切换关闭），`md+` 保持固定 15rem 列；内容区不破版。
 - Pass/fail：每 item 仅在其映射 TC 全 pass 且证据 append 后标 `[x]`；p5-1 为总收口。
 
 ## 5. Execution Log (append-only)
@@ -196,6 +201,8 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - 2026-06-27 p4-2 完成：可达性收尾——侧栏 NavLink 加 focus-visible ring（键盘可见焦点）；按钮/输入沿用基元已有的 focus-visible:ring；对话框（Radix Dialog / Confirm / Prompt / StepUp）默认支持 ESC 与遮罩关闭。内容列保持 min-w-0 + overflow-auto，窄屏不溢出破版（桌面优先）。命令面板（p4-3）为可选 stretch，本轮不实现。
 
 - 2026-06-27 p5-1 完成（沙箱可得部分）：全量 `tsc -b --noEmit` 绿、`eslint .` 0 error（2 个 react-refresh warning 为 S0002 既有，非本 spec 引入）；`grep -rnE '[^a-zA-Z](prompt|confirm)\(' src` 代码命中 = 0；`grep '<table' src` 仅 ui/table.tsx（各页统一走 Table 基元）；逐页列/字段已对照 lib/types.ts 与 scoped 原型注释。TC-1 的 `pnpm build` / `pnpm test`（vite+vitest）因沙箱 registry 受限且 node_modules 携带 macOS 原生二进制（esbuild darwin-arm64 + 缺 rollup linux）无法在沙箱运行，留待宿主/CI 复核（Exception #3）。
+
+- 2026-06-27 p6-1 完成（评审后修复）：依 multi-agent-review（claude + cursor）P2 结论修复——(1) Channels `retoken`/`remove`、Attestors `remove` 去掉 `onError`，避免 `mutateAsync` reject 被对话框 `catch` 二次 toast；(2) `DashboardPage` 的 `StatCard` 增 error 态、tier 分布块增 `members.error` 提示，避免接口失败时显示 0/空；(3) Channels/Attestors/Push 必填 `Field` 接 `formState.errors` 内联红字；(4) `Layout` 改响应式——`md:grid` 固定 15rem 列、`< md` 左滑抽屉 + 顶栏汉堡（`md:hidden`）+ 遮罩点击关闭 + `useEffect` 路由切换自动收起。`api/admin.ts`、`package.json` 仍零改动。宿主复核 typecheck/lint/build/test 全绿，补齐 p5-1 留待宿主的 TC-1。
 
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: ui|node | command: ... | result: pass|fail | note: ...` 追加）
@@ -271,6 +278,13 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - TC-4 | stack: ui | command: 逐页字段对照 lib/types.ts | result: pass | note: 全 12 页仅渲染现有 wire 字段，无编造列/无新接口
 - TC-5 | stack: node | command: grep -rnE '[^a-zA-Z](prompt|confirm)\(' src | result: pass | note: 原生对话框调用 = 0
 - TC-7 | stack: ui | command: review + git diff api/admin.ts | result: pass | note: api/admin.ts 零改动；query/mutation/step-up/RBAC 行为等价
+
+- TC-1 | stack: node | command: pnpm typecheck && pnpm lint | result: pass | note: p6-1 后 tsc 绿、eslint 0 error（2 既有 warning：AuthContext/toast）
+- TC-1 | stack: node | command: pnpm build | result: pass | note: 宿主复核 vite v6 build 成功（1739 modules transformed，dist 正常）——补齐 p5-1 留待宿主的 build
+- TC-1 | stack: node | command: pnpm test | result: pass | note: 宿主复核 vitest 11/11 通过（adapter 8 + guards 3）——补齐 p5-1 留待宿主的 test
+- TC-6 | stack: ui | command: review DashboardPage + 各表单 | result: pass | note: Dashboard 三卡 + tier 分布均有 error 态；Channels/Attestors/Push 必填字段内联 error 文案
+- TC-8 | stack: ui | command: review confirm-dialog + Channels/Attestors | result: pass | note: dialog-only mutation 无 onError，失败仅经 dialog.catch 弹一次；toggle 保留 onError
+- TC-9 | stack: ui | command: manual review Layout.tsx | result: pass | note: md:grid-cols-[15rem_1fr]；< md 抽屉 translate-x + 汉堡 md:hidden + 遮罩 onClick 关闭 + 路由切换 setNavOpen(false)
 
 ## 7. Change Requests (append-only)
 - （无）

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { BellRing, KeyRound, Users } from "lucide-react";
+import { AlertCircle, BellRing, KeyRound, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { fetchJwks, listMembers, listSubscriptions } from "@/api/admin";
 import { PageHeader } from "@/app/page";
@@ -12,12 +12,14 @@ function StatCard({
   label,
   icon: Icon,
   loading,
+  error,
   value,
   hint,
 }: {
   label: string;
   icon: LucideIcon;
   loading: boolean;
+  error?: unknown;
   value: React.ReactNode;
   hint?: string;
 }) {
@@ -29,9 +31,18 @@ function StatCard({
           {label}
         </div>
         <div className="mt-2 text-3xl font-semibold tabular-nums">
-          {loading ? <Skeleton className="h-8 w-16" /> : value}
+          {loading ? (
+            <Skeleton className="h-8 w-16" />
+          ) : error ? (
+            <span className="inline-flex items-center gap-1.5 text-base font-normal text-destructive">
+              <AlertCircle className="h-4 w-4" />
+              Failed to load
+            </span>
+          ) : (
+            value
+          )}
         </div>
-        {hint ? <p className="mt-1.5 text-xs text-muted-foreground">{hint}</p> : null}
+        {hint && !error ? <p className="mt-1.5 text-xs text-muted-foreground">{hint}</p> : null}
       </CardContent>
     </Card>
   );
@@ -65,6 +76,7 @@ export function DashboardPage() {
           label="Members"
           icon={Users}
           loading={members.isLoading}
+          error={members.error}
           value={memberRows.length}
           hint="Eligible members derived from the active snapshot"
         />
@@ -72,6 +84,7 @@ export function DashboardPage() {
           label="Active subscriptions"
           icon={BellRing}
           loading={subs.isLoading}
+          error={subs.error}
           value={activeSubs}
           hint="Sessions currently in active status"
         />
@@ -79,6 +92,7 @@ export function DashboardPage() {
           label="Signing keys (JWKS)"
           icon={KeyRound}
           loading={jwks.isLoading}
+          error={jwks.error}
           value={
             <span className="flex items-center gap-2">
               <span>{keyCount}</span>
@@ -103,6 +117,11 @@ export function DashboardPage() {
                 <Skeleton key={i} className="h-4 w-full" />
               ))}
             </div>
+          ) : members.error ? (
+            <p className="flex items-center gap-1.5 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4" />
+              Failed to load members.
+            </p>
           ) : tiers.length === 0 ? (
             <p className="text-sm text-muted-foreground">No members yet.</p>
           ) : (
