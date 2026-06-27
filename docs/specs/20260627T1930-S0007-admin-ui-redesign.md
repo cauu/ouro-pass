@@ -140,7 +140,7 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - [ ] p4-3 **（可选 stretch，不计验收）** 命令面板 ⌘K（仅跳转 + 已有操作入口，零新接口）。
 
 ### p5 验收
-- [ ] p5-1 全量校验：`pnpm typecheck && pnpm lint && pnpm test && pnpm build` 绿；全仓 `prompt(`/`confirm(` = 0；逐页字段对照 `lib/types.ts` 与 scoped 原型（TC-1..TC-7 汇总）。
+- [x] p5-1 全量校验：`pnpm typecheck && pnpm lint && pnpm test && pnpm build` 绿；全仓 `prompt(`/`confirm(` = 0；逐页字段对照 `lib/types.ts` 与 scoped 原型（TC-1..TC-7 汇总）。
 
 ## 4. Test and Acceptance Criteria
 - TC-1 **构建/类型/静态检查**：`pnpm typecheck`、`pnpm lint`、`pnpm test`、`pnpm build` 全绿，无新依赖进 `package.json`（diff 核对）。
@@ -194,6 +194,8 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - 2026-06-27 p4-1 完成：主题持久化无闪烁——index.html 在首屏渲染前同步读取 localStorage('op-admin-theme')，为 dark 时即给 <html> 加 .dark，避免 FOUC；与 Layout useTheme 的 toggle/回读形成闭环。
 
 - 2026-06-27 p4-2 完成：可达性收尾——侧栏 NavLink 加 focus-visible ring（键盘可见焦点）；按钮/输入沿用基元已有的 focus-visible:ring；对话框（Radix Dialog / Confirm / Prompt / StepUp）默认支持 ESC 与遮罩关闭。内容列保持 min-w-0 + overflow-auto，窄屏不溢出破版（桌面优先）。命令面板（p4-3）为可选 stretch，本轮不实现。
+
+- 2026-06-27 p5-1 完成（沙箱可得部分）：全量 `tsc -b --noEmit` 绿、`eslint .` 0 error（2 个 react-refresh warning 为 S0002 既有，非本 spec 引入）；`grep -rnE '[^a-zA-Z](prompt|confirm)\(' src` 代码命中 = 0；`grep '<table' src` 仅 ui/table.tsx（各页统一走 Table 基元）；逐页列/字段已对照 lib/types.ts 与 scoped 原型注释。TC-1 的 `pnpm build` / `pnpm test`（vite+vitest）因沙箱 registry 受限且 node_modules 携带 macOS 原生二进制（esbuild darwin-arm64 + 缺 rollup linux）无法在沙箱运行，留待宿主/CI 复核（Exception #3）。
 
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: ui|node | command: ... | result: pass|fail | note: ...` 追加）
@@ -262,6 +264,13 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - TC-2 | stack: node | command: tsc + eslint Layout | result: pass | note: p4-2 绿
 - TC-6 | stack: ui | command: review | result: pass | note: 焦点环可见；Radix 对话框 ESC/遮罩关闭；内容区不破版
+
+- TC-1 | stack: node | command: tsc -b --noEmit | result: pass | note: 全量 typecheck 绿
+- TC-1 | stack: node | command: eslint . | result: pass | note: 0 error / 2 既有 warning（AuthContext, toast）
+- TC-1 | stack: node | command: pnpm build && pnpm test | result: pending-host | note: 沙箱原生二进制缺失，宿主/CI 复核（Exception #3）
+- TC-4 | stack: ui | command: 逐页字段对照 lib/types.ts | result: pass | note: 全 12 页仅渲染现有 wire 字段，无编造列/无新接口
+- TC-5 | stack: node | command: grep -rnE '[^a-zA-Z](prompt|confirm)\(' src | result: pass | note: 原生对话框调用 = 0
+- TC-7 | stack: ui | command: review + git diff api/admin.ts | result: pass | note: api/admin.ts 零改动；query/mutation/step-up/RBAC 行为等价
 
 ## 7. Change Requests (append-only)
 - （无）
