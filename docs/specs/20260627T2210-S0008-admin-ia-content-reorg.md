@@ -107,7 +107,7 @@ ui/drawer.tsx   # 新增：基于 @radix-ui/react-dialog 的右侧抽屉
 - [x] p1-5 Eligibility>Sources「添加 attestor」表单 → Dialog（接 p1-3）（TC-1, TC-5, TC-6）。
 
 ### p2 补回被裁信息（P2，零新接口）
-- [ ] p2-1 新增 `ui/drawer.tsx`（Radix Dialog 右侧抽屉基元；ESC/遮罩关闭、焦点环、零新依赖）（TC-1, TC-7）。
+- [x] p2-1 新增 `ui/drawer.tsx`（Radix Dialog 右侧抽屉基元；ESC/遮罩关闭、焦点环、零新依赖）（TC-1, TC-7）。
 - [ ] p2-2 OAuth Client 详情抽屉：行→抽屉，展示 `RedirectURIs/AllowedAudiences/ClientType/Status/CreatedAt` + secret 状态 + 重置动作（TC-1, TC-4, TC-5, TC-6）。
 - [ ] p2-3 Push 任务详情抽屉：行→抽屉，展示完整 `Content`/定向/`CreatedBy/CreatedAt/ScheduledAt/Status`（TC-1, TC-4, TC-5）。
 - [ ] p2-4 Eligibility>Tier rules 编辑器进抽屉：默认只读摘要，「Edit rules」打开抽屉承载 builder + JSON 双模（消除常驻双份）（TC-1, TC-5, TC-6）。
@@ -131,6 +131,7 @@ ui/drawer.tsx   # 新增：基于 @radix-ui/react-dialog 的右侧抽屉
 ## 5. Execution Log (append-only)
 - 2026-06-27 S0008 创建并激活（active）：前置 S0007 已 delivered；依据 `admin-ia-content-review.md`，经用户确认范围=全部 P1+P2+P3、Subscriptions 保持现状。red lines 沿用 S0007（零后端/只用现有字段/RBAC 不回归）。
 - 2026-06-27 p1-1 完成：`ChannelsPage` 抽出 `CreateChannelDialog`（Radix Dialog），「Add instance」按钮置于 PageHeader action；删除原列表上方常驻 add-form Card；列表改用 `QueryState` 的 `empty` 态、去掉外层 Card（Table 基元自带卡片样式）。create mutation 移入 dialog，成功后关闭+reset+invalidate；retoken/remove/toggle 行为不变。
+- 2026-06-27 p2-1 完成：新增 `ui/drawer.tsx`（基于 `@radix-ui/react-dialog`，零新依赖）。导出 Drawer/DrawerTrigger/DrawerClose/DrawerContent（右侧固定全高 sheet，max-w-md，overflow-y-auto）/DrawerHeader/DrawerFooter/DrawerTitle/DrawerDescription；继承 Radix 焦点陷阱、ESC + 遮罩关闭，关闭按钮带 focus-visible 环。
 - 2026-06-27 p1-5 完成：Eligibility>Sources「添加 attestor」常驻 Card → `CreateAttestorDialog`（Radix Dialog，「Add attestor」按钮在 Sources 顶部 action 行）；create mutation 移入 dialog（成功关闭+reset+invalidate）；列表改用 `QueryState` 的 `empty` 态、去外层 Card。toggle/remove 不变。**至此 P1（信息架构纠偏）全部完成。**
 - 2026-06-27 p1-4 完成：侧栏 `NAV_GROUPS` 按评审 §4 重排为 5 组——Overview(Dashboard) / Identities(Members, Subscriptions) / Access & Rules(OAuth Clients, Eligibility) / Delivery(Channels, Push) / Security(Signing Keys, Audit log)。RBAC `min` 与组内 rank 过滤、空组隐藏逻辑不变。
 - 2026-06-27 p1-3 完成：Attestors + Tiers 合并为 Eligibility。新增 `features/eligibility/`：`EligibilityPage.tsx`（PageHeader + Sources/Tier rules 分段切换 tab）、`SourcesSection.tsx`（原 Attestors body，去 PageHeader）、`TierRulesSection.tsx`（原 Tiers body，去 PageHeader，builder/JSON/describe/ADA⇄lovelace 算法逐字保留）。`App.tsx` 新增 `/eligibility`(operator)，`/attestors`、`/tiers` → `Navigate /eligibility`（保旧链接）。`Layout.tsx` 侧栏暂以单个 Eligibility 项（operator, SlidersHorizontal 图标）取代 Tiers + Attestors 两项、删未用 `Link2`（完整分组重排见 p1-4）。删 `AttestorsPage.tsx`/`TiersPage.tsx`。queryKey（attestors/pool）不变，React Query 自动去重。
@@ -159,6 +160,9 @@ ui/drawer.tsx   # 新增：基于 @radix-ui/react-dialog 的右侧抽屉
 
 - TC-1 | stack: node | command: pnpm typecheck + eslint SourcesSection | result: pass | note: p1-5 绿
 - TC-5 | stack: ui | command: review SourcesSection | result: pass | note: 添加 attestor 为 modal（Sources 顶部按钮触发 Dialog），列表上方不再常驻 add-form
+
+- TC-1 | stack: node | command: pnpm typecheck + eslint drawer | result: pass | note: p2-1 绿；复用 @radix-ui/react-dialog，package.json 无新增
+- TC-7 | stack: ui | command: review drawer.tsx | result: pass | note: Radix 焦点陷阱 + ESC/遮罩关闭 + 关闭按钮 focus-visible ring
 
 ## 7. Change Requests (append-only)
 - （无）
