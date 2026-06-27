@@ -113,7 +113,7 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 ## 3. Execution Plan
 ### p1 设计系统与应用壳
 - [x] p1-1 `index.css` 扩展语义化 token（中性灰阶/状态色/字号/间距/圆角/阴影/等宽，亮+暗），同步 `@theme inline`；不改业务组件类名前提下全站换肤（TC-1, TC-2）。
-- [ ] p1-2 `Layout.tsx` 分组侧栏（NAV 增 `group` 字段，按 Overview/Membership/Delivery/Identity&Security/System 分组渲染分组标题）+ 顶栏（面包屑 + 主题切换 + 用户/角色 + 登出）；RBAC 过滤与路由不变（TC-3, TC-7）。
+- [x] p1-2 `Layout.tsx` 分组侧栏（NAV 增 `group` 字段，按 Overview/Membership/Delivery/Identity&Security/System 分组渲染分组标题）+ 顶栏（面包屑 + 主题切换 + 用户/角色 + 登出）；RBAC 过滤与路由不变（TC-3, TC-7）。
 
 ### p2 共享 UI 基元
 - [ ] p2-1 `ui/table.tsx` 样式统一 + 新增 `ui/status-badge.tsx`、`ui/copy-button.tsx`；各表格 hash/kid 等改 `CopyButton`、状态改 `StatusBadge`（TC-2, TC-4）。
@@ -159,12 +159,18 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - 2026-06-27 p1-1 完成：`index.css` 扩展语义 token——新增 `surface/surface-strong`、`warning/info` 及各色 `-soft` 软背景、`border-strong`、`ring`、`primary-soft`，并在 `.dark` 给出对应暗色值；全部经 `@theme inline` 暴露为 `--color-*`，业务组件继续用 Tailwind 类名。既有 token（background/foreground/card/primary/muted/border/destructive/success）保持不变，零破坏。radius 收紧到 0.5rem，body 字体加 Inter 与抗锯齿。
 
+- 2026-06-27 p1-2 完成：`app/Layout.tsx` 重做应用壳——侧栏按 5 组渲染（Overview / Membership / Delivery / Identity & Security / System），分组标题小字大写；NavLink active 用 `bg-muted` 高亮；owner-only 项加锁图标；RBAC 过滤改为「组内按 rank 过滤、空组不渲染」，与原 roleRank 守卫等价。新增顶栏（面包屑=当前路由 group/label + 主题切换）；侧栏底部保留角色徽章 + 头像缩写 + 登出。主题 useTheme（toggle .dark + localStorage 持久化，mount 回读）。路由表与 RBAC 不变。
+
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: ui|node | command: ... | result: pass|fail | note: ...` 追加）
 
 - TC-1 | stack: node | command: tsc -b --noEmit | result: pass | note: p1-1 后 typecheck 绿（CSS 改动不影响 TS）
 - TC-1 | stack: node | command: eslint . | result: pass | note: 0 error / 2 既有 warning
 - TC-2 | stack: ui | command: manual review index.css | result: pass | note: 亮/暗双套 token 完整，旧 token 名保留，新增状态色经 @theme 暴露（bg-warning/text-info/bg-success-soft 等可用）；vite build 由宿主复核
+
+- TC-1 | stack: node | command: tsc -b --noEmit | result: pass | note: p1-2 后 typecheck 绿
+- TC-1 | stack: node | command: eslint src/app/Layout.tsx | result: pass | note: 0 problem
+- TC-3 | stack: ui | command: manual review Layout.tsx | result: pass | note: 5 组导航 + 组内 rank 过滤(空组隐藏)；面包屑随路由；顶栏主题切换；路由 to 与 App.tsx 一致；宿主复核视觉
 
 ## 7. Change Requests (append-only)
 - （无）
