@@ -5,6 +5,8 @@ import { StepUpDialog } from "@/features/auth/StepUpDialog";
 import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
+import { CopyButton } from "@/ui/copy-button";
+import { StatusBadge } from "@/ui/status-badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/ui/table";
 
 export function KeysPage() {
@@ -57,7 +59,7 @@ export function KeysPage() {
         </CardContent>
       </Card>
       <QueryState isLoading={q.isLoading} error={q.error} empty={keys.length === 0} emptyText="No keys published.">
-        <Table>
+        <Table footer={<span>{keys.length} key(s)</span>}>
           <THead>
             <TR>
               <TH>Kid</TH>
@@ -71,13 +73,14 @@ export function KeysPage() {
           <TBody>
             {keys.map((k) => (
               <TR key={k.kid}>
-                <TD className="font-mono text-xs">{k.kid}</TD>
                 <TD>
-                  <Badge variant={k.status === "active" ? "success" : "muted"}>
-                    {k.status === "active"
-                      ? "active (signing)"
-                      : (k.status ?? "—")}
-                  </Badge>
+                  <CopyButton value={k.kid} toastLabel="Key id copied" />
+                </TD>
+                <TD>
+                  <StatusBadge
+                    status={k.status ?? ""}
+                    label={k.status === "active" ? "active · signing" : (k.status ?? "—")}
+                  />
                 </TD>
                 <TD>{k.kty}</TD>
                 <TD>{k.crv ?? "—"}</TD>

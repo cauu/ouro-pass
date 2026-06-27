@@ -128,7 +128,7 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - [x] p3-5 Channels：表精简 + 添加/换 token/删除走对话框（TC-4, TC-5, TC-7）。
 - [x] p3-6 Push：列表精简 + 创建弹窗去排程/草稿（TC-4, TC-7）。
 - [x] p3-7 OAuth Clients：表精简 + 注册向导 + 一次性 secret + 重置 secret（TC-4, TC-7）。
-- [ ] p3-8 Signing Keys：单状态卡 + 表（含 retire）（TC-4, TC-7）。
+- [x] p3-8 Signing Keys：单状态卡 + 表（含 retire）（TC-4, TC-7）。
 - [ ] p3-9 Attestors：表精简 + 删除走 `ConfirmDialog`（TC-4, TC-5, TC-7）。
 - [ ] p3-10 Audit：五列只读表（TC-4, TC-7）。
 - [ ] p3-11 Setup：上线清单按新 token 重排（语义不变）（TC-4, TC-7）。
@@ -181,6 +181,8 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - 2026-06-27 p3-7 完成：OAuth Clients——状态列改 StatusBadge、Type 列改 Badge（confidential=default / public=outline）、表加 footer 计数；注册表单 Name 加 required 星标。注册向导（含一次性 client_secret 展示）与 RegenerateSecretAction（step-up 重置 secret）行为不变。无 Redirect URIs 列、无启停（无对应端点）。
 
+- 2026-06-27 p3-8 完成：Signing Keys——Kid 列改 CopyButton；状态列改 StatusBadge（active→success「active · signing」、rotating→warning、retired→muted）；表加 footer 计数。顶部单一 JWKS 状态卡、Rotate/Generate 单按钮与 rotating 行 Retire（均 step-up）行为不变。无创建时间列、无多余统计卡（Jwk 无时间戳）。
+
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: ui|node | command: ... | result: pass|fail | note: ...` 追加）
 
@@ -226,6 +228,9 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - TC-1 | stack: node | command: tsc -b --noEmit + eslint ClientsPage | result: pass | note: p3-7 绿
 - TC-4 | stack: ui | command: 字段对照 | result: pass | note: 列=Name/ClientID/ClientType/AllowedAudiences/Status；写操作=register + regenerateClientSecret
 - TC-7 | stack: ui | command: review | result: pass | note: 注册 step-up + 一次性 secret + 重置 secret 流程与 S0002 等价
+
+- TC-1 | stack: node | command: tsc -b --noEmit + eslint KeysPage | result: pass | note: p3-8 绿
+- TC-4 | stack: ui | command: 字段对照 | result: pass | note: 列=kid/status/kty/crv/alg；rotate/generate/retire 走既有端点+step-up
 
 ## 7. Change Requests (append-only)
 - （无）
