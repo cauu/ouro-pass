@@ -1,0 +1,1316 @@
+<!doctype html>
+<html lang="zh" class="">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ouro Pass Admin · UI 原型（当前实现范围）</title>
+<style>
+/* ============================================================
+   Ouro Pass Admin — Redesign Prototype
+   Style: Linear / Vercel minimal · single-file clickable mockup
+   Mirrors target stack: React + Tailwind v4 + Radix(shadcn) + TanStack
+   ============================================================ */
+
+/* ---- Design tokens ---- */
+:root{
+  --bg:#fbfbfc;
+  --surface:#ffffff;
+  --surface-2:#f6f6f7;
+  --surface-3:#f1f1f3;
+  --elevated:#ffffff;
+  --text:#1c1c1f;
+  --text-2:#5c5c66;
+  --text-3:#8a8a94;
+  --border:#e7e7ea;
+  --border-2:#dddde1;
+  --accent:#5b5bd6;
+  --accent-fg:#ffffff;
+  --accent-soft:#eeeefb;
+  --accent-text:#4b4bc4;
+  --success:#127a45;
+  --success-soft:#e7f4ec;
+  --warning:#9a6700;
+  --warning-soft:#fbf2dc;
+  --danger:#c4314b;
+  --danger-soft:#fbe9ec;
+  --info:#1f6fd6;
+  --info-soft:#e7f0fb;
+  --ring:rgba(91,91,214,.35);
+  --shadow-sm:0 1px 2px rgba(20,20,30,.04),0 1px 1px rgba(20,20,30,.03);
+  --shadow-md:0 4px 12px rgba(20,20,30,.08),0 2px 4px rgba(20,20,30,.04);
+  --shadow-lg:0 16px 48px rgba(20,20,30,.14),0 4px 12px rgba(20,20,30,.08);
+  --radius:7px;
+  --radius-sm:5px;
+  --radius-lg:11px;
+  --sidebar-w:236px;
+  --topbar-h:52px;
+  --font:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+  --mono:"SF Mono",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+}
+html.dark{
+  --bg:#0b0b0d;
+  --surface:#131316;
+  --surface-2:#18181b;
+  --surface-3:#202024;
+  --elevated:#1a1a1e;
+  --text:#ededf0;
+  --text-2:#a0a0aa;
+  --text-3:#6e6e78;
+  --border:#26262b;
+  --border-2:#303036;
+  --accent:#7b7bf0;
+  --accent-fg:#0b0b0d;
+  --accent-soft:#1e1e3a;
+  --accent-text:#a5a5f5;
+  --success:#3fce82;
+  --success-soft:#10271a;
+  --warning:#e0b24a;
+  --warning-soft:#2a2310;
+  --danger:#f0667f;
+  --danger-soft:#2c1418;
+  --info:#5ea0f0;
+  --info-soft:#0f2034;
+  --ring:rgba(123,123,240,.4);
+  --shadow-sm:0 1px 2px rgba(0,0,0,.4);
+  --shadow-md:0 4px 14px rgba(0,0,0,.5);
+  --shadow-lg:0 18px 50px rgba(0,0,0,.6);
+}
+
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  font-family:var(--font);
+  font-size:13px;
+  line-height:1.5;
+  color:var(--text);
+  background:var(--bg);
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizedLegibility;
+}
+a{color:inherit;text-decoration:none}
+button{font-family:inherit}
+::selection{background:var(--accent-soft)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.num{font-variant-numeric:tabular-nums}
+
+/* scrollbars */
+*::-webkit-scrollbar{width:10px;height:10px}
+*::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:8px;border:3px solid transparent;background-clip:content-box}
+*::-webkit-scrollbar-thumb:hover{background:var(--text-3)}
+
+/* ---- App shell ---- */
+.app{display:grid;grid-template-columns:var(--sidebar-w) 1fr;height:100vh;overflow:hidden}
+.app.collapsed{--sidebar-w:60px}
+
+/* Sidebar */
+.sidebar{
+  background:var(--surface);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;
+  min-height:0;
+}
+.brand{
+  height:var(--topbar-h);
+  display:flex;align-items:center;gap:9px;
+  padding:0 14px;border-bottom:1px solid var(--border);
+  flex-shrink:0;
+}
+.brand .logo{
+  width:26px;height:26px;border-radius:7px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--accent),#8a5bd6);
+  color:#fff;font-weight:700;font-size:12px;
+  display:grid;place-items:center;letter-spacing:-.5px;
+  box-shadow:var(--shadow-sm);
+}
+.brand .name{font-weight:600;font-size:13.5px;letter-spacing:-.2px;white-space:nowrap}
+.brand .env{font-size:10px;color:var(--text-3);margin-left:auto;border:1px solid var(--border);padding:1px 6px;border-radius:20px;white-space:nowrap}
+.collapsed .brand .name,.collapsed .brand .env,.collapsed .nav-group-label span,.collapsed .nav-item span,.collapsed .side-foot .who{display:none}
+
+.nav{flex:1;overflow-y:auto;padding:10px 8px;min-height:0}
+.nav-group{margin-bottom:14px}
+.nav-group-label{
+  font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--text-3);padding:4px 10px 5px;display:flex;align-items:center;gap:6px;
+}
+.collapsed .nav-group-label{justify-content:center;padding:4px 0 5px}
+.nav-item{
+  display:flex;align-items:center;gap:9px;
+  padding:6.5px 10px;border-radius:var(--radius-sm);
+  color:var(--text-2);font-size:13px;font-weight:450;
+  cursor:pointer;position:relative;white-space:nowrap;
+  transition:background .12s,color .12s;
+}
+.nav-item svg{width:16px;height:16px;flex-shrink:0;stroke-width:1.8}
+.nav-item:hover{background:var(--surface-2);color:var(--text)}
+.nav-item.active{background:var(--surface-2);color:var(--text);font-weight:550}
+.nav-item.active::before{content:"";position:absolute;left:-8px;top:7px;bottom:7px;width:2.5px;border-radius:3px;background:var(--accent)}
+.collapsed .nav-item{justify-content:center;padding:8px}
+.nav-item .pill{margin-left:auto;font-size:10px;background:var(--surface-3);color:var(--text-2);padding:0 6px;border-radius:20px;font-variant-numeric:tabular-nums}
+.collapsed .nav-item .pill{display:none}
+.lock{margin-left:auto;opacity:.5}
+.collapsed .lock{display:none}
+
+.side-foot{border-top:1px solid var(--border);padding:9px 10px;display:flex;align-items:center;gap:9px;flex-shrink:0}
+.avatar{width:26px;height:26px;border-radius:50%;background:var(--surface-3);display:grid;place-items:center;font-size:11px;font-weight:600;color:var(--text-2);flex-shrink:0}
+.side-foot .who{min-width:0}
+.side-foot .who b{display:block;font-size:12.5px;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side-foot .who span{display:block;font-size:11px;color:var(--text-3)}
+
+/* Main */
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.topbar{
+  height:var(--topbar-h);flex-shrink:0;
+  border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--surface) 80%,transparent);
+  backdrop-filter:saturate(1.4) blur(8px);
+  display:flex;align-items:center;gap:10px;padding:0 16px;
+}
+.icon-btn{
+  width:30px;height:30px;border-radius:var(--radius-sm);border:1px solid transparent;background:transparent;
+  display:grid;place-items:center;color:var(--text-2);cursor:pointer;transition:background .12s,color .12s;
+}
+.icon-btn:hover{background:var(--surface-2);color:var(--text)}
+.icon-btn svg{width:17px;height:17px;stroke-width:1.8}
+.crumbs{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--text-3);min-width:0}
+.crumbs b{color:var(--text);font-weight:550}
+.crumbs .sep{opacity:.5}
+.topbar-spacer{flex:1}
+.search-trigger{
+  display:flex;align-items:center;gap:8px;height:30px;padding:0 9px;min-width:200px;
+  border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--surface-2);
+  color:var(--text-3);font-size:12.5px;cursor:pointer;transition:border .12s;
+}
+.search-trigger:hover{border-color:var(--border-2)}
+.search-trigger svg{width:15px;height:15px}
+.search-trigger .kbd{margin-left:auto}
+.kbd{font-family:var(--font);font-size:10.5px;color:var(--text-3);background:var(--surface);border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;padding:0 5px;line-height:16px;height:17px;display:inline-flex;align-items:center}
+
+/* Content */
+.content{flex:1;overflow-y:auto;min-height:0}
+.container{max-width:1180px;margin:0 auto;padding:26px 28px 64px}
+.page{display:none;animation:fade .18s ease}
+.page.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* Page header */
+.page-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:20px}
+.page-head h1{margin:0;font-size:21px;font-weight:650;letter-spacing:-.3px}
+.page-head p{margin:5px 0 0;color:var(--text-2);font-size:13px;max-width:62ch}
+.page-head .actions{display:flex;gap:8px;flex-shrink:0;align-items:center}
+
+/* Buttons */
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:32px;padding:0 13px;border-radius:var(--radius-sm);
+  font-size:12.5px;font-weight:550;cursor:pointer;border:1px solid transparent;
+  white-space:nowrap;transition:background .12s,border-color .12s,opacity .12s;
+}
+.btn svg{width:15px;height:15px;stroke-width:2}
+.btn-primary{background:var(--accent);color:var(--accent-fg);box-shadow:var(--shadow-sm)}
+.btn-primary:hover{opacity:.9}
+.btn-default{background:var(--surface);color:var(--text);border-color:var(--border-2);box-shadow:var(--shadow-sm)}
+.btn-default:hover{background:var(--surface-2)}
+.btn-ghost{background:transparent;color:var(--text-2)}
+.btn-ghost:hover{background:var(--surface-2);color:var(--text)}
+.btn-danger{background:var(--surface);color:var(--danger);border-color:var(--border-2)}
+.btn-danger:hover{background:var(--danger-soft);border-color:var(--danger)}
+.btn-sm{height:28px;padding:0 10px;font-size:12px}
+.btn-xs{height:24px;padding:0 8px;font-size:11.5px;border-radius:5px}
+.btn-icon{width:32px;padding:0}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+/* Badges */
+.badge{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:20px;font-size:11.5px;font-weight:550;border:1px solid transparent;white-space:nowrap}
+.badge .dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.badge-neutral{background:var(--surface-3);color:var(--text-2)}
+.badge-success{background:var(--success-soft);color:var(--success)}
+.badge-warning{background:var(--warning-soft);color:var(--warning)}
+.badge-danger{background:var(--danger-soft);color:var(--danger)}
+.badge-info{background:var(--info-soft);color:var(--info)}
+.badge-accent{background:var(--accent-soft);color:var(--accent-text)}
+.badge-outline{border-color:var(--border-2);color:var(--text-2)}
+
+/* Cards */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-sm)}
+.card-head{padding:15px 18px;border-bottom:1px solid var(--border)}
+.card-head h3{margin:0;font-size:14px;font-weight:600;letter-spacing:-.2px;display:flex;align-items:center;gap:8px}
+.card-head p{margin:4px 0 0;color:var(--text-2);font-size:12.5px}
+.card-body{padding:18px}
+.card-foot{padding:13px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px;background:var(--surface-2);border-radius:0 0 var(--radius-lg) var(--radius-lg)}
+.grid{display:grid;gap:16px}
+.cols-2{grid-template-columns:repeat(2,1fr)}
+.cols-3{grid-template-columns:repeat(3,1fr)}
+.cols-4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:980px){.cols-3,.cols-4{grid-template-columns:repeat(2,1fr)}}
+
+/* Stat cards */
+.stat{padding:16px 18px}
+.stat .lbl{font-size:12px;color:var(--text-2);display:flex;align-items:center;gap:7px}
+.stat .val{font-size:27px;font-weight:650;letter-spacing:-.6px;margin-top:9px;line-height:1}
+.stat .delta{font-size:11.5px;margin-top:8px;display:inline-flex;align-items:center;gap:4px}
+.delta.up{color:var(--success)}.delta.down{color:var(--danger)}.delta.flat{color:var(--text-3)}
+.stat .spark{height:30px;margin-top:10px;width:100%}
+
+/* Toolbar above tables */
+.toolbar{display:flex;align-items:center;gap:9px;margin-bottom:13px;flex-wrap:wrap}
+.input{
+  height:32px;border:1px solid var(--border-2);border-radius:var(--radius-sm);background:var(--surface);
+  color:var(--text);font-size:13px;padding:0 11px;width:100%;transition:border-color .12s,box-shadow .12s;
+}
+.input::placeholder{color:var(--text-3)}
+.input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--ring)}
+textarea.input{height:auto;padding:9px 11px;resize:vertical;line-height:1.55}
+select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%238a8a94' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 9px center;padding-right:30px;cursor:pointer}
+.search-box{position:relative;min-width:230px}
+.search-box svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:15px;height:15px;color:var(--text-3);pointer-events:none}
+.search-box .input{padding-left:32px}
+.seg{display:inline-flex;border:1px solid var(--border-2);border-radius:var(--radius-sm);overflow:hidden;height:32px;background:var(--surface)}
+.seg button{border:0;background:transparent;color:var(--text-2);font-size:12px;font-weight:500;padding:0 11px;cursor:pointer;border-right:1px solid var(--border)}
+.seg button:last-child{border-right:0}
+.seg button.on{background:var(--surface-3);color:var(--text);font-weight:600}
+.filter-chip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 11px;border:1px dashed var(--border-2);border-radius:var(--radius-sm);background:var(--surface);color:var(--text-2);font-size:12px;cursor:pointer}
+.filter-chip:hover{border-color:var(--text-3);color:var(--text)}
+.filter-chip.applied{border-style:solid;background:var(--accent-soft);color:var(--accent-text);border-color:transparent}
+.spacer{flex:1}
+
+/* Tables */
+.tbl-wrap{border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;background:var(--surface);box-shadow:var(--shadow-sm)}
+table.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl thead th{
+  text-align:left;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--text-3);padding:9px 14px;background:var(--surface-2);border-bottom:1px solid var(--border);
+  white-space:nowrap;position:sticky;top:0;
+}
+.tbl thead th.sortable{cursor:pointer;user-select:none}
+.tbl thead th.sortable:hover{color:var(--text)}
+.tbl thead th .sort{display:inline-block;width:11px;color:var(--accent);vertical-align:middle}
+.tbl tbody td{padding:11px 14px;border-bottom:1px solid var(--border);vertical-align:middle}
+.tbl tbody tr:last-child td{border-bottom:0}
+.tbl tbody tr{transition:background .1s}
+.tbl tbody tr:hover{background:var(--surface-2)}
+.tbl tbody tr.selected{background:var(--accent-soft)}
+.tbl .right{text-align:right}
+.tbl .muted{color:var(--text-3)}
+.cell-strong{font-weight:550}
+.row-actions{display:flex;gap:4px;justify-content:flex-end;opacity:0;transition:opacity .1s}
+.tbl tbody tr:hover .row-actions{opacity:1}
+.copyable{display:inline-flex;align-items:center;gap:6px;cursor:pointer;border-radius:5px;padding:1px 5px;margin:-1px -5px}
+.copyable:hover{background:var(--surface-3)}
+.copyable .cp{opacity:0;width:12px;height:12px;color:var(--text-3)}
+.copyable:hover .cp{opacity:1}
+.checkbox{width:15px;height:15px;border:1.5px solid var(--border-2);border-radius:4px;background:var(--surface);cursor:pointer;display:inline-grid;place-items:center;vertical-align:middle}
+.checkbox.on{background:var(--accent);border-color:var(--accent)}
+.checkbox svg{width:11px;height:11px;color:#fff;display:none}
+.checkbox.on svg{display:block}
+
+/* table footer / pagination */
+.tbl-foot{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;border-top:1px solid var(--border);background:var(--surface-2);font-size:12.5px;color:var(--text-2);flex-wrap:wrap;gap:10px}
+.pager{display:flex;align-items:center;gap:4px}
+.pager button{min-width:28px;height:28px;border:1px solid var(--border-2);background:var(--surface);border-radius:5px;color:var(--text-2);cursor:pointer;font-size:12px}
+.pager button:hover:not(:disabled){background:var(--surface-3)}
+.pager button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.pager button:disabled{opacity:.4;cursor:default}
+
+/* bulk action bar */
+.bulkbar{display:none;align-items:center;gap:12px;padding:9px 14px;background:var(--text);color:var(--bg);border-radius:var(--radius);box-shadow:var(--shadow-lg);position:sticky;bottom:14px;margin-top:12px;z-index:5}
+.bulkbar.show{display:flex}
+.bulkbar b{font-weight:600}
+.bulkbar .btn{height:28px}
+
+/* Forms */
+.field{margin-bottom:14px}
+.field>label{display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:550;margin-bottom:6px;color:var(--text)}
+.field .req{color:var(--danger)}
+.field .hint{font-size:11.5px;color:var(--text-3);margin-top:6px;line-height:1.45}
+.field .err{font-size:11.5px;color:var(--danger);margin-top:6px;display:flex;align-items:center;gap:5px}
+.input.invalid{border-color:var(--danger);box-shadow:0 0 0 3px var(--danger-soft)}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.form-section{padding:18px;border:1px solid var(--border);border-radius:var(--radius-lg)}
+.form-section+.form-section{margin-top:14px}
+.form-section h4{margin:0 0 3px;font-size:13.5px;font-weight:600}
+.form-section .sub{font-size:12px;color:var(--text-2);margin:0 0 14px}
+.switch{width:36px;height:21px;border-radius:20px;background:var(--border-2);position:relative;cursor:pointer;transition:background .15s;flex-shrink:0}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:#fff;transition:left .15s;box-shadow:var(--shadow-sm)}
+.switch.on{background:var(--accent)}
+.switch.on::after{left:17px}
+.setting-row{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 0;border-bottom:1px solid var(--border)}
+.setting-row:last-child{border-bottom:0}
+.setting-row .meta b{font-size:13px;font-weight:550;display:block}
+.setting-row .meta span{font-size:12px;color:var(--text-2)}
+
+/* Empty / loading states */
+.empty{display:grid;place-items:center;text-align:center;padding:54px 20px}
+.empty .ic{width:46px;height:46px;border-radius:13px;background:var(--surface-2);border:1px solid var(--border);display:grid;place-items:center;color:var(--text-3);margin-bottom:14px}
+.empty h4{margin:0 0 5px;font-size:14.5px;font-weight:600}
+.empty p{margin:0 0 16px;color:var(--text-2);font-size:13px;max-width:42ch}
+.skeleton{background:linear-gradient(90deg,var(--surface-2) 25%,var(--surface-3) 37%,var(--surface-2) 63%);background-size:400% 100%;animation:shimmer 1.4s infinite;border-radius:5px}
+@keyframes shimmer{0%{background-position:100% 0}100%{background-position:-100% 0}}
+
+/* Drawer / sheet */
+.scrim{position:fixed;inset:0;background:rgba(15,15,20,.42);backdrop-filter:blur(1px);opacity:0;pointer-events:none;transition:opacity .2s;z-index:40}
+.scrim.show{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;height:100vh;width:480px;max-width:94vw;background:var(--surface);border-left:1px solid var(--border);box-shadow:var(--shadow-lg);transform:translateX(100%);transition:transform .24s cubic-bezier(.4,0,.2,1);z-index:41;display:flex;flex-direction:column}
+.drawer.show{transform:none}
+.drawer-head{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-shrink:0}
+.drawer-head h3{margin:0;font-size:16px;font-weight:600}
+.drawer-head p{margin:4px 0 0;font-size:12px;color:var(--text-2)}
+.drawer-body{padding:20px;overflow-y:auto;flex:1}
+.drawer-foot{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;background:var(--surface-2)}
+
+/* Modal dialog */
+.modal{position:fixed;inset:0;display:none;place-items:center;z-index:42;padding:20px}
+.modal.show{display:grid}
+.modal-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);width:480px;max-width:100%;max-height:90vh;overflow:auto;animation:pop .18s ease}
+@keyframes pop{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:none}}
+.modal-head{padding:18px 20px 0}
+.modal-head h3{margin:0;font-size:16px;font-weight:600}
+.modal-head p{margin:6px 0 0;color:var(--text-2);font-size:12.5px;line-height:1.5}
+.modal-body{padding:16px 20px}
+.modal-foot{padding:14px 20px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border);margin-top:6px}
+
+/* description list */
+.dl{display:grid;grid-template-columns:120px 1fr;gap:11px 16px;font-size:13px}
+.dl dt{color:var(--text-3);font-size:12px}
+.dl dd{margin:0;color:var(--text)}
+
+/* code block */
+.code{font-family:var(--mono);font-size:12px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;word-break:break-all;color:var(--text);position:relative}
+
+/* timeline (audit) */
+.tl{position:relative;padding-left:24px}
+.tl::before{content:"";position:absolute;left:7px;top:4px;bottom:4px;width:1.5px;background:var(--border)}
+.tl-item{position:relative;padding:0 0 18px}
+.tl-item::before{content:"";position:absolute;left:-21px;top:3px;width:9px;height:9px;border-radius:50%;background:var(--surface);border:2px solid var(--accent)}
+
+/* command palette */
+.cmdk{position:fixed;inset:0;display:none;justify-content:center;padding-top:14vh;z-index:50;background:rgba(15,15,20,.4)}
+.cmdk.show{display:flex}
+.cmdk-box{width:560px;max-width:92vw;background:var(--elevated);border:1px solid var(--border-2);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);overflow:hidden;height:fit-content;animation:pop .15s ease}
+.cmdk-input{display:flex;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--border)}
+.cmdk-input svg{width:18px;height:18px;color:var(--text-3)}
+.cmdk-input input{border:0;background:transparent;outline:none;font-size:15px;color:var(--text);width:100%}
+.cmdk-list{max-height:340px;overflow-y:auto;padding:7px}
+.cmdk-sec{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text-3);padding:9px 10px 4px;font-weight:600}
+.cmdk-item{display:flex;align-items:center;gap:11px;padding:8px 10px;border-radius:6px;cursor:pointer;color:var(--text-2);font-size:13.5px}
+.cmdk-item svg{width:16px;height:16px}
+.cmdk-item:hover,.cmdk-item.cur{background:var(--surface-2);color:var(--text)}
+.cmdk-item .meta{margin-left:auto;font-size:11px;color:var(--text-3)}
+
+/* toast */
+.toasts{position:fixed;bottom:18px;right:18px;display:flex;flex-direction:column;gap:9px;z-index:60}
+.toast{display:flex;align-items:flex-start;gap:10px;background:var(--elevated);border:1px solid var(--border-2);border-radius:var(--radius);box-shadow:var(--shadow-lg);padding:11px 13px;min-width:280px;max-width:380px;animation:slidein .2s ease}
+@keyframes slidein{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:none}}
+.toast .ic{width:18px;height:18px;flex-shrink:0;margin-top:1px}
+.toast.success .ic{color:var(--success)}.toast.error .ic{color:var(--danger)}.toast.info .ic{color:var(--info)}
+.toast b{font-size:13px;font-weight:600;display:block}
+.toast span{font-size:12px;color:var(--text-2)}
+
+/* misc helpers */
+.row{display:flex;align-items:center;gap:8px}
+.between{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.wrap{flex-wrap:wrap}
+.mt8{margin-top:8px}.mt12{margin-top:12px}.mt16{margin-top:16px}.mt24{margin-top:24px}
+.mb6{margin-bottom:6px}.mb12{margin-bottom:12px}.mb16{margin-bottom:16px}
+.t2{color:var(--text-2)}.t3{color:var(--text-3)}
+.fs12{font-size:12px}.fs11{font-size:11.5px}
+.tag{font-size:11px;color:var(--text-2);background:var(--surface-2);border:1px solid var(--border);border-radius:5px;padding:1px 7px;font-family:var(--mono)}
+.divider{height:1px;background:var(--border);margin:18px 0}
+.hl{color:var(--accent-text)}
+.swatch{height:54px;border-radius:8px;border:1px solid var(--border);margin-bottom:7px}
+.note{display:flex;gap:9px;padding:11px 13px;border-radius:var(--radius);font-size:12.5px;line-height:1.5}
+.note svg{width:16px;height:16px;flex-shrink:0;margin-top:1px}
+.note-info{background:var(--info-soft);color:var(--info)}
+.note-warn{background:var(--warning-soft);color:var(--warning)}
+.note b{color:var(--text)}
+.note-info b,.note-warn b{color:inherit}
+
+/* login */
+.login-wrap{position:fixed;inset:0;display:none;place-items:center;background:var(--bg);z-index:30;background-image:radial-gradient(circle at 20% 10%,var(--accent-soft),transparent 38%),radial-gradient(circle at 85% 90%,var(--accent-soft),transparent 40%)}
+.login-wrap.show{display:grid}
+.login-card{width:400px;max-width:92vw;background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:var(--shadow-lg);padding:30px}
+.wallet-opt{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border-2);border-radius:var(--radius);cursor:pointer;margin-bottom:9px;transition:border-color .12s,background .12s}
+.wallet-opt:hover{border-color:var(--accent);background:var(--surface-2)}
+.wallet-opt .wic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-size:13px;font-weight:700;color:#fff}
+.steps{display:flex;align-items:center;gap:0;margin:0 0 22px}
+.step{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-3)}
+.step .n{width:21px;height:21px;border-radius:50%;border:1.5px solid var(--border-2);display:grid;place-items:center;font-size:11px;font-weight:600}
+.step.done .n{background:var(--success);border-color:var(--success);color:#fff}
+.step.cur .n{background:var(--accent);border-color:var(--accent);color:#fff}
+.step.cur{color:var(--text);font-weight:550}
+.step-line{flex:1;height:1.5px;background:var(--border);margin:0 9px;min-width:18px}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">OP</div>
+      <span class="name">Ouro Pass</span>
+      <span class="env">testnet</span>
+    </div>
+    <nav class="nav">
+      <div class="nav-group">
+        <div class="nav-group-label"><span>Overview</span></div>
+        <div class="nav-item" data-route="dashboard" onclick="go('dashboard')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>
+          <span>Dashboard</span>
+        </div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label"><span>Membership</span></div>
+        <div class="nav-item" data-route="members" onclick="go('members')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          <span>Members</span><span class="pill">1,284</span>
+        </div>
+        <div class="nav-item" data-route="subscriptions" onclick="go('subscriptions')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+          <span>Subscriptions</span>
+        </div>
+        <div class="nav-item" data-route="tiers" onclick="go('tiers')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><line x1="21" y1="6" x2="3" y2="6"/><circle cx="8" cy="6" r="2" fill="var(--surface)"/><line x1="21" y1="12" x2="3" y2="12"/><circle cx="15" cy="12" r="2" fill="var(--surface)"/><line x1="21" y1="18" x2="3" y2="18"/><circle cx="6" cy="18" r="2" fill="var(--surface)"/></svg>
+          <span>Tiers</span>
+        </div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label"><span>Delivery</span></div>
+        <div class="nav-item" data-route="channels" onclick="go('channels')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+          <span>Channels</span>
+        </div>
+        <div class="nav-item" data-route="push" onclick="go('push')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+          <span>Push</span>
+        </div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label"><span>Identity & Security</span></div>
+        <div class="nav-item" data-route="clients" onclick="go('clients')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          <span>OAuth Clients</span>
+          <svg class="lock" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <div class="nav-item" data-route="keys" onclick="go('keys')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.5 12.5 6-6M16 7l3 3M13 9l3 3"/></svg>
+          <span>Signing Keys</span>
+          <svg class="lock" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <div class="nav-item" data-route="attestors" onclick="go('attestors')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 0 1 0 10h-2M8 12h8"/></svg>
+          <span>Attestors</span>
+        </div>
+      </div>
+      <div class="nav-group">
+        <div class="nav-group-label"><span>System</span></div>
+        <div class="nav-item" data-route="audit" onclick="go('audit')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 13h6M9 17h4"/></svg>
+          <span>Audit log</span>
+          <svg class="lock" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <div class="nav-item" data-route="setup" onclick="go('setup')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>Setup</span>
+          <svg class="lock" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        </div>
+        <div class="nav-item" data-route="design" onclick="go('design')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12.5" r="2.5"/><path d="M12 2a10 10 0 1 0 0 20 2 2 0 0 0 2-2c0-1-1-1-1-2 0-1 1-2 2-2h1a4 4 0 0 0 4-4 10 10 0 0 0-12-8z"/></svg>
+          <span>Design system</span>
+        </div>
+      </div>
+    </nav>
+    <div class="side-foot">
+      <div class="avatar">MC</div>
+      <div class="who"><b>Martin C.</b><span>pool owner</span></div>
+      <button class="icon-btn" title="退出登录" onclick="showLogin()" style="margin-left:auto">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <!-- ================= MAIN ================= -->
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn" onclick="toggleSidebar()" title="折叠侧栏">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/></svg>
+      </button>
+      <div class="crumbs" id="crumbs"></div>
+      <div class="topbar-spacer"></div>
+      <button class="search-trigger" onclick="openCmd()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <span>搜索或跳转…</span>
+        <span class="kbd">⌘K</span>
+      </button>
+      <button class="icon-btn" onclick="toggleTheme()" title="切换主题">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+      </button>
+      <button class="icon-btn" title="通知" onclick="toast('暂无新通知','审计与告警会显示在这里','info')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+      </button>
+      <div class="avatar" style="cursor:pointer" title="Martin · pool owner">MC</div>
+    </header>
+    <div class="content">
+      <div class="container">
+<!-- ========================= DASHBOARD ========================= -->
+<section class="page" data-page="dashboard">
+  <div class="page-head">
+    <div>
+      <h1>Dashboard</h1>
+      <p>Pool <span class="tag">pool1k4…q7v</span> · 当前 epoch 482 · 以 owner 身份登录。</p>
+    </div>
+    <div class="actions">
+      <button class="btn btn-primary btn-sm" onclick="go('push')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>新建推送</button>
+    </div>
+  </div>
+
+  <!-- 仅展示当前已有查询可得的数据：listMembers / listSubscriptions / fetchJwks -->
+  <div class="grid cols-3 mb16">
+    <div class="card stat">
+      <div class="lbl"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/></svg>合格会员</div>
+      <div class="val num">1,284</div>
+      <div class="t3 fs11 mt8">来自 /admin/members</div>
+    </div>
+    <div class="card stat">
+      <div class="lbl"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/></svg>活跃订阅</div>
+      <div class="val num">947</div>
+      <div class="t3 fs11 mt8">status = active 计数</div>
+    </div>
+    <div class="card stat">
+      <div class="lbl"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.5 12.5 6-6"/></svg>签名密钥 (JWKS)</div>
+      <div class="val num" style="font-size:19px;display:flex;align-items:center;gap:8px;margin-top:14px"><span class="badge badge-success"><span class="dot"></span>正常</span></div>
+      <div class="t3 fs11 mt8">2 个密钥发布于 JWKS</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>等级分布</h3><p>由会员名册按 tier 客户端聚合（members 已含 tier 字段）</p></div>
+    <div class="card-body">
+      <div style="display:flex;gap:18px;align-items:center">
+        <svg viewBox="0 0 36 36" width="100" height="100" style="transform:rotate(-90deg);flex-shrink:0">
+          <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--surface-3)" stroke-width="4"/>
+          <circle cx="18" cy="18" r="15.9" fill="none" stroke="#d4a017" stroke-width="4" stroke-dasharray="22 78"/>
+          <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--accent)" stroke-width="4" stroke-dasharray="38 62" stroke-dashoffset="-22"/>
+          <circle cx="18" cy="18" r="15.9" fill="none" stroke="var(--text-3)" stroke-width="4" stroke-dasharray="40 60" stroke-dashoffset="-60"/>
+        </svg>
+        <div style="flex:1;max-width:320px">
+          <div class="row between fs12" style="padding:6px 0;border-bottom:1px solid var(--border)"><span class="row"><i style="width:9px;height:9px;border-radius:3px;background:#d4a017;display:inline-block"></i>&nbsp;Gold</span><b class="num">283</b></div>
+          <div class="row between fs12" style="padding:6px 0;border-bottom:1px solid var(--border)"><span class="row"><i style="width:9px;height:9px;border-radius:3px;background:var(--accent);display:inline-block"></i>&nbsp;Silver</span><b class="num">488</b></div>
+          <div class="row between fs12" style="padding:6px 0"><span class="row"><i style="width:9px;height:9px;border-radius:3px;background:var(--text-3);display:inline-block"></i>&nbsp;Bronze</span><b class="num">513</b></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================= MEMBERS ========================= -->
+<section class="page" data-page="members">
+  <div class="page-head">
+    <div>
+      <h1>Members</h1>
+      <p>按链上 stake credential 派生的合格会员名册。身份键为 <span class="tag">stake_credential_hash</span>，系统不存 Member 表。</p>
+    </div>
+  </div>
+
+  <!-- listMembers 仅返回 stake_credential_hash / tier / channel_type；唯一写操作为 revoke（step-up） -->
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Stake credential</th>
+          <th>Tier</th>
+          <th>Channel</th>
+          <th class="right">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="copyable mono fs12" onclick="copy('stake1u9x2k…7p2q','stake credential')">e1c4…a93f<svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span></td>
+          <td><span class="badge" style="background:#fbf2dc;color:#9a6700"><span class="dot"></span>gold</span></td>
+          <td><span class="row fs12"><svg width="14" viewBox="0 0 24 24" fill="#229ED9" stroke="none"><path d="m22 2-7 20-4-9-9-4Z"/></svg>&nbsp;telegram</span></td>
+          <td class="right"><div class="row-actions"><button class="btn btn-danger btn-xs" onclick="confirmRevoke('e1c4…a93f')">拉黑</button></div></td>
+        </tr>
+        <tr>
+          <td><span class="copyable mono fs12" onclick="copy('stake1uxk8…m4r1','stake credential')">7b09…4d1c<svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span></td>
+          <td><span class="badge badge-accent"><span class="dot"></span>silver</span></td>
+          <td><span class="row fs12"><svg width="14" viewBox="0 0 24 24" fill="#229ED9" stroke="none"><path d="m22 2-7 20-4-9-9-4Z"/></svg>&nbsp;telegram</span></td>
+          <td class="right"><div class="row-actions"><button class="btn btn-danger btn-xs" onclick="confirmRevoke('7b09…4d1c')">拉黑</button></div></td>
+        </tr>
+        <tr>
+          <td><span class="copyable mono fs12" onclick="copy('stake1u22f…0x8e','stake credential')">c5e7…91ba<svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span></td>
+          <td><span class="badge badge-neutral"><span class="dot"></span>bronze</span></td>
+          <td><span class="row fs12"><svg width="14" viewBox="0 0 24 24" fill="#229ED9" stroke="none"><path d="m22 2-7 20-4-9-9-4Z"/></svg>&nbsp;telegram</span></td>
+          <td class="right"><div class="row-actions"><button class="btn btn-danger btn-xs" onclick="confirmRevoke('c5e7…91ba')">拉黑</button></div></td>
+        </tr>
+        <tr>
+          <td><span class="copyable mono fs12" onclick="copy('stake1u7m3…b2c9','stake credential')">a0f2…77de<svg class="cp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></span></td>
+          <td><span class="badge badge-accent"><span class="dot"></span>silver</span></td>
+          <td><span class="row fs12"><svg width="14" viewBox="0 0 24 24" fill="#229ED9" stroke="none"><path d="m22 2-7 20-4-9-9-4Z"/></svg>&nbsp;telegram</span></td>
+          <td class="right"><div class="row-actions"><button class="btn btn-danger btn-xs" onclick="confirmRevoke('a0f2…77de')">拉黑</button></div></td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="tbl-foot"><span>共 <b class="num">1,284</b> 名会员</span></div>
+  </div>
+  <p class="t3 fs11 mt12">拉黑会写入 Blacklist 并级联撤销该身份全部 token / refresh grant / 订阅会话，需 owner / operator step-up 签名。</p>
+</section>
+
+<!-- ========================= SUBSCRIPTIONS ========================= -->
+<section class="page" data-page="subscriptions">
+  <div class="page-head">
+    <div><h1>Subscriptions</h1><p>各渠道的会员订阅会话。由对账作业按 epoch 边界自动降级 / 失效。唯一写操作为取消（active 时可用）。</p></div>
+  </div>
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr><th>Stake credential</th><th>Channel</th><th>Tier</th><th>Status</th><th>到期</th><th class="right">Actions</th></tr></thead>
+      <tbody>
+        <tr><td><span class="copyable mono fs12" onclick="copy('stake1u9x2k…7p2q')">e1c4…a93f</span></td><td><span class="row fs12"><svg width="14" viewBox="0 0 24 24" fill="#229ED9"><path d="m22 2-7 20-4-9-9-4Z"/></svg>&nbsp;members bot</span></td><td><span class="badge" style="background:#fbf2dc;color:#9a6700">gold</span></td><td><span class="badge badge-success"><span class="dot"></span>active</span></td><td class="muted fs12">e484</td><td class="right"><button class="btn btn-default btn-xs" onclick="toast('订阅已取消','SubscriptionSession 已失效')">取消</button></td></tr>
+        <tr><td><span class="copyable mono fs12">7b09…4d1c</span></td><td><span class="row fs12"><svg width="14" viewBox="0 0 24 24" fill="#229ED9"><path d="m22 2-7 20-4-9-9-4Z"/></svg>&nbsp;members bot</span></td><td><span class="badge badge-accent">silver</span></td><td><span class="badge badge-success"><span class="dot"></span>active</span></td><td class="muted fs12">e484</td><td class="right"><button class="btn btn-default btn-xs">取消</button></td></tr>
+        <tr><td><span class="copyable mono fs12">c5e7…91ba</span></td><td><span class="row fs12"><svg width="14" viewBox="0 0 24 24" fill="#229ED9"><path d="m22 2-7 20-4-9-9-4Z"/></svg>&nbsp;members bot</span></td><td><span class="badge badge-neutral">bronze</span></td><td><span class="badge badge-warning"><span class="dot"></span>grace</span></td><td class="muted fs12">e483</td><td class="right"><button class="btn btn-default btn-xs">取消</button></td></tr>
+        <tr><td><span class="copyable mono fs12">a0f2…77de</span></td><td><span class="row fs12"><svg width="14" viewBox="0 0 24 24" fill="#229ED9"><path d="m22 2-7 20-4-9-9-4Z"/></svg>&nbsp;announcements</span></td><td><span class="badge badge-accent">silver</span></td><td><span class="badge badge-danger"><span class="dot"></span>cancelled</span></td><td class="muted fs12">—</td><td class="right"><button class="btn btn-default btn-xs" disabled>取消</button></td></tr>
+      </tbody>
+    </table>
+    <div class="tbl-foot"><span>共 <b class="num">947</b> 个活跃会话</span></div>
+  </div>
+</section>
+
+<!-- ========================= TIERS ========================= -->
+<section class="page" data-page="tiers">
+  <div class="page-head">
+    <div><h1>Tiers</h1><p>第一方等级映射：在所有 attestor 聚合事实上有序求值，<b>首条命中即生效</b>，无命中则无等级。仅用于 issuer 自有渠道，外部应用读取 token 原始事实。</p></div>
+    <div class="actions"><div class="seg" id="tierModeSeg"><button class="on" data-m="builder" onclick="segPick(this);tierMode('builder')">可视化</button><button data-m="json" onclick="segPick(this);tierMode('json')">JSON</button></div><button class="btn btn-primary btn-sm" onclick="toast('Tier 规则已保存','3 条规则已生效')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>保存</button></div>
+  </div>
+
+  <div class="card mb16">
+    <div class="card-head between"><div><h3>已配置等级</h3><p>自上而下求值（首条命中）</p></div><span class="badge badge-outline">3 条规则</span></div>
+    <div class="card-body" style="padding:0">
+      <table class="tbl"><thead><tr><th style="width:48px">#</th><th>Tier</th><th>条件（由 describe() 渲染）</th></tr></thead>
+      <tbody>
+        <tr><td class="muted">1</td><td><span class="badge" style="background:#fbf2dc;color:#9a6700">gold</span></td><td class="mono fs12">total_active_stake ≥ 100000 ADA</td></tr>
+        <tr><td class="muted">2</td><td><span class="badge badge-accent">silver</span></td><td class="mono fs12">total_active_stake ≥ 25000 ADA <span class="t3">AND</span> any_active == true</td></tr>
+        <tr><td class="muted">3</td><td><span class="badge badge-neutral">bronze</span></td><td class="mono fs12">any_active == true</td></tr>
+      </tbody></table>
+    </div>
+  </div>
+
+  <div class="card" id="tier-builder">
+    <div class="card-head"><h3>编辑规则</h3><p>每条规则 = 一个等级 + 一组对事实的条件。可用事实：<span class="tag">any_active</span> <span class="tag">total_active_stake</span> <span class="tag">pool:&lt;id&gt;.state</span></p></div>
+    <div class="card-body grid" style="gap:12px">
+      <!-- rule 1 -->
+      <div class="form-section" style="background:var(--surface-2)">
+        <div class="row between mb12"><div class="row" style="gap:8px"><span class="badge badge-outline">1</span><input class="input" style="max-width:170px;height:30px" value="gold" /></div><div class="row" style="gap:3px"><button class="btn btn-ghost btn-xs" disabled>↑</button><button class="btn btn-ghost btn-xs">↓</button><button class="btn btn-ghost btn-xs" style="color:var(--danger)">删除</button></div></div>
+        <div class="row fs12 t2 mb6">满足 <select class="input" style="width:auto;height:28px"><option>ALL（全部）</option><option>ANY（任一）</option></select> 条件：</div>
+        <div class="row" style="gap:7px;margin-bottom:7px"><select class="input" style="flex:1;height:30px"><option>total_active_stake</option><option>any_active</option><option>pool:pool1k4…q7v.state</option></select><select class="input" style="width:78px;height:30px"><option>≥</option><option>&gt;</option><option>==</option></select><input class="input" style="flex:1;height:30px" value="100000" /><span class="tag">ADA</span><button class="btn btn-ghost btn-xs">✕</button></div>
+        <button class="btn btn-ghost btn-sm" style="color:var(--accent-text)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>添加条件</button>
+      </div>
+      <!-- rule 2 -->
+      <div class="form-section">
+        <div class="row between mb12"><div class="row" style="gap:8px"><span class="badge badge-outline">2</span><input class="input" style="max-width:170px;height:30px" value="silver" /></div><div class="row" style="gap:3px"><button class="btn btn-ghost btn-xs">↑</button><button class="btn btn-ghost btn-xs">↓</button><button class="btn btn-ghost btn-xs" style="color:var(--danger)">删除</button></div></div>
+        <div class="row fs12 t2 mb6">满足 <select class="input" style="width:auto;height:28px"><option>ALL（全部）</option><option>ANY（任一）</option></select> 条件：</div>
+        <div class="row" style="gap:7px;margin-bottom:7px"><select class="input" style="flex:1;height:30px"><option>total_active_stake</option></select><select class="input" style="width:78px;height:30px"><option>≥</option></select><input class="input" style="flex:1;height:30px" value="25000" /><span class="tag">ADA</span><button class="btn btn-ghost btn-xs">✕</button></div>
+        <div class="row" style="gap:7px;margin-bottom:7px"><select class="input" style="flex:1;height:30px"><option>any_active</option></select><select class="input" style="width:78px;height:30px"><option>==</option></select><select class="input" style="flex:1;height:30px"><option>true</option><option>false</option></select><button class="btn btn-ghost btn-xs">✕</button></div>
+        <button class="btn btn-ghost btn-sm" style="color:var(--accent-text)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>添加条件</button>
+      </div>
+      <button class="btn btn-default btn-sm" style="justify-self:start"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>添加规则</button>
+    </div>
+  </div>
+
+  <div class="card" id="tier-json" style="display:none">
+    <div class="card-head"><h3>JSON 编辑</h3><p>支持嵌套 all / any / not</p></div>
+    <div class="card-body"><textarea class="input mono" rows="16" spellcheck="false">[
+  { "tier": "gold",   "when": { "fact": "total_active_stake", "op": ">=", "value": "100000000000" } },
+  { "tier": "silver", "when": { "all": [
+      { "fact": "total_active_stake", "op": ">=", "value": "25000000000" },
+      { "fact": "any_active", "op": "==", "value": "true" }
+  ] } },
+  { "tier": "bronze", "when": { "fact": "any_active", "op": "==", "value": "true" } }
+]</textarea></div>
+  </div>
+</section>
+
+<!-- ========================= CHANNELS ========================= -->
+<section class="page" data-page="channels">
+  <div class="page-head">
+    <div><h1>Channels</h1><p>Telegram 投递实例。可运行多个 bot，每个实例独立 token 与 worker，会员 / 激活 / 推送绑定到具体实例。</p></div>
+    <div class="actions"><button class="btn btn-primary btn-sm" onclick="openModal('channel-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>添加实例</button></div>
+  </div>
+
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr><th>名称</th><th>类型</th><th>Bot</th><th>Token</th><th>状态</th><th class="right">Actions</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="cell-strong">members</td>
+          <td><span class="tag">telegram</span></td>
+          <td class="mono fs12">@ouro_members</td>
+          <td class="mono fs12 muted" title="仅显示首尾 4 位">123456…XfQa</td>
+          <td><span class="badge badge-success"><span class="dot"></span>active</span></td>
+          <td class="right"><div class="row-actions"><button class="btn btn-ghost btn-xs" onclick="toast('已停用','worker 已下线')">停用</button><button class="btn btn-ghost btn-xs" onclick="openModal('retoken-modal')">换 Token</button><button class="btn btn-ghost btn-xs" style="color:var(--danger)" onclick="openModal('delch-modal')">删除</button></div></td>
+        </tr>
+        <tr>
+          <td class="cell-strong">announcements</td>
+          <td><span class="tag">telegram</span></td>
+          <td class="mono fs12">@ouro_news</td>
+          <td class="mono fs12 muted">987654…Lm0p</td>
+          <td><span class="badge badge-success"><span class="dot"></span>active</span></td>
+          <td class="right"><div class="row-actions"><button class="btn btn-ghost btn-xs">停用</button><button class="btn btn-ghost btn-xs">换 Token</button><button class="btn btn-ghost btn-xs" style="color:var(--danger)">删除</button></div></td>
+        </tr>
+        <tr>
+          <td class="cell-strong">beta-bot</td>
+          <td><span class="tag">telegram</span></td>
+          <td class="mono fs12">@ouro_beta</td>
+          <td class="mono fs12 muted">456789…Zz1x</td>
+          <td><span class="badge badge-neutral"><span class="dot"></span>disabled</span></td>
+          <td class="right"><div class="row-actions"><button class="btn btn-ghost btn-xs">启用</button><button class="btn btn-ghost btn-xs">换 Token</button><button class="btn btn-ghost btn-xs" style="color:var(--danger)">删除</button></div></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note note-info mt16" style="max-width:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><div>Bot token 以字段级加密落盘且<b>永不回显</b>；表格仅展示首尾 4 位指纹。保存即时生效，无需重启 worker。</div></div>
+</section>
+
+<!-- ========================= PUSH ========================= -->
+<section class="page" data-page="push">
+  <div class="page-head">
+    <div><h1>Push</h1><p>广播任务及其投递状态。发送前逐条校验会员状态与 entitlement。</p></div>
+    <div class="actions"><button class="btn btn-primary btn-sm" onclick="openDrawer('push-drawer')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>新建推送</button></div>
+  </div>
+  <!-- listPushJobs 字段：Title / ChannelType / Target* / Status / ScheduledAt。无 cancel/retry 端点，无投递进度 -->
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr><th>标题</th><th>渠道</th><th>定向</th><th>状态</th><th>排程时间</th></tr></thead>
+      <tbody>
+        <tr><td class="cell-strong">Epoch 482 快照已更新</td><td class="fs12">telegram</td><td><span class="tag">tier:gold</span></td><td><span class="badge badge-success"><span class="dot"></span>done</span></td><td class="muted fs12">今天 09:12</td></tr>
+        <tr><td class="cell-strong">治理投票提醒</td><td class="fs12">telegram</td><td><span class="tag">ent:vote</span></td><td><span class="badge badge-info"><span class="dot"></span>sending</span></td><td class="muted fs12">今天 14:00</td></tr>
+        <tr><td class="cell-strong">每周精选</td><td class="fs12">telegram</td><td><span class="t3 fs12">全员</span></td><td><span class="badge badge-neutral"><span class="dot"></span>scheduled</span></td><td class="muted fs12">周一 10:00</td></tr>
+        <tr><td class="cell-strong">维护公告</td><td class="fs12">telegram</td><td><span class="t3 fs12">全员</span></td><td><span class="badge badge-danger"><span class="dot"></span>failed</span></td><td class="muted fs12">昨天 18:30</td></tr>
+      </tbody>
+    </table>
+    <div class="tbl-foot"><span>共 <b class="num">38</b> 个任务</span></div>
+  </div>
+</section>
+
+<!-- ========================= OAUTH CLIENTS ========================= -->
+<section class="page" data-page="clients">
+  <div class="page-head">
+    <div><h1>OAuth Clients</h1><p>可发起质押身份登录的应用。注册需 owner step-up 签名；confidential client 获一次性 secret。</p></div>
+    <div class="actions"><button class="btn btn-primary btn-sm" onclick="openModal('client-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>注册 Client</button></div>
+  </div>
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr><th>Client</th><th>类型</th><th>Audiences</th><th>状态</th><th class="right">Actions</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><div class="cell-strong">Web App</div><div class="row" style="gap:5px"><span class="mono fs11 t3">cli_8f2a…d910</span><button class="btn btn-ghost btn-xs" onclick="copy('cli_8f2a3b4c5d910','Client ID')">复制</button></div></td>
+          <td><span class="badge badge-accent">confidential</span></td>
+          <td class="fs12 t2">app:ouro</td>
+          <td><span class="badge badge-success"><span class="dot"></span>active</span></td>
+          <td class="right"><div class="row-actions"><button class="btn btn-ghost btn-xs" onclick="openModal('secret-modal')">重置 Secret</button></div></td>
+        </tr>
+        <tr>
+          <td><div class="cell-strong">Mobile App</div><div class="row" style="gap:5px"><span class="mono fs11 t3">cli_1a0b…77ef</span><button class="btn btn-ghost btn-xs" onclick="copy('cli_1a0b77ef','Client ID')">复制</button></div></td>
+          <td><span class="badge badge-outline">public</span></td>
+          <td class="fs12 t2">app:ouro-mobile</td>
+          <td><span class="badge badge-success"><span class="dot"></span>active</span></td>
+          <td class="right"><div class="row-actions"><span class="t3 fs11" style="padding:0 8px">PKCE + DPoP · 无 secret</span></div></td>
+        </tr>
+        <tr>
+          <td><div class="cell-strong">Partner Site</div><div class="row" style="gap:5px"><span class="mono fs11 t3">cli_55c2…3d4a</span></div></td>
+          <td><span class="badge badge-accent">confidential</span></td>
+          <td class="fs12 t2">partner:acme</td>
+          <td><span class="badge badge-neutral"><span class="dot"></span>disabled</span></td>
+          <td class="right"><div class="row-actions"><button class="btn btn-ghost btn-xs" onclick="openModal('secret-modal')">重置 Secret</button></div></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ========================= SIGNING KEYS ========================= -->
+<section class="page" data-page="keys">
+  <div class="page-head">
+    <div><h1>Signing Keys</h1><p>发布于 <span class="tag">/.well-known/ouropass/jwks.json</span> 的 EdDSA 密钥。轮换零停机，对用户无感。</p></div>
+    <div class="actions"><button class="btn btn-primary btn-sm" onclick="openModal('rotate-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg>轮换密钥</button></div>
+  </div>
+
+  <!-- 数据来自公开 JWKS：kid / status / kty / crv / alg（无时间戳字段） -->
+  <div class="card mb16" style="max-width:520px">
+    <div class="card-head"><h3>JWKS 状态</h3><p>2 个密钥发布于 JWKS · 1 个 active 签名、1 个 rotating 验签</p></div>
+    <div class="card-body"><span class="badge badge-success"><span class="dot"></span>正常</span></div>
+  </div>
+
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr><th>Kid</th><th>状态</th><th>Kty</th><th>Crv</th><th>Alg</th><th class="right">Actions</th></tr></thead>
+      <tbody>
+        <tr><td class="mono fs12">ed-9f2a</td><td><span class="badge badge-success"><span class="dot"></span>active · signing</span></td><td>OKP</td><td>Ed25519</td><td>EdDSA</td><td class="right"></td></tr>
+        <tr><td class="mono fs12">ed-3c71</td><td><span class="badge badge-warning"><span class="dot"></span>rotating · verify-only</span></td><td>OKP</td><td>Ed25519</td><td>EdDSA</td><td class="right"><button class="btn btn-default btn-xs" onclick="openModal('retire-modal')">退役</button></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note note-info mt16" style="max-width:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><div><b>轮换</b>会生成新 kid 并提升为 active，旧 kid 降为 verify-only 继续验签，直到其签出的 token 自然过期后再<b>退役</b>。请勿过早退役，否则相关 token 验签会失败。</div></div>
+</section>
+
+<!-- ========================= ATTESTORS ========================= -->
+<section class="page" data-page="attestors">
+  <div class="page-head">
+    <div><h1>Attestors</h1><p>issuer 的链上凭证数据源。每个 attestor 产出一组命名事实，供 Tiers 规则聚合求值。</p></div>
+    <div class="actions"><button class="btn btn-primary btn-sm" onclick="openModal('attestor-modal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 5v14M5 12h14"/></svg>添加 Attestor</button></div>
+  </div>
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr><th>标签</th><th>类型</th><th>Pool / 网络</th><th>状态</th><th class="right">Actions</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="cell-strong">主池</td>
+          <td><span class="tag">pool_stake</span></td>
+          <td class="mono fs11 t3">pool1k4…q7v · mainnet</td>
+          <td><span class="badge badge-success"><span class="dot"></span>active</span></td>
+          <td class="right"><div class="row-actions"><button class="btn btn-ghost btn-xs">停用</button><button class="btn btn-ghost btn-xs" style="color:var(--danger)">删除</button></div></td>
+        </tr>
+        <tr>
+          <td class="cell-strong">合作池</td>
+          <td><span class="tag">pool_stake</span></td>
+          <td class="mono fs11 t3">pool9xz…m2k · mainnet</td>
+          <td><span class="badge badge-neutral"><span class="dot"></span>disabled</span></td>
+          <td class="right"><div class="row-actions"><button class="btn btn-ghost btn-xs">启用</button><button class="btn btn-ghost btn-xs" style="color:var(--danger)">删除</button></div></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ========================= AUDIT ========================= -->
+<section class="page" data-page="audit">
+  <div class="page-head">
+    <div><h1>Audit log</h1><p>所有敏感操作的不可变记录。仅 owner 可见。</p></div>
+  </div>
+  <!-- listAudit 字段：CreatedAt / Actor / Action / Target / IP（newest first）。无结果字段 -->
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr><th>时间</th><th>Actor</th><th>动作</th><th>目标</th><th>IP</th></tr></thead>
+      <tbody>
+        <tr><td class="muted fs12">06-27 14:31:08</td><td class="mono fs12">owner</td><td><span class="badge badge-accent">key.rotate</span></td><td class="mono fs12">kid ed-9f2a → active</td><td class="mono fs11 t3">10.0.2.4</td></tr>
+        <tr><td class="muted fs12">06-27 13:02:55</td><td class="mono fs12">operator</td><td><span class="badge badge-info">push.create</span></td><td class="fs12">“治理投票提醒”</td><td class="mono fs11 t3">10.0.2.9</td></tr>
+        <tr><td class="muted fs12">06-27 11:48:20</td><td class="mono fs12">operator</td><td><span class="badge badge-danger">member.revoke</span></td><td class="mono fs12">stake1u…k3</td><td class="mono fs11 t3">10.0.2.9</td></tr>
+        <tr><td class="muted fs12">06-26 22:30:44</td><td class="mono fs12">owner</td><td><span class="badge badge-accent">client.register</span></td><td class="fs12">“Mobile App” (public)</td><td class="mono fs11 t3">10.0.2.4</td></tr>
+        <tr><td class="muted fs12">06-26 16:05:33</td><td class="mono fs12">owner</td><td><span class="badge badge-accent">auth.login</span></td><td class="fs12">Lace 钱包签名</td><td class="mono fs11 t3">10.0.2.4</td></tr>
+      </tbody>
+    </table>
+    <div class="tbl-foot"><span>共 <b class="num">213</b> 条记录</span></div>
+  </div>
+</section>
+
+<!-- ========================= SETUP ========================= -->
+<section class="page" data-page="setup">
+  <div class="page-head"><div><h1>Setup</h1><p>让 issuer 为你的 pool 上线。已以 owner 身份登录 —— 最难的一步已完成。</p></div></div>
+  <!-- 真实 SetupPage 为上线清单：由 fetchJwks / listClients / listChannels 的结果推导完成状态 -->
+  <div class="card" style="max-width:680px">
+    <div class="card-head"><h3>上线清单</h3><p>完成以下三项即可签发并投递会员身份</p></div>
+    <div class="card-body" style="display:grid;gap:18px">
+      <div class="row" style="gap:12px;align-items:flex-start">
+        <span style="color:var(--success);flex-shrink:0;margin-top:1px"><svg width="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg></span>
+        <div><div style="font-weight:600">签名密钥</div><div class="t2 fs12">已有一个 active 签名密钥发布于 JWKS。<a class="hl" onclick="go('keys')" style="cursor:pointer">前往 Signing Keys →</a></div></div>
+      </div>
+      <div class="row" style="gap:12px;align-items:flex-start">
+        <span style="color:var(--success);flex-shrink:0;margin-top:1px"><svg width="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg></span>
+        <div><div style="font-weight:600">OAuth Client</div><div class="t2 fs12">至少有一个 client 可发起登录。<a class="hl" onclick="go('clients')" style="cursor:pointer">前往 OAuth Clients →</a></div></div>
+      </div>
+      <div class="row" style="gap:12px;align-items:flex-start">
+        <span style="color:var(--text-3);flex-shrink:0;margin-top:1px"><svg width="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg></span>
+        <div><div style="font-weight:600">Telegram 渠道</div><div class="t2 fs12">配置 bot token 以投递会员身份。<a class="hl" onclick="go('channels')" style="cursor:pointer">前往 Channels →</a></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ========================= DESIGN SYSTEM ========================= -->
+<section class="page" data-page="design">
+  <div class="page-head">
+    <div><h1>Design system</h1><p>原型所依据的设计规范。映射到目标技术栈 Tailwind v4 token 与 shadcn 组件，落地零摩擦。</p></div>
+    <div class="actions"><button class="btn btn-default btn-sm" onclick="toggleTheme()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>切换暗色预览</button></div>
+  </div>
+
+  <div class="card mb16">
+    <div class="card-head"><h3>1 · 色板</h3><p>语义化 token（CSS 变量），支持亮/暗双主题。强调色 oklch 紫，UI 主体走中性灰，强调色仅用于主操作与焦点。</p></div>
+    <div class="card-body">
+      <div class="grid cols-4">
+        <div><div class="swatch" style="background:var(--accent)"></div><b class="fs12">--accent</b><div class="t3 fs11 mono">主操作 / 焦点</div></div>
+        <div><div class="swatch" style="background:var(--text)"></div><b class="fs12">--text</b><div class="t3 fs11 mono">主文本</div></div>
+        <div><div class="swatch" style="background:var(--text-2)"></div><b class="fs12">--text-2</b><div class="t3 fs11 mono">次要文本</div></div>
+        <div><div class="swatch" style="background:var(--border-2);"></div><b class="fs12">--border</b><div class="t3 fs11 mono">描边 / 分隔</div></div>
+        <div><div class="swatch" style="background:var(--success)"></div><b class="fs12">success</b><div class="t3 fs11 mono">active / 成功</div></div>
+        <div><div class="swatch" style="background:var(--warning)"></div><b class="fs12">warning</b><div class="t3 fs11 mono">grace / 待处理</div></div>
+        <div><div class="swatch" style="background:var(--danger)"></div><b class="fs12">danger</b><div class="t3 fs11 mono">撤销 / 失败</div></div>
+        <div><div class="swatch" style="background:var(--info)"></div><b class="fs12">info</b><div class="t3 fs11 mono">中性提示</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid cols-2 mb16">
+    <div class="card">
+      <div class="card-head"><h3>2 · 字号层级</h3></div>
+      <div class="card-body">
+        <div style="font-size:21px;font-weight:650;letter-spacing:-.3px">页面标题 · 21 / 650</div>
+        <div class="divider"></div>
+        <div style="font-size:16px;font-weight:600">区块标题 · 16 / 600</div>
+        <div class="divider"></div>
+        <div style="font-size:14px;font-weight:600">卡片标题 · 14 / 600</div>
+        <div class="divider"></div>
+        <div style="font-size:13px">正文 · 13 / 450（基准）</div>
+        <div class="divider"></div>
+        <div class="t2 fs12">辅助说明 · 12 / 450</div>
+        <div class="divider"></div>
+        <div class="mono fs12">等宽 · hash / kid / token</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h3>3 · 间距 · 圆角 · 阴影</h3></div>
+      <div class="card-body">
+        <div class="fs12 t2 mb6">8pt 间距基准</div>
+        <div class="row" style="gap:8px;align-items:flex-end;margin-bottom:14px">
+          <div style="width:4px;height:24px;background:var(--accent-soft)"></div><div style="width:8px;height:24px;background:var(--accent-soft)"></div><div style="width:12px;height:24px;background:var(--accent-soft)"></div><div style="width:16px;height:24px;background:var(--accent-soft)"></div><div style="width:24px;height:24px;background:var(--accent-soft)"></div>
+          <span class="t3 fs11">4 · 8 · 12 · 16 · 24</span>
+        </div>
+        <div class="fs12 t2 mb6">圆角</div>
+        <div class="row" style="gap:10px;margin-bottom:14px"><div style="width:48px;height:34px;border:1px solid var(--border-2);border-radius:5px"></div><div style="width:48px;height:34px;border:1px solid var(--border-2);border-radius:7px"></div><div style="width:48px;height:34px;border:1px solid var(--border-2);border-radius:11px"></div><span class="t3 fs11">sm 5 · md 7 · lg 11</span></div>
+        <div class="fs12 t2 mb6">阴影</div>
+        <div class="row" style="gap:14px"><div style="width:48px;height:34px;background:var(--surface);border:1px solid var(--border);border-radius:7px;box-shadow:var(--shadow-sm)"></div><div style="width:48px;height:34px;background:var(--surface);border-radius:7px;box-shadow:var(--shadow-md)"></div><div style="width:48px;height:34px;background:var(--surface);border-radius:7px;box-shadow:var(--shadow-lg)"></div><span class="t3 fs11">sm · md · lg</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb16">
+    <div class="card-head"><h3>4 · 按钮与徽章</h3></div>
+    <div class="card-body">
+      <div class="row wrap mb16" style="gap:10px"><button class="btn btn-primary">主操作</button><button class="btn btn-default">默认</button><button class="btn btn-ghost">幽灵</button><button class="btn btn-danger">危险</button><button class="btn btn-primary" disabled>禁用</button><button class="btn btn-default btn-sm">小号</button><button class="btn btn-default btn-xs">超小</button></div>
+      <div class="row wrap" style="gap:8px"><span class="badge badge-success"><span class="dot"></span>active</span><span class="badge badge-warning"><span class="dot"></span>grace</span><span class="badge badge-danger"><span class="dot"></span>revoked</span><span class="badge badge-info"><span class="dot"></span>sending</span><span class="badge badge-accent">confidential</span><span class="badge badge-neutral">disabled</span><span class="badge badge-outline">public</span></div>
+    </div>
+  </div>
+
+  <div class="grid cols-2 mb16">
+    <div class="card">
+      <div class="card-head"><h3>5 · 表单控件</h3></div>
+      <div class="card-body">
+        <div class="field"><label>正常输入 <span class="req">*</span></label><input class="input" placeholder="占位文本" /><div class="hint">辅助说明放这里。</div></div>
+        <div class="field"><label>错误态</label><input class="input invalid" value="非法值" /><div class="err"><svg width="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>请输入有效的 pool id。</div></div>
+        <div class="row" style="gap:14px"><div class="row" style="gap:8px"><span class="checkbox on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6 9 17l-5-5"/></svg></span><span class="fs12">复选</span></div><div class="row" style="gap:8px"><div class="switch on"></div><span class="fs12">开关</span></div><div class="seg"><button class="on">段A</button><button>段B</button></div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h3>6 · 状态：空 / 加载 / 错误</h3></div>
+      <div class="card-body" style="padding:0">
+        <div class="empty" style="padding:30px 20px"><div class="ic"><svg width="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></div><h4>暂无数据</h4><p>添加第一个 Telegram 实例以开始投递。</p><button class="btn btn-primary btn-sm">添加实例</button></div>
+        <div style="border-top:1px solid var(--border);padding:14px 18px"><div class="row" style="gap:10px;margin-bottom:8px"><div class="skeleton" style="width:36px;height:36px;border-radius:50%"></div><div style="flex:1"><div class="skeleton" style="height:10px;width:40%;margin-bottom:6px"></div><div class="skeleton" style="height:10px;width:65%"></div></div></div><div class="t3 fs11">加载态用骨架屏，不用 “…”</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card mb16">
+    <div class="card-head between"><div><h3>7 · 通用 Table 范式（当前范围）</h3><p>统一表格外观：表头大写小字、行悬停高亮、状态用 badge、hash/kid 等以等宽并可点击复制、行操作悬停显隐、表尾计数。当前 API 一次性返回全量列表，故本版不含搜索 / 排序 / 分页 / 批量。</p></div></div>
+    <div class="card-body">
+      <div class="note note-info" style="max-width:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><div>已引入但未使用的 <b>@tanstack/react-table</b> 可在后端补齐分页 / 过滤参数后，抽成统一 <span class="mono fs11">&lt;DataTable&gt;</span>，承载搜索 / 排序 / 分页 / 行选 —— 详见北极星版 <span class="mono fs11">admin-redesign.html</span>。</div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h3>8 · 反馈：Toast / 弹窗 / 抽屉</h3><p>轻量结果用 Toast；危险/需确认用居中弹窗（敏感操作内嵌 step-up 签名）；多字段创建用右侧抽屉。统一替换代码中的原生 <span class="mono fs11">prompt()/confirm()</span>（见 Channels 的换 Token / 删除）。</p></div>
+    <div class="card-body"><div class="row wrap" style="gap:10px">
+      <button class="btn btn-default btn-sm" onclick="toast('操作成功','已保存更改','success')">成功 Toast</button>
+      <button class="btn btn-default btn-sm" onclick="toast('操作失败','网络错误 429','error')">错误 Toast</button>
+      <button class="btn btn-default btn-sm" onclick="confirmRevoke('示例目标')">危险确认（step-up）</button>
+      <button class="btn btn-default btn-sm" onclick="openDrawer('push-drawer')">右侧抽屉</button>
+      <button class="btn btn-default btn-sm" onclick="openCmd()">命令面板 ⌘K</button>
+    </div></div>
+  </div>
+</section>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== command palette ===== -->
+<div class="cmdk" id="cmdk" onclick="if(event.target===this)closeCmd()">
+  <div class="cmdk-box">
+    <div class="cmdk-input">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="cmdkInput" placeholder="搜索页面、成员、操作…" oninput="cmdFilter(this.value)" />
+      <span class="kbd">ESC</span>
+    </div>
+    <div class="cmdk-list" id="cmdkList">
+      <div class="cmdk-sec">跳转</div>
+      <div class="cmdk-item" onclick="go('dashboard')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/></svg>Dashboard<span class="meta">G D</span></div>
+      <div class="cmdk-item" onclick="go('members')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="7" r="4"/><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/></svg>Members<span class="meta">G M</span></div>
+      <div class="cmdk-item" onclick="go('subscriptions')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/></svg>Subscriptions</div>
+      <div class="cmdk-item" onclick="go('push')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m3 11 18-5v12L3 14v-3z"/></svg>Push</div>
+      <div class="cmdk-item" onclick="go('keys')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.5 12.5 6-6"/></svg>Signing Keys</div>
+      <div class="cmdk-sec">操作</div>
+      <div class="cmdk-item" onclick="go('push');closeCmd();setTimeout(()=>openDrawer('push-drawer'),120)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>新建推送任务</div>
+      <div class="cmdk-item" onclick="go('channels')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 5v14M5 12h14"/></svg>添加 Telegram 渠道</div>
+      <div class="cmdk-item" onclick="closeCmd();toast('已轮换签名密钥','新 kid 已发布到 JWKS')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5"/></svg>轮换签名密钥</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== scrim + drawers + modals injected per feature ===== -->
+<div class="scrim" id="scrim" onclick="closeDrawer()"></div>
+
+<!-- push create drawer -->
+<div class="drawer" id="push-drawer" style="width:520px">
+  <div class="drawer-head">
+    <div><h3>新建推送任务</h3><p>按 tier / topic / entitlement 定向，留空即全员</p></div>
+    <button class="icon-btn" onclick="closeDrawer()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+  </div>
+  <div class="drawer-body">
+    <div class="form-section">
+      <h4>内容</h4>
+      <p class="sub">将通过所选渠道实例投递</p>
+      <div class="field"><label>标题 <span class="req">*</span></label><input class="input" placeholder="例如：Epoch 482 快照已更新" /></div>
+      <div class="field"><label>正文 <span class="req">*</span></label><textarea class="input" rows="4" placeholder="支持纯文本，最长 4096 字符…"></textarea><div class="hint">剩余 4096 字符</div></div>
+    </div>
+    <div class="form-section mt16">
+      <h4>定向</h4>
+      <p class="sub">条件取交集；全部留空 = 全体合格会员</p>
+      <div class="field"><label>渠道实例 <span class="req">*</span></label><select class="input"><option>members bot · @ouro_members</option><option>announcements bot · @ouro_news</option></select></div>
+      <div class="form-row">
+        <div class="field"><label>目标 Tier</label><select class="input"><option value="">任意</option><option>gold</option><option>silver</option><option>bronze</option></select></div>
+        <div class="field"><label>Topic</label><input class="input" placeholder="可选" /></div>
+      </div>
+      <div class="field" style="margin-bottom:0"><label>所需 entitlement</label><input class="input" placeholder="可选，例如 vote:governance" /></div>
+    </div>
+  </div>
+  <div class="drawer-foot">
+    <button class="btn btn-ghost" onclick="closeDrawer()">取消</button>
+    <button class="btn btn-primary" onclick="closeDrawer();toast('推送任务已创建','发送前会逐条校验会员状态')">创建任务</button>
+  </div>
+</div>
+
+<!-- step-up confirm modal (danger) -->
+<div class="modal" id="stepup-modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-card" style="width:440px">
+    <div class="modal-head">
+      <div class="row" style="gap:10px;margin-bottom:4px"><div style="width:34px;height:34px;border-radius:9px;background:var(--danger-soft);color:var(--danger);display:grid;place-items:center"><svg width="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></div><h3 id="su-title">拉黑会员</h3></div>
+      <p id="su-desc">将拉黑 <b id="su-target"></b> 并级联撤销其全部 token / refresh grant / 订阅。此操作不可撤销。</p>
+    </div>
+    <div class="modal-body">
+      <div class="note note-warn mb12" style="background:var(--surface-2);color:var(--text-2)"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><div>敏感操作需要 <b>owner</b> 重新签名（step-up）。请用钱包对一次性 nonce 签名以确认身份。</div></div>
+      <div class="field"><label>重新输入目标以确认</label><input class="input" placeholder="输入 hash 前 8 位…" /></div>
+      <p class="t3 fs11">签名后立即生效，受影响用户下次刷新时被拒绝。</p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal()">取消</button>
+      <button class="btn" style="background:var(--accent);color:var(--accent-fg)" onclick="closeModal();closeDrawer();toast('已拉黑会员','级联撤销 4 token / 1 session 完成','success')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.5 12.5 6-6"/></svg>签名并拉黑</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function confirmRevoke(target){
+  $("#su-target").textContent=target;
+  openModal("stepup-modal");
+}
+</script>
+
+<!-- add channel modal -->
+<div class="modal" id="channel-modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-card">
+    <div class="modal-head"><h3>添加 Telegram 实例</h3><p>Bot token 以字段级加密存储且永不回显，保存即时生效。</p></div>
+    <div class="modal-body">
+      <div class="field"><label>名称 <span class="req">*</span></label><input class="input" placeholder="例如 members 或 announcements" /><div class="hint">实例唯一标签，用于在会员 / 推送中引用。</div></div>
+      <div class="field"><label>Bot token <span class="req">*</span></label><input class="input mono" type="password" placeholder="123456:ABC-DEF…（来自 @BotFather）" /></div>
+      <div class="field" style="margin-bottom:0"><label>Bot 用户名</label><input class="input" placeholder="ouro_members（不含 @）" /><div class="hint">公开 @username，用于激活 deep link。</div></div>
+    </div>
+    <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="closeModal();toast('Telegram 实例已添加','worker 已上线')">添加实例</button></div>
+  </div>
+</div>
+<!-- retoken modal -->
+<div class="modal" id="retoken-modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-card">
+    <div class="modal-head"><h3>更换 Bot Token</h3><p>为实例 “members” 设置新 token，旧 token 立即失效。</p></div>
+    <div class="modal-body"><div class="field" style="margin-bottom:0"><label>新 Bot token <span class="req">*</span></label><input class="input mono" type="password" placeholder="新的 BotFather token…" /></div></div>
+    <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="closeModal();toast('Token 已更新')">保存</button></div>
+  </div>
+</div>
+<!-- delete channel modal -->
+<div class="modal" id="delch-modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-card" style="width:430px">
+    <div class="modal-head"><div class="row" style="gap:10px;margin-bottom:4px"><div style="width:34px;height:34px;border-radius:9px;background:var(--danger-soft);color:var(--danger);display:grid;place-items:center"><svg width="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></div><h3>删除实例 “members”</h3></div><p>该实例的 <b>612 个活跃订阅</b>将被取消。此操作不可撤销。</p></div>
+    <div class="modal-body"><div class="field" style="margin-bottom:0"><label>输入实例名称以确认</label><input class="input" placeholder="members" /></div></div>
+    <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn" style="background:var(--danger);color:#fff" onclick="closeModal();toast('实例已删除','612 个订阅已取消','error')">删除实例</button></div>
+  </div>
+</div>
+
+<!-- register client modal (two states) -->
+<div class="modal" id="client-modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-card" style="width:500px">
+    <div id="client-form">
+      <div class="modal-head"><h3>注册 OAuth Client</h3><p>需 owner step-up 签名。所有 client 强制 PKCE；confidential 类型会收到一次性 secret。</p></div>
+      <div class="modal-body">
+        <div class="form-row"><div class="field"><label>名称 <span class="req">*</span></label><input class="input" placeholder="Web App" /></div><div class="field"><label>类型 <span class="req">*</span></label><select class="input" onchange="document.getElementById('aud-hint').textContent=this.value==='public'?'public：PKCE + 设备 DPoP，无 secret':'confidential：含 client_secret，refresh token 留服务端'"><option value="confidential">confidential</option><option value="public">public</option></select></div></div>
+        <p id="aud-hint" class="t3 fs11" style="margin:-6px 0 12px">confidential：含 client_secret，refresh token 留服务端</p>
+        <div class="field"><label>Redirect URIs</label><textarea class="input mono" rows="2" placeholder="https://app/cb（每行一个）"></textarea></div>
+        <div class="field" style="margin-bottom:0"><label>Audiences</label><input class="input" placeholder="app:ouro（逗号分隔）" /></div>
+      </div>
+      <div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="document.getElementById('client-form').style.display='none';document.getElementById('client-done').style.display='block'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m10.5 12.5 6-6"/></svg>用 owner 钱包签名并注册</button></div>
+    </div>
+    <div id="client-done" style="display:none">
+      <div class="modal-head"><div class="row" style="gap:10px;margin-bottom:4px"><div style="width:34px;height:34px;border-radius:9px;background:var(--success-soft);color:var(--success);display:grid;place-items:center"><svg width="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg></div><h3>Client 已注册</h3></div><p>请立即保存 client secret —— 它只展示一次，无法再次取回。</p></div>
+      <div class="modal-body">
+        <div class="field"><label>Client ID</label><div class="code">cli_2f9a7c4b1e0d8a36</div></div>
+        <div class="field" style="margin-bottom:0"><label>Client Secret <span class="badge badge-warning" style="margin-left:6px">仅此一次</span></label><div class="code">cs_live_9Hk3…仅展示一次…pQ2z7Xb</div></div>
+      </div>
+      <div class="modal-foot"><button class="btn btn-default" onclick="copy('cli + secret','client 凭证')">复制全部</button><button class="btn btn-primary" onclick="document.getElementById('client-form').style.display='block';document.getElementById('client-done').style.display='none';closeModal();toast('Client 已注册')">完成</button></div>
+    </div>
+  </div>
+</div>
+<!-- regenerate secret -->
+<div class="modal" id="secret-modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-card"><div class="modal-head"><h3>重置 Client Secret</h3><p>签发新 secret 并立即作废旧的。需 owner step-up 签名，新 secret 仅展示一次。</p></div><div class="modal-body"><div class="note note-warn" style="background:var(--surface-2);color:var(--text-2)"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><div>请在关闭弹窗前更新你的应用配置，否则将无法登录。</div></div></div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="closeModal();toast('已生成新 secret','旧 secret 已作废')">签名并重置</button></div></div>
+</div>
+<!-- rotate key -->
+<div class="modal" id="rotate-modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-card"><div class="modal-head"><div class="row" style="gap:10px;margin-bottom:4px"><div style="width:34px;height:34px;border-radius:9px;background:var(--accent-soft);color:var(--accent-text);display:grid;place-items:center"><svg width="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5"/></svg></div><h3>轮换签名密钥</h3></div><p>生成新 kid 并提升为 active，旧 kid 降为 verify-only。零停机，对用户无感。</p></div><div class="modal-body"><div class="note note-warn" style="background:var(--surface-2);color:var(--text-2)"><svg viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><div>需 <b>owner</b> 重新签名（step-up）。</div></div></div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="closeModal();toast('签名密钥已轮换','新 kid ed-4b8c 已发布到 JWKS')">签名并轮换</button></div></div>
+</div>
+<!-- retire key -->
+<div class="modal" id="retire-modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-card" style="width:430px"><div class="modal-head"><div class="row" style="gap:10px;margin-bottom:4px"><div style="width:34px;height:34px;border-radius:9px;background:var(--danger-soft);color:var(--danger);display:grid;place-items:center"><svg width="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></svg></div><h3>退役密钥 ed-3c71</h3></div><p>从 JWKS 移除该 verify-only 密钥。仅当其签出的 token 全部过期后再退役，否则验签会失败。</p></div><div class="modal-body"><div class="dl"><dt>签出 token</dt><dd>剩 2 个未过期</dd><dt>最晚过期</dt><dd>约 18 小时后</dd></div></div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-danger" onclick="closeModal();toast('密钥已退役','ed-3c71 已从 JWKS 移除','error')">仍然退役</button></div></div>
+</div>
+<!-- add attestor -->
+<div class="modal" id="attestor-modal" onclick="if(event.target===this)closeModal()">
+  <div class="modal-card"><div class="modal-head"><h3>添加 Attestor</h3><p>新增链上凭证数据源，产出供 Tiers 聚合的命名事实。</p></div><div class="modal-body"><div class="field"><label>标签 <span class="req">*</span></label><input class="input" placeholder="例如 主池" /></div><div class="form-row"><div class="field"><label>类型 <span class="req">*</span></label><select class="input"><option>pool_stake</option></select></div><div class="field"><label>网络</label><select class="input"><option>mainnet</option><option>preprod</option><option>preview</option></select></div></div><div class="field" style="margin-bottom:0"><label>Pool ID <span class="req">*</span></label><input class="input mono" placeholder="pool1…" /></div></div><div class="modal-foot"><button class="btn btn-ghost" onclick="closeModal()">取消</button><button class="btn btn-primary" onclick="closeModal();toast('Attestor 已添加','开始首次同步')">添加</button></div></div>
+</div>
+
+<!-- ===== toasts ===== -->
+<div class="toasts" id="toasts"></div>
+
+<!-- ===== login ===== -->
+<div class="login-wrap" id="login">
+  <div class="login-card">
+    <div class="row" style="gap:10px;margin-bottom:20px">
+      <div class="logo" style="width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--accent),#8a5bd6);color:#fff;font-weight:700;display:grid;place-items:center">OP</div>
+      <div><div style="font-weight:650;font-size:16px">Ouro Pass Admin</div><div class="t3 fs12">质押身份 · 运营后台</div></div>
+    </div>
+    <div class="steps">
+      <div class="step done"><span class="n">✓</span>选择钱包</div>
+      <div class="step-line"></div>
+      <div class="step cur"><span class="n">2</span>签名验证</div>
+      <div class="step-line"></div>
+      <div class="step"><span class="n">3</span>进入后台</div>
+    </div>
+    <p class="t2 fs12" style="margin:0 0 14px">用 <b class="hl">pool owner</b> 钱包对一次性 nonce 签名登录。服务端对照链上 owner 列表校验，无需任何本地证书或种子。</p>
+    <div class="wallet-opt" onclick="loginGo('Lace')"><div class="wic" style="background:#0e34d6">L</div><div><b style="font-size:13px">Lace</b><div class="t3 fs11">已检测 · stake1u9x…7p2q</div></div><svg style="margin-left:auto;width:16px" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+    <div class="wallet-opt" onclick="loginGo('Eternl')"><div class="wic" style="background:#ff5c00">E</div><div><b style="font-size:13px">Eternl</b><div class="t3 fs11">已检测</div></div><svg style="margin-left:auto;width:16px" viewBox="0 0 24 24" fill="none" stroke="var(--text-3)" stroke-width="2"><path d="m9 18 6-6-6-6"/></svg></div>
+    <div class="note note-info mt12"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><div>仅 <b>owner</b> 可首次登录；<b>operator / viewer</b> 由 owner 在 Setup 中添加。</div></div>
+    <button class="btn btn-ghost btn-sm" style="width:100%;margin-top:14px" onclick="hideLogin()">取消，回到原型</button>
+  </div>
+</div>
+
+<script>
+function loginGo(w){toast(`${w} 签名成功`,'已建立 owner 会话');hideLogin();go('dashboard');}
+</script>
+
+<script>
+/* ---------- tiny framework ---------- */
+const $=(s,r=document)=>r.querySelector(s);
+const $$=(s,r=document)=>[...r.querySelectorAll(s)];
+
+const ROUTES={
+  dashboard:["Overview","Dashboard"],
+  members:["Membership","Members"],
+  subscriptions:["Membership","Subscriptions"],
+  tiers:["Membership","Tiers"],
+  channels:["Delivery","Channels"],
+  push:["Delivery","Push"],
+  clients:["Identity & Security","OAuth Clients"],
+  keys:["Identity & Security","Signing Keys"],
+  attestors:["Identity & Security","Attestors"],
+  audit:["System","Audit log"],
+  setup:["System","Setup"],
+  design:["System","Design system"],
+};
+function go(route){
+  $$(".page").forEach(p=>p.classList.toggle("active",p.dataset.page===route));
+  $$(".nav-item").forEach(n=>n.classList.toggle("active",n.dataset.route===route));
+  const cr=ROUTES[route]||["",route];
+  $("#crumbs").innerHTML=`<span>${cr[0]}</span><span class="sep">/</span><b>${cr[1]}</b>`;
+  $(".content").scrollTop=0;
+  location.hash=route;
+  closeCmd();
+}
+window.addEventListener("hashchange",()=>{const r=location.hash.slice(1);if(ROUTES[r])go(r);});
+
+/* theme */
+function toggleTheme(){document.documentElement.classList.toggle("dark");}
+/* sidebar collapse */
+function toggleSidebar(){$(".app").classList.toggle("collapsed");}
+
+/* toast */
+function toast(title,desc,kind="success"){
+  const icons={success:'<path d="M20 6 9 17l-5-5"/>',error:'<path d="M18 6 6 18M6 6l12 12"/>',info:'<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>'};
+  const el=document.createElement("div");
+  el.className="toast "+kind;
+  el.innerHTML=`<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">${icons[kind]}</svg><div><b>${title}</b>${desc?`<span>${desc}</span>`:""}</div>`;
+  $("#toasts").appendChild(el);
+  setTimeout(()=>{el.style.opacity="0";el.style.transform="translateX(20px)";el.style.transition="all .2s";setTimeout(()=>el.remove(),200);},3200);
+}
+function copy(text,label){navigator.clipboard&&navigator.clipboard.writeText(text);toast("已复制",label||text,"info");}
+
+/* command palette */
+function openCmd(){$("#cmdk").classList.add("show");setTimeout(()=>$("#cmdkInput")?.focus(),20);}
+function closeCmd(){$("#cmdk").classList.remove("show");}
+function cmdFilter(v){
+  v=v.toLowerCase();
+  $$("#cmdkList .cmdk-item").forEach(it=>{it.style.display=it.textContent.toLowerCase().includes(v)?"":"none";});
+}
+document.addEventListener("keydown",e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="k"){e.preventDefault();$("#cmdk").classList.contains("show")?closeCmd():openCmd();}
+  if(e.key==="Escape"){closeCmd();closeDrawer();closeModal();}
+});
+
+/* drawer */
+function openDrawer(id){$("#scrim").classList.add("show");$("#"+id).classList.add("show");}
+function closeDrawer(){$$(".drawer").forEach(d=>d.classList.remove("show"));$("#scrim").classList.remove("show");}
+/* modal */
+function openModal(id){$("#"+id).classList.add("show");}
+function closeModal(){$$(".modal").forEach(m=>m.classList.remove("show"));}
+
+/* login mock */
+function showLogin(){$("#login").classList.add("show");}
+function hideLogin(){$("#login").classList.remove("show");}
+
+/* selection / bulk (members) */
+function toggleAll(box,name){
+  const on=!box.classList.contains("on");
+  box.classList.toggle("on",on);
+  $$(`[data-sel='${name}'] .row-check`).forEach(c=>c.classList.toggle("on",on));
+  $$(`[data-sel='${name}'] tbody tr`).forEach(r=>r.classList.toggle("selected",on));
+  syncBulk(name);
+}
+function toggleRow(box,name){
+  box.classList.toggle("on");
+  box.closest("tr").classList.toggle("selected",box.classList.contains("on"));
+  syncBulk(name);
+}
+function syncBulk(name){
+  const n=$$(`[data-sel='${name}'] .row-check.on`).length;
+  const bar=$(`#bulk-${name}`);
+  if(bar){bar.classList.toggle("show",n>0);}
+  const c=$(`#bulkcount-${name}`);if(c)c.textContent=n;
+  $$(`.bulkn-${name}`).forEach(e=>e.textContent=n);
+}
+
+/* generic toggles */
+function flip(el){el.classList.toggle("on");}
+function segPick(btn){[...btn.parentElement.children].forEach(b=>b.classList.remove("on"));btn.classList.add("on");}
+
+/* tiers builder mode */
+function tierMode(m){
+  $("#tier-builder").style.display=m==="builder"?"":"none";
+  $("#tier-json").style.display=m==="json"?"":"none";
+  $$("#tierModeSeg button").forEach(b=>b.classList.toggle("on",b.dataset.m===m));
+}
+
+window.addEventListener("DOMContentLoaded",()=>{
+  const r=location.hash.slice(1);
+  go(ROUTES[r]?r:"dashboard");
+});
+</script>
+</body>
+</html>
