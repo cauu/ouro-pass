@@ -127,7 +127,7 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - [x] p3-4 Tiers：图标按钮替换文本按钮，保留 builder/JSON 双模与 describe 渲染（TC-4, TC-7）。
 - [x] p3-5 Channels：表精简 + 添加/换 token/删除走对话框（TC-4, TC-5, TC-7）。
 - [x] p3-6 Push：列表精简 + 创建弹窗去排程/草稿（TC-4, TC-7）。
-- [ ] p3-7 OAuth Clients：表精简 + 注册向导 + 一次性 secret + 重置 secret（TC-4, TC-7）。
+- [x] p3-7 OAuth Clients：表精简 + 注册向导 + 一次性 secret + 重置 secret（TC-4, TC-7）。
 - [ ] p3-8 Signing Keys：单状态卡 + 表（含 retire）（TC-4, TC-7）。
 - [ ] p3-9 Attestors：表精简 + 删除走 `ConfirmDialog`（TC-4, TC-5, TC-7）。
 - [ ] p3-10 Audit：五列只读表（TC-4, TC-7）。
@@ -179,6 +179,8 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - 2026-06-27 p3-6 完成：Push——列表状态列改 StatusBadge、表加 footer 计数（空态已由 QueryState 覆盖）；创建弹窗 Title/Content/Channel 加 required 星标。创建表单字段沿用现有 title/content/channel_type/tier/topic/entitlement（PushCreate），未加排程/草稿/进度/重试（无对应端点/字段）。
 
+- 2026-06-27 p3-7 完成：OAuth Clients——状态列改 StatusBadge、Type 列改 Badge（confidential=default / public=outline）、表加 footer 计数；注册表单 Name 加 required 星标。注册向导（含一次性 client_secret 展示）与 RegenerateSecretAction（step-up 重置 secret）行为不变。无 Redirect URIs 列、无启停（无对应端点）。
+
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: ui|node | command: ... | result: pass|fail | note: ...` 追加）
 
@@ -220,6 +222,10 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - TC-1 | stack: node | command: tsc -b --noEmit + eslint PushPage | result: pass | note: p3-6 绿
 - TC-4 | stack: ui | command: 字段对照 | result: pass | note: 列=Title/ChannelType/Target*/Status/ScheduledAt；创建体=PushCreate；无新接口
+
+- TC-1 | stack: node | command: tsc -b --noEmit + eslint ClientsPage | result: pass | note: p3-7 绿
+- TC-4 | stack: ui | command: 字段对照 | result: pass | note: 列=Name/ClientID/ClientType/AllowedAudiences/Status；写操作=register + regenerateClientSecret
+- TC-7 | stack: ui | command: review | result: pass | note: 注册 step-up + 一次性 secret + 重置 secret 流程与 S0002 等价
 
 ## 7. Change Requests (append-only)
 - （无）

@@ -21,6 +21,7 @@ import {
 import { Field } from "@/ui/field";
 import { Input } from "@/ui/input";
 import { Select } from "@/ui/select";
+import { StatusBadge } from "@/ui/status-badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/ui/table";
 import { useToast } from "@/ui/toast";
 
@@ -140,7 +141,7 @@ function RegisterClientDialog({ onRegistered }: { onRegistered: () => void }) {
             </DialogHeader>
             <form className="grid gap-3">
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Name">
+                <Field label="Name" required>
                   <Input {...register("name")} placeholder="Web App" />
                 </Field>
                 <Field label="Type">
@@ -238,7 +239,7 @@ export function ClientsPage() {
         action={<RegisterClientDialog onRegistered={refresh} />}
       />
       <QueryState isLoading={q.isLoading} error={q.error} empty={clients.length === 0} emptyText="No clients yet.">
-        <Table>
+        <Table footer={<span>{clients.length} client(s)</span>}>
           <THead>
             <TR>
               <TH>Client</TH>
@@ -258,10 +259,14 @@ export function ClientsPage() {
                     <CopyButton value={c.ClientID} label="Copy ID" />
                   </div>
                 </TD>
-                <TD>{c.ClientType}</TD>
+                <TD>
+                  <Badge variant={c.ClientType === "confidential" ? "default" : "outline"}>
+                    {c.ClientType}
+                  </Badge>
+                </TD>
                 <TD className="text-xs text-muted-foreground">{(c.AllowedAudiences ?? []).join(", ") || "—"}</TD>
                 <TD>
-                  <Badge variant={c.Status === "active" ? "success" : "muted"}>{c.Status}</Badge>
+                  <StatusBadge status={c.Status} />
                 </TD>
                 <TD className="text-right">
                   {c.ClientType === "confidential" && (
