@@ -40,10 +40,17 @@ const NAV_GROUPS: { group: string; items: NavItem[] }[] = [
     items: [{ to: "/dashboard", label: "Dashboard", min: "viewer", icon: LayoutDashboard }],
   },
   {
-    group: "Membership",
+    group: "Identities",
     items: [
       { to: "/members", label: "Members", min: "viewer", icon: Users },
       { to: "/subscriptions", label: "Subscriptions", min: "viewer", icon: BellRing },
+    ],
+  },
+  {
+    group: "Access & Rules",
+    items: [
+      { to: "/clients", label: "OAuth Clients", min: "owner", icon: AppWindow },
+      { to: "/eligibility", label: "Eligibility", min: "operator", icon: SlidersHorizontal },
     ],
   },
   {
@@ -54,16 +61,11 @@ const NAV_GROUPS: { group: string; items: NavItem[] }[] = [
     ],
   },
   {
-    group: "Identity & Security",
+    group: "Security",
     items: [
-      { to: "/clients", label: "OAuth Clients", min: "owner", icon: AppWindow },
       { to: "/keys", label: "Signing Keys", min: "owner", icon: KeyRound },
-      { to: "/eligibility", label: "Eligibility", min: "operator", icon: SlidersHorizontal },
+      { to: "/audit", label: "Audit log", min: "owner", icon: ScrollText },
     ],
-  },
-  {
-    group: "System",
-    items: [{ to: "/audit", label: "Audit log", min: "owner", icon: ScrollText }],
   },
 ];
 
