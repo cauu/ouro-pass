@@ -129,7 +129,7 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 - [x] p3-6 Push：列表精简 + 创建弹窗去排程/草稿（TC-4, TC-7）。
 - [x] p3-7 OAuth Clients：表精简 + 注册向导 + 一次性 secret + 重置 secret（TC-4, TC-7）。
 - [x] p3-8 Signing Keys：单状态卡 + 表（含 retire）（TC-4, TC-7）。
-- [ ] p3-9 Attestors：表精简 + 删除走 `ConfirmDialog`（TC-4, TC-5, TC-7）。
+- [x] p3-9 Attestors：表精简 + 删除走 `ConfirmDialog`（TC-4, TC-5, TC-7）。
 - [ ] p3-10 Audit：五列只读表（TC-4, TC-7）。
 - [ ] p3-11 Setup：上线清单按新 token 重排（语义不变）（TC-4, TC-7）。
 - [ ] p3-12 Login / StepUpDialog / WalletPicker 重置样式（逻辑不动）（TC-2, TC-7）。
@@ -183,6 +183,8 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - 2026-06-27 p3-8 完成：Signing Keys——Kid 列改 CopyButton；状态列改 StatusBadge（active→success「active · signing」、rotating→warning、retired→muted）；表加 footer 计数。顶部单一 JWKS 状态卡、Rotate/Generate 单按钮与 rotating 行 Retire（均 step-up）行为不变。无创建时间列、无多余统计卡（Jwk 无时间戳）。
 
+- 2026-06-27 p3-9 完成：Attestors——状态列改 StatusBadge、表加 footer 计数 + 空态 EmptyState；表单 Label/Pool ID 加 required 星标；label 单元加粗。删除走 p2-2 的 ConfirmDialog。status 仅 active/disabled，无产出事实/同步进度列（无对应字段）。
+
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: ui|node | command: ... | result: pass|fail | note: ...` 追加）
 
@@ -231,6 +233,10 @@ ui/field.tsx          # 补必填星标 + RHF error 文案插槽
 
 - TC-1 | stack: node | command: tsc -b --noEmit + eslint KeysPage | result: pass | note: p3-8 绿
 - TC-4 | stack: ui | command: 字段对照 | result: pass | note: 列=kid/status/kty/crv/alg；rotate/generate/retire 走既有端点+step-up
+
+- TC-1 | stack: node | command: tsc -b --noEmit + eslint AttestorsPage | result: pass | note: p3-9 绿
+- TC-4 | stack: ui | command: 字段对照 | result: pass | note: 列=label/kind/params(pool_id,network)/status；写=create/toggle/delete
+- TC-5 | stack: ui | command: review | result: pass | note: 删除走 ConfirmDialog
 
 ## 7. Change Requests (append-only)
 - （无）

@@ -4,13 +4,14 @@ import { createAttestor, deleteAttestor, listAttestors, updateAttestor } from "@
 import { ApiError } from "@/api/client";
 import { PageHeader, QueryState } from "@/app/page";
 import type { Attestor } from "@/lib/types";
-import { Badge } from "@/ui/badge";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
 import { ConfirmDialog } from "@/ui/confirm-dialog";
+import { EmptyState } from "@/ui/empty-state";
 import { Field } from "@/ui/field";
 import { Input } from "@/ui/input";
 import { Select } from "@/ui/select";
+import { StatusBadge } from "@/ui/status-badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/ui/table";
 import { useToast } from "@/ui/toast";
 
@@ -89,10 +90,14 @@ export function AttestorsPage() {
         </CardHeader>
         <CardContent>
           <form className="grid gap-3" onSubmit={handleSubmit((v) => create.mutate(v))}>
-            <Field label="Label" hint="This attestor's display name (unique), e.g. members or announcements">
+            <Field
+              label="Label"
+              required
+              hint="This attestor's display name (unique), e.g. members or announcements"
+            >
               <Input autoComplete="off" {...register("label", { required: true })} />
             </Field>
-            <Field label="Pool ID" hint="bech32 pool id (pool1…)">
+            <Field label="Pool ID" required hint="bech32 pool id (pool1…)">
               <Input autoComplete="off" {...register("poolId", { required: true })} />
             </Field>
             <Field label="Network">
@@ -122,7 +127,13 @@ export function AttestorsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
+            {attestors.length === 0 ? (
+              <EmptyState
+                title="No attestors yet"
+                description="Add a pool_stake attestor above — no one can be issued a token until at least one is configured."
+              />
+            ) : (
+            <Table footer={<span>{attestors.length} attestor(s)</span>}>
               <THead>
                 <TR>
                   <TH>Label</TH>
@@ -135,14 +146,14 @@ export function AttestorsPage() {
               <TBody>
                 {attestors.map((a) => (
                   <TR key={a.attestor_id}>
-                    <TD>{a.label}</TD>
+                    <TD className="font-medium">{a.label}</TD>
                     <TD className="font-mono text-xs">{a.kind}</TD>
                     <TD className="font-mono text-xs">
                       {str(a.params.pool_id)}
                       <span className="text-muted-foreground"> · {str(a.params.network) || "—"}</span>
                     </TD>
                     <TD>
-                      <Badge variant={a.status === "active" ? "success" : "muted"}>{a.status}</Badge>
+                      <StatusBadge status={a.status} />
                     </TD>
                     <TD className="space-x-2 text-right">
                       <Button variant="ghost" onClick={() => toggle.mutate(a)} disabled={toggle.isPending}>
@@ -161,6 +172,7 @@ export function AttestorsPage() {
                 ))}
               </TBody>
             </Table>
+            )}
           </CardContent>
         </Card>
       </QueryState>
