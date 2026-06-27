@@ -1,17 +1,16 @@
 import { createBrowserRouter, Navigate, RouterProvider } from "react-router-dom";
 import { RequireAuth, RequireRole } from "./app/guards";
 import { Layout } from "./app/Layout";
-import { AttestorsPage } from "./features/attestors/AttestorsPage";
 import { AuditPage } from "./features/audit/AuditPage";
 import { LoginPage } from "./features/auth/LoginPage";
 import { ChannelsPage } from "./features/channels/ChannelsPage";
 import { ClientsPage } from "./features/clients/ClientsPage";
 import { DashboardPage } from "./features/dashboard/DashboardPage";
+import { EligibilityPage } from "./features/eligibility/EligibilityPage";
 import { KeysPage } from "./features/keys/KeysPage";
 import { MembersPage } from "./features/members/MembersPage";
 import { PushPage } from "./features/push/PushPage";
 import { SubscriptionsPage } from "./features/subscriptions/SubscriptionsPage";
-import { TiersPage } from "./features/tiers/TiersPage";
 
 const router = createBrowserRouter([
   { path: "/login", element: <LoginPage /> },
@@ -28,21 +27,16 @@ const router = createBrowserRouter([
       { path: "members", element: <MembersPage /> },
       { path: "subscriptions", element: <SubscriptionsPage /> },
       {
-        path: "attestors",
+        path: "eligibility",
         element: (
           <RequireRole min="operator">
-            <AttestorsPage />
+            <EligibilityPage />
           </RequireRole>
         ),
       },
-      {
-        path: "tiers",
-        element: (
-          <RequireRole min="operator">
-            <TiersPage />
-          </RequireRole>
-        ),
-      },
+      // S0008: Attestors + Tiers merged into Eligibility; keep old links working.
+      { path: "attestors", element: <Navigate to="/eligibility" replace /> },
+      { path: "tiers", element: <Navigate to="/eligibility" replace /> },
       {
         path: "channels",
         element: (

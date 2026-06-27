@@ -102,7 +102,7 @@ ui/drawer.tsx   # 新增：基于 @radix-ui/react-dialog 的右侧抽屉
 ### p1 信息架构纠偏（P1）
 - [x] p1-1 Channels「添加实例」常驻表单 → 「Add instance」按钮 + Dialog（列表为主体）（TC-1, TC-5, TC-6）。
 - [x] p1-2 Setup 取消独立页：Dashboard 顶部「快速上手」卡（仅未完成显示，全完成隐藏）；移除 `/setup` 路由 + 侧栏入口 + 删 `SetupPage.tsx`（TC-1, TC-2, TC-3, TC-6）。
-- [ ] p1-3 新增 `features/eligibility/EligibilityPage.tsx`：搬运 Attestors（Sources）+ Tiers（Tier rules）逻辑为两分区；新增 `/eligibility`(operator) 路由，`/attestors`、`/tiers` 重定向；删 `AttestorsPage.tsx`/`TiersPage.tsx`（TC-1, TC-2, TC-3, TC-4, TC-6）。
+- [x] p1-3 新增 `features/eligibility/EligibilityPage.tsx`：搬运 Attestors（Sources）+ Tiers（Tier rules）逻辑为两分区；新增 `/eligibility`(operator) 路由，`/attestors`、`/tiers` 重定向；删 `AttestorsPage.tsx`/`TiersPage.tsx`（TC-1, TC-2, TC-3, TC-4, TC-6）。
 - [ ] p1-4 侧栏 `NAV_GROUPS` 重排为 Overview / Identities / Access & Rules / Delivery / Security；RBAC 过滤不变（TC-2, TC-6）。
 - [ ] p1-5 Eligibility>Sources「添加 attestor」表单 → Dialog（接 p1-3）（TC-1, TC-5, TC-6）。
 
@@ -131,6 +131,7 @@ ui/drawer.tsx   # 新增：基于 @radix-ui/react-dialog 的右侧抽屉
 ## 5. Execution Log (append-only)
 - 2026-06-27 S0008 创建并激活（active）：前置 S0007 已 delivered；依据 `admin-ia-content-review.md`，经用户确认范围=全部 P1+P2+P3、Subscriptions 保持现状。red lines 沿用 S0007（零后端/只用现有字段/RBAC 不回归）。
 - 2026-06-27 p1-1 完成：`ChannelsPage` 抽出 `CreateChannelDialog`（Radix Dialog），「Add instance」按钮置于 PageHeader action；删除原列表上方常驻 add-form Card；列表改用 `QueryState` 的 `empty` 态、去掉外层 Card（Table 基元自带卡片样式）。create mutation 移入 dialog，成功后关闭+reset+invalidate；retoken/remove/toggle 行为不变。
+- 2026-06-27 p1-3 完成：Attestors + Tiers 合并为 Eligibility。新增 `features/eligibility/`：`EligibilityPage.tsx`（PageHeader + Sources/Tier rules 分段切换 tab）、`SourcesSection.tsx`（原 Attestors body，去 PageHeader）、`TierRulesSection.tsx`（原 Tiers body，去 PageHeader，builder/JSON/describe/ADA⇄lovelace 算法逐字保留）。`App.tsx` 新增 `/eligibility`(operator)，`/attestors`、`/tiers` → `Navigate /eligibility`（保旧链接）。`Layout.tsx` 侧栏暂以单个 Eligibility 项（operator, SlidersHorizontal 图标）取代 Tiers + Attestors 两项、删未用 `Link2`（完整分组重排见 p1-4）。删 `AttestorsPage.tsx`/`TiersPage.tsx`。queryKey（attestors/pool）不变，React Query 自动去重。
 - 2026-06-27 p1-2 完成：Setup 取消独立页。`DashboardPage` 新增 `QuickStart` 卡（owner-only，复用 Setup 的 hasKey/hasClient/hasTelegram 推导，三步全完成或未加载完成时返回 null 自动隐藏，链接到 /keys /clients /channels）。`App.tsx` 删 `SetupPage` import、`/setup` 改为 `Navigate→/dashboard`（保旧链接不 404）。`Layout.tsx` 移除侧栏 Setup 项与未用的 `Settings` 图标。删除 `features/setup/SetupPage.tsx`。完成态逻辑与原 Setup 等价。
 
 ## 6. Validation Evidence (append-only)
@@ -144,6 +145,12 @@ ui/drawer.tsx   # 新增：基于 @radix-ui/react-dialog 的右侧抽屉
 - TC-2 | stack: ui | command: review Layout NAV_GROUPS | result: pass | note: 侧栏移除 Setup 项；Quick start 卡迁入 Dashboard（owner-only）
 - TC-3 | stack: ui | command: review App.tsx | result: pass | note: /setup → Navigate /dashboard；其余路由与 basename:/admin 不变
 - TC-6 | stack: ui | command: review QuickStart | result: pass | note: hasKey/hasClient/hasTelegram 推导与原 SetupPage 等价；全完成自动隐藏；仅 owner 触发 clients/channels 查询
+
+- TC-1 | stack: node | command: pnpm typecheck + eslint eligibility/App/Layout | result: pass | note: p1-3 绿（0 error；删除旧页无悬空引用）
+- TC-2 | stack: ui | command: review EligibilityPage | result: pass | note: 一页两分区（Sources / Tier rules）分段切换
+- TC-3 | stack: ui | command: review App.tsx | result: pass | note: /eligibility(operator) 新增；/attestors、/tiers → Navigate /eligibility；RBAC min 与原两页一致(operator)
+- TC-4 | stack: ui | command: 字段对照 | result: pass | note: Sources 用 Attestor.label/kind/params(pool_id,network)/status；Tier rules 用 PoolInfo.tier_rules + TierRule/TierCondition；无新字段
+- TC-6 | stack: ui | command: review | result: pass | note: create/toggle/delete attestor、getPool/setTierRules、builder/JSON 序列化、ADA⇄lovelace 行为逐字保留
 
 ## 7. Change Requests (append-only)
 - （无）

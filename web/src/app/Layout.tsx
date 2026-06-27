@@ -3,7 +3,6 @@ import {
   BellRing,
   KeyRound,
   LayoutDashboard,
-  Link2,
   Lock,
   LogOut,
   Megaphone,
@@ -45,7 +44,6 @@ const NAV_GROUPS: { group: string; items: NavItem[] }[] = [
     items: [
       { to: "/members", label: "Members", min: "viewer", icon: Users },
       { to: "/subscriptions", label: "Subscriptions", min: "viewer", icon: BellRing },
-      { to: "/tiers", label: "Tiers", min: "operator", icon: SlidersHorizontal },
     ],
   },
   {
@@ -60,7 +58,7 @@ const NAV_GROUPS: { group: string; items: NavItem[] }[] = [
     items: [
       { to: "/clients", label: "OAuth Clients", min: "owner", icon: AppWindow },
       { to: "/keys", label: "Signing Keys", min: "owner", icon: KeyRound },
-      { to: "/attestors", label: "Attestors", min: "operator", icon: Link2 },
+      { to: "/eligibility", label: "Eligibility", min: "operator", icon: SlidersHorizontal },
     ],
   },
   {

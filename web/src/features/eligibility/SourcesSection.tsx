@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { createAttestor, deleteAttestor, listAttestors, updateAttestor } from "@/api/admin";
 import { ApiError } from "@/api/client";
-import { PageHeader, QueryState } from "@/app/page";
+import { QueryState } from "@/app/page";
 import type { Attestor } from "@/lib/types";
 import { Button } from "@/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/ui/card";
@@ -23,11 +23,11 @@ interface AttestorForm {
 
 const str = (v: unknown) => (typeof v === "string" ? v : "");
 
-// AttestorsPage manages the issuer's on-chain credential sources (S0006): the
-// generalization of "the served pool". Each pool_stake attestor attests
+// SourcesSection is the "Sources" half of Eligibility (S0008): the issuer's
+// on-chain credential sources (S0006). Each pool_stake attestor attests
 // membership in one pool; the thin gate passes a subject holding ANY active
-// attestor, and tier_rules evaluate over the aggregate of all of them.
-export function AttestorsPage() {
+// attestor, and tier_rules (the sibling section) evaluate over the aggregate.
+export function SourcesSection() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["attestors"], queryFn: listAttestors });
@@ -84,11 +84,6 @@ export function AttestorsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Attestors"
-        description="On-chain credential sources. A subject holding any active attestor is issued a token; tier_rules evaluate over the aggregate. Only pool_stake is supported today."
-      />
-
       <Card className="mb-4 max-w-lg">
         <CardHeader>
           <CardTitle>Add pool_stake attestor</CardTitle>
@@ -145,45 +140,45 @@ export function AttestorsPage() {
                 description="Add a pool_stake attestor above — no one can be issued a token until at least one is configured."
               />
             ) : (
-            <Table footer={<span>{attestors.length} attestor(s)</span>}>
-              <THead>
-                <TR>
-                  <TH>Label</TH>
-                  <TH>Kind</TH>
-                  <TH>Pool / network</TH>
-                  <TH>Status</TH>
-                  <TH className="text-right">Actions</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {attestors.map((a) => (
-                  <TR key={a.attestor_id}>
-                    <TD className="font-medium">{a.label}</TD>
-                    <TD className="font-mono text-xs">{a.kind}</TD>
-                    <TD className="font-mono text-xs">
-                      {str(a.params.pool_id)}
-                      <span className="text-muted-foreground"> · {str(a.params.network) || "—"}</span>
-                    </TD>
-                    <TD>
-                      <StatusBadge status={a.status} />
-                    </TD>
-                    <TD className="space-x-2 text-right">
-                      <Button variant="ghost" onClick={() => toggle.mutate(a)} disabled={toggle.isPending}>
-                        {a.status === "active" ? "Disable" : "Enable"}
-                      </Button>
-                      <ConfirmDialog
-                        trigger={<Button variant="ghost">Delete</Button>}
-                        title={`Remove attestor "${a.label}"?`}
-                        description="Subjects relying solely on this attestor will stop being issued tokens. This cannot be undone."
-                        confirmLabel="Delete attestor"
-                        destructive
-                        onConfirm={() => remove.mutateAsync(a.attestor_id)}
-                      />
-                    </TD>
+              <Table footer={<span>{attestors.length} attestor(s)</span>}>
+                <THead>
+                  <TR>
+                    <TH>Label</TH>
+                    <TH>Kind</TH>
+                    <TH>Pool / network</TH>
+                    <TH>Status</TH>
+                    <TH className="text-right">Actions</TH>
                   </TR>
-                ))}
-              </TBody>
-            </Table>
+                </THead>
+                <TBody>
+                  {attestors.map((a) => (
+                    <TR key={a.attestor_id}>
+                      <TD className="font-medium">{a.label}</TD>
+                      <TD className="font-mono text-xs">{a.kind}</TD>
+                      <TD className="font-mono text-xs">
+                        {str(a.params.pool_id)}
+                        <span className="text-muted-foreground"> · {str(a.params.network) || "—"}</span>
+                      </TD>
+                      <TD>
+                        <StatusBadge status={a.status} />
+                      </TD>
+                      <TD className="space-x-2 text-right">
+                        <Button variant="ghost" onClick={() => toggle.mutate(a)} disabled={toggle.isPending}>
+                          {a.status === "active" ? "Disable" : "Enable"}
+                        </Button>
+                        <ConfirmDialog
+                          trigger={<Button variant="ghost">Delete</Button>}
+                          title={`Remove attestor "${a.label}"?`}
+                          description="Subjects relying solely on this attestor will stop being issued tokens. This cannot be undone."
+                          confirmLabel="Delete attestor"
+                          destructive
+                          onConfirm={() => remove.mutateAsync(a.attestor_id)}
+                        />
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
             )}
           </CardContent>
         </Card>
