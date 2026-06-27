@@ -100,7 +100,7 @@ ui/drawer.tsx   # 新增：基于 @radix-ui/react-dialog 的右侧抽屉
 ## 3. Execution Plan
 
 ### p1 信息架构纠偏（P1）
-- [ ] p1-1 Channels「添加实例」常驻表单 → 「Add instance」按钮 + Dialog（列表为主体）（TC-1, TC-5, TC-6）。
+- [x] p1-1 Channels「添加实例」常驻表单 → 「Add instance」按钮 + Dialog（列表为主体）（TC-1, TC-5, TC-6）。
 - [ ] p1-2 Setup 取消独立页：Dashboard 顶部「快速上手」卡（仅未完成显示，全完成隐藏）；移除 `/setup` 路由 + 侧栏入口 + 删 `SetupPage.tsx`（TC-1, TC-2, TC-3, TC-6）。
 - [ ] p1-3 新增 `features/eligibility/EligibilityPage.tsx`：搬运 Attestors（Sources）+ Tiers（Tier rules）逻辑为两分区；新增 `/eligibility`(operator) 路由，`/attestors`、`/tiers` 重定向；删 `AttestorsPage.tsx`/`TiersPage.tsx`（TC-1, TC-2, TC-3, TC-4, TC-6）。
 - [ ] p1-4 侧栏 `NAV_GROUPS` 重排为 Overview / Identities / Access & Rules / Delivery / Security；RBAC 过滤不变（TC-2, TC-6）。
@@ -130,9 +130,14 @@ ui/drawer.tsx   # 新增：基于 @radix-ui/react-dialog 的右侧抽屉
 
 ## 5. Execution Log (append-only)
 - 2026-06-27 S0008 创建并激活（active）：前置 S0007 已 delivered；依据 `admin-ia-content-review.md`，经用户确认范围=全部 P1+P2+P3、Subscriptions 保持现状。red lines 沿用 S0007（零后端/只用现有字段/RBAC 不回归）。
+- 2026-06-27 p1-1 完成：`ChannelsPage` 抽出 `CreateChannelDialog`（Radix Dialog），「Add instance」按钮置于 PageHeader action；删除原列表上方常驻 add-form Card；列表改用 `QueryState` 的 `empty` 态、去掉外层 Card（Table 基元自带卡片样式）。create mutation 移入 dialog，成功后关闭+reset+invalidate；retoken/remove/toggle 行为不变。
 
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: ui|node | command: ... | result: pass|fail | note: ...` 追加）
+
+- TC-1 | stack: node | command: pnpm typecheck + eslint ChannelsPage | result: pass | note: p1-1 绿（tsc 全绿、ChannelsPage 0 problem）
+- TC-5 | stack: ui | command: review ChannelsPage | result: pass | note: 添加实例为 modal（PageHeader 按钮触发 Dialog），列表上方不再常驻 add-form
+- TC-6 | stack: ui | command: review | result: pass | note: createChannel/toggle/retoken/remove 端点与 step-up/确认流程不变；api/admin.ts 未改
 
 ## 7. Change Requests (append-only)
 - （无）
