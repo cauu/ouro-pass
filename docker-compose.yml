@@ -2,17 +2,20 @@
 #
 #   1) ./deploy/init.sh         # generate .env + secrets + ./data dirs
 #   2) edit .env                # set DOMAIN and OUROPASS_OWNER_KEYS (at least)
-#   3) docker compose up -d     # build + start issuer + postgres + caddy
+#   3) docker compose up -d     # pull + start issuer + postgres + caddy
 #
 # Caddy terminates TLS (automatic HTTPS via Let's Encrypt for ${DOMAIN}) and
 # reverse-proxies to the issuer. The issuer is a single binary: API + embedded
 # Admin SPA (/admin) + background workers. All persistent state lives under
 # ./data on the host (bind mounts) so it is visible and easy to back up.
+#
+# The issuer image is pulled from GHCR (published by .github/workflows/release.yml).
+# To build it yourself instead of pulling, from a full checkout run:
+#   docker build -t ghcr.io/cauu/ouro-pass:local . && OUROPASS_TAG=local docker compose up -d
 
 services:
   issuer:
-    build: .
-    image: ouropass/issuer:${OUROPASS_TAG:-local}
+    image: ghcr.io/cauu/ouro-pass:${OUROPASS_TAG:-latest}
     restart: unless-stopped
     # All OUROPASS_* knobs + secrets come from .env; the few values below are
     # derived from deployment vars and override anything in .env.

@@ -82,7 +82,7 @@ on push tag `v*`：checkout → `docker/setup-qemu-action` + `docker/setup-build
 - [x] p2-2 `.github/workflows/release.yml`（tag `v*` → buildx 多架构 build+push GHCR；semver+latest；packages:write）（TC-2）。
 
 ### p3 拉取式编排
-- [ ] p3-1 `docker-compose.yml` issuer 改 `image: ghcr.io/cauu/ouro-pass:${OUROPASS_TAG:-latest}`（删 build）+ `.env.example` 加 `OUROPASS_TAG`（TC-3, TC-5）。
+- [x] p3-1 `docker-compose.yml` issuer 改 `image: ghcr.io/cauu/ouro-pass:${OUROPASS_TAG:-latest}`（删 build）+ `.env.example` 加 `OUROPASS_TAG`（TC-3, TC-5）。
 
 ### p4 文档
 - [ ] p4-1 `docs/deployment.md` 改拉取式：最小文件清单 + `docker run stake-hash` + 升级 + 本地构建备选 + GHCR 包公开提示（TC-3, TC-6）。
@@ -101,6 +101,7 @@ on push tag `v*`：checkout → `docker/setup-qemu-action` + `docker/setup-build
 
 ## 5. Execution Log (append-only)
 - 2026-06-28 S0010 创建并激活（active）：前序 S0009 已 delivered。范围经用户确认 = GHCR 全做（CI build/push + compose 改拉取 + stakehash 子命令）。镜像 `ghcr.io/cauu/ouro-pass`，多架构 amd64+arm64。
+- 2026-06-28 p3-1 完成：`docker-compose.yml` issuer 由 `build: .` 改为 `image: ghcr.io/cauu/ouro-pass:${OUROPASS_TAG:-latest}`（拉取式，删 build），头部注释加本地构建备选(`docker build ... :local && OUROPASS_TAG=local`)。`.env.example` 的 `OUROPASS_TAG` 默认 `latest` + 注释建议钉版本。`docker compose config` 通过、image 正确解析为 ghcr.io/cauu/ouro-pass:latest、无 build。
 - 2026-06-28 p2-2 完成：`.github/workflows/release.yml`——on push tag `v*`；`permissions: packages: write`；qemu+buildx → login GHCR(`github.actor`/内置 `GITHUB_TOKEN`) → metadata-action(images=`ghcr.io/${{ github.repository }}`，tags=`{{version}}`+`{{major}}.{{minor}}`+`latest`) → build-push-action(context=.，platforms=linux/amd64,linux/arm64，push，gha cache)。actionlint 通过(exit 0)。
 - 2026-06-28 p2-1 完成：`Dockerfile` 跨架构——web 阶段 `FROM --platform=$BUILDPLATFORM node:22-alpine`（pnpm 升到 10），go 阶段 `FROM --platform=$BUILDPLATFORM golang:1.25-alpine` + `ARG TARGETOS TARGETARCH` + `GOOS/GOARCH` 交叉编译（CGO=0），运行层 `alpine:3.20` 按 target 拉取。buildx `--platform linux/amd64,linux/arm64` 构建两架构均成功（go build amd64/arm64 + stage-2 COPY 均 DONE）。
 - 2026-06-28 p1-1 完成：`cmd/issuer/main.go` 在 `main()` 首部加 `stake-hash` 子命令分发（`os.Args[1]=="stake-hash"` → `stakeHashCmd` 复用 `chain.StakeHashFromRewardAddress`，无参打印 usage 退 2），仅此分流、不影响正常启动。与 `cmd/stakehash` 对同一 stake1 地址输出一致（337b62...7251）；`go build ./...`/`go vet ./cmd/issuer` 绿；`make test` 全绿。`cmd/stakehash` 保留。
@@ -113,6 +114,8 @@ on push tag `v*`：checkout → `docker/setup-qemu-action` + `docker/setup-build
 - TC-2 | stack: docker | command: docker buildx build --platform linux/amd64,linux/arm64 --output cacheonly | result: pass | note: 两架构 go build + 运行层均 DONE，跨编译就绪
 - TC-5 | stack: docker | command: review Dockerfile | result: pass | note: 基础镜像 tag 钉死(node:22/golang:1.25/alpine:3.20)；pnpm@10 与 lockfile 兼容(buildx --frozen-lockfile 通过)；无新依赖
 - TC-2 | stack: other | command: actionlint .github/workflows/release.yml | result: pass | note: exit 0 无告警；动作版本/表达式合法；images=ghcr.io/${{ github.repository }}(=cauu/ouro-pass)
+- TC-3 | stack: docker | command: docker compose config | result: pass | note: issuer image=ghcr.io/cauu/ouro-pass:latest，无 build；插值/卷/健康门控不变
+- TC-5 | stack: shell | command: review .env.example | result: pass | note: OUROPASS_TAG=latest + 钉版本建议；无新依赖
 
 ## 7. Change Requests (append-only)
 - （无）
