@@ -33,6 +33,9 @@ logs/
 tmp/
 .cache/
 
+# ---- Deployment (S0009): host-mounted runtime data, never commit ----
+/data/
+
 # ---- Claude Code (local agent config) ----
 .claude/
 code_review//server/devflow
