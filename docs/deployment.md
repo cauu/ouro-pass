@@ -159,7 +159,8 @@ docker compose logs -f issuer     # follow issuer logs (JSON)
 docker compose restart issuer     # restart one service
 docker compose down               # stop + remove containers (data in ./data stays)
 
-# update to a new version: bump OUROPASS_TAG in .env (e.g. v0.2.0), then:
+# update to a new version: bump OUROPASS_TAG in .env (e.g. 0.2.0 — no leading "v";
+# git tag v0.2.0 publishes image tags 0.2.0 / 0.2 / latest), then:
 docker compose pull
 docker compose up -d
 ```

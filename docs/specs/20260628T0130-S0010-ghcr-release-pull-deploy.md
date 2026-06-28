@@ -90,6 +90,10 @@ on push tag `v*`：checkout → `docker/setup-qemu-action` + `docker/setup-build
 ### p5 验收
 - [x] p5-1 验收：子命令与 `stakehash` 输出一致、`go build/vet` + `make test` 绿、`docker compose config` 用新 image 通过、`release.yml` lint 通过、Dockerfile 多架构构建可用（TC-1..TC-6 汇总）。
 
+### p6 实地发布与修复
+- [x] p6-1 实地发布 `v0.1.0`：push main(67 commits) + tag `v0.1.0` → release workflow 绿(3m54s)，多架构镜像推送 GHCR，匿名 `docker pull :latest` 成功（包为 public）（TC-2）。
+- [x] p6-2 修复镜像 tag 文档不符：metadata-action 去掉 `v` 前缀，实际镜像 tag 为 `0.1.0`/`0.1`/`latest`；订正 `.env.example` 与 `docs/deployment.md` 中"pin v0.1.0/v0.2.0"为无 v 形式并注明 git tag↔image tag 关系（TC-6）。
+
 ## 4. Test and Acceptance Criteria
 - TC-1 **子命令正确**：`issuer stake-hash <addr>` 与 `stakehash <addr>` 对同一输入输出相同；无参打印 usage、非零退出。
 - TC-2 **发布可用**：`release.yml` 语法/动作合法；Dockerfile 经 buildx 多架构(`linux/amd64,linux/arm64`)构建成功；镜像名 `ghcr.io/cauu/ouro-pass`、tag=semver+latest。
@@ -101,6 +105,7 @@ on push tag `v*`：checkout → `docker/setup-qemu-action` + `docker/setup-build
 
 ## 5. Execution Log (append-only)
 - 2026-06-28 S0010 创建并激活（active）：前序 S0009 已 delivered。范围经用户确认 = GHCR 全做（CI build/push + compose 改拉取 + stakehash 子命令）。镜像 `ghcr.io/cauu/ouro-pass`，多架构 amd64+arm64。
+- 2026-06-28 p6-1/p6-2 完成（实地发布 + 修复）：本机已配置 GitHub SSH，`git push origin main`(6857fcd..9ef1c28，67 commits，fast-forward) + `git tag -a v0.1.0` + `git push origin v0.1.0`。GitHub Actions `release` run 28323560781 **绿**(image job 3m54s)，`Build and push (linux/amd64, linux/arm64)` 成功；唯一注解为 Node20 弃用警告(无害)。实际推送 image tags = `0.1.0`/`0.1`/`latest`(run log 确认；metadata-action 去 v 前缀)；匿名 `docker pull ghcr.io/cauu/ouro-pass:latest` **成功** → 包 public、多架构可拉。**p6-2**：发现 `.env.example`/`docs` 误写 "pin v0.1.0/v0.2.0"，与实际无 v 的镜像 tag 不符，已订正为 `0.1.0`/`0.2.0` 并注明 git tag(v0.1.0)↔image tag(0.1.0) 关系。
 - 2026-06-28 p5-1 完成（总收口）：`go build ./... && go vet ./...` 绿、`make test` 全绿(p1-1)、子命令与 stakehash 输出一致、`docker buildx` amd64+arm64 构建成功、`actionlint release.yml` exit 0、`docker compose config` 解析为 ghcr image 通过、七个交付物齐备、`package.json`/`go.mod` 自 S0010 起无新依赖。唯一需维护者实地复核的是真实 `git tag v* push` 触发 CI 推 GHCR + 包设为 public（需 GitHub 凭证，Exception #3）。
 - 2026-06-28 p4-1 完成：`docs/deployment.md` 改拉取式——架构注明 issuer 从 GHCR 拉取；Quick start 给出**最小四文件清单**(docker-compose.yml/.env.example/deploy/{Caddyfile,init.sh})+ `curl` 下载片段(raw.githubusercontent cauu/ouro-pass)；owner key 改 `docker run --rm ghcr.io/cauu/ouro-pass stake-hash stake1...`(保留 make 备选)；升级改 `改 OUROPASS_TAG → docker compose pull && up -d`；加本地构建备选与 GHCR 包需公开的提示。残留 build 字样均为有意(本地构建/加固)。
 - 2026-06-28 p3-1 完成：`docker-compose.yml` issuer 由 `build: .` 改为 `image: ghcr.io/cauu/ouro-pass:${OUROPASS_TAG:-latest}`（拉取式，删 build），头部注释加本地构建备选(`docker build ... :local && OUROPASS_TAG=local`)。`.env.example` 的 `OUROPASS_TAG` 默认 `latest` + 注释建议钉版本。`docker compose config` 通过、image 正确解析为 ghcr.io/cauu/ouro-pass:latest、无 build。
@@ -119,7 +124,11 @@ on push tag `v*`：checkout → `docker/setup-qemu-action` + `docker/setup-build
 - TC-3 | stack: docker | command: docker compose config | result: pass | note: issuer image=ghcr.io/cauu/ouro-pass:latest，无 build；插值/卷/健康门控不变
 - TC-5 | stack: shell | command: review .env.example | result: pass | note: OUROPASS_TAG=latest + 钉版本建议；无新依赖
 - TC-6 | stack: other | command: review docs/deployment.md | result: pass | note: 最小文件清单 + curl 下载 + docker run stake-hash + pull 升级 + 本地构建备选 + GHCR 公开提示，与拉取式 compose/子命令一致
-- TC-1..TC-6 | stack: go/docker/shell | command: p5-1 汇总 | result: pass | note: go build/vet 绿、子命令一致、buildx amd64+arm64 OK、actionlint OK、compose config OK、交付物齐备、无新依赖；真实 tag→CI→GHCR 推送留待维护者(Exception #3)
+- TC-1..TC-6 | stack: go/docker/shell | command: p5-1 汇总 | result: pass | note: go build/vet 绿、子命令一致、buildx amd64+arm64 OK、actionlint OK、compose config OK、交付物齐备、无新依赖
+- TC-2 | stack: docker | command: git push tag v0.1.0 → gh run watch 28323560781 | result: pass | note: release run 绿(3m54s)，多架构 build+push GHCR 成功（实地，非模拟）
+- TC-3 | stack: docker | command: docker pull ghcr.io/cauu/ouro-pass:latest（匿名） | result: pass | note: 匿名拉取成功 → 包 public、用户可 compose pull；run log 确认 tags=0.1.0/0.1/latest
+- TC-6 | stack: other | command: 订正 .env.example/docs v 前缀 | result: pass | note: image tag 无 v(0.1.0)，文档已与实际一致并注明 git↔image tag 关系
 
 ## 7. Change Requests (append-only)
 - （无）
+- 2026-06-28 p6-2（实地发布发现）：docker/metadata-action 的 `type=semver` 会去掉 git tag 的 `v` 前缀，故镜像 tag 为 `0.1.0`（非 `v0.1.0`）。原 `.env.example`/`docs` 示例 "pin v0.1.0" 会指向不存在的镜像 tag。已订正文档为无 v 形式（git tag 仍用 `v0.1.0`，镜像 tag 用 `0.1.0`）。不改 workflow（保持 Docker 社区惯例的无 v 镜像 tag）。
