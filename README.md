@@ -48,8 +48,30 @@ admin SPA — all baked in via `go:embed`.
 
 ## Quick start (deploy)
 
-You don't need the source tree — just four files (keep the layout):
-`docker-compose.yml`, `.env.example`, `deploy/Caddyfile`, `deploy/init.sh`.
+One command — it checks prerequisites, downloads the compose stack, generates
+secrets, asks a few questions (domain, owner wallet, chain source) and starts
+everything:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/cauu/ouro-pass/main/deploy/install.sh | sh
+```
+
+Inspect-before-run (recommended) or automate it non-interactively:
+
+```sh
+# review first
+curl -fsSLO https://raw.githubusercontent.com/cauu/ouro-pass/main/deploy/install.sh
+less install.sh && sh install.sh
+
+# non-interactive (CI / scripted)
+curl -fsSL https://raw.githubusercontent.com/cauu/ouro-pass/main/deploy/install.sh \
+  | OURO_DOMAIN=pass.example.com OURO_OWNER_ADDR=stake1... sh -s -- --non-interactive
+```
+
+You don't need the source tree — the installer fetches only the compose stack
+(`docker-compose.yml`, `.env.example`, `deploy/Caddyfile`, `deploy/init.sh`).
+
+<details><summary>Or set it up manually</summary>
 
 ```sh
 mkdir -p ouro-pass/deploy && cd ouro-pass
@@ -65,6 +87,7 @@ $EDITOR .env                     # set DOMAIN + OUROPASS_OWNER_KEYS (and review 
 docker compose up -d             # pull image + start issuer + postgres + caddy
 # → open https://<DOMAIN>/admin and sign in with your owner wallet
 ```
+</details>
 
 The image is published multi-arch (linux/amd64 + linux/arm64) to GHCR:
 

@@ -87,7 +87,7 @@ main:
 - [x] p1-1 `deploy/install.sh`（前置检测 + 钉 ref 下载 + 复用 init.sh + 交互/非交互问答写 .env + owner 地址→hash + 可选 up；POSIX sh、/dev/tty、set -eu+trap、幂等）（TC-1, TC-2, TC-3, TC-4）。
 
 ### p2 文档接入
-- [ ] p2-1 `README.md` + `docs/deployment.md` 主推一行安装；保留手动多文件为备选；加"先下后审"与非交互用法（TC-5）。
+- [x] p2-1 `README.md` + `docs/deployment.md` 主推一行安装；保留手动多文件为备选；加"先下后审"与非交互用法（TC-5）。
 
 ### p3 验收
 - [ ] p3-1 验收：`shellcheck` + `sh -n` 通过；非交互实跑(从 GitHub 下载 4 文件、生成含 secrets+用户值的 .env、`docker compose config` 通过，不 up)；tty/幂等核对（TC-1..TC-5 汇总）。
@@ -102,6 +102,7 @@ main:
 
 ## 5. Execution Log (append-only)
 - 2026-06-28 S0011 创建并激活（active）：前序 S0010 已 delivered。范围经用户确认 = 一行引导式安装器，交互层用 POSIX read（零依赖，检测 gum 渐进增强），支持非交互。
+- 2026-06-28 p2-1 完成：`README.md` Quick start 改为一行 `curl|sh` 安装为主(+先下后审 + 非交互示例),手动四文件收进 `<details>` 备选;`docs/deployment.md` 加「Install script (recommended)」小节(含 inspect-first / 钉 tag / 非交互 env 列表 / 幂等说明),原手动步骤归入「Manual setup」。命令与脚本变量(OURO_*)一致。
 - 2026-06-28 p1-1 完成：`deploy/install.sh`（POSIX sh，`set -eu` + `on_exit` trap）——preflight(curl/openssl/docker/`docker compose`)；`--non-interactive`/`-y`/`--ref`/`--dir` 解析；tty 守卫(管道无 tty 且非 --non-interactive 即报错引导)；按 `OURO_REF`(默认 main) 从 raw.githubusercontent 钉 ref 下载 docker-compose.yml/.env.example/deploy/{Caddyfile,init.sh} 到 `OURO_DIR`(默认 ouro-pass)；调 `init.sh` 生成密钥+./data；`ask()` 读 `/dev/tty`(非交互取 OURO_* env/default)问 DOMAIN/ACME/NETWORK/CHAIN_KIND/KOIOS_BASE_URL/TAG/owner 地址/Telegram；owner 地址经 `docker run --rm IMAGE:TAG stake-hash` 转 hash；`set_env()`(awk)写 .env；可选 `docker compose up -d`。验证:shellcheck CLEAN、`sh -n` 绿；非交互实跑(OURO_REF=main)下载 4 文件、init 生成密钥(FIELD 64/PG 48)、owner 地址→hash 337b62…7251、写全 .env、`docker compose config` 通过(未 up)。
 
 ## 6. Validation Evidence (append-only)
@@ -111,6 +112,7 @@ main:
 - TC-2 | stack: shell | command: OURO_REF=main OURO_DOMAIN/OWNER_ADDR/START=no sh install.sh --non-interactive | result: pass | note: 下载 4 文件、init 生成密钥(FIELD 64/PG 48)、owner 地址→hash 337b62…7251、写全 .env、docker compose config 通过(未 up)
 - TC-4 | stack: shell | command: review install.sh + init.sh 复用 | result: pass | note: set -eu+on_exit trap；OURO_REF 钉 ref；密钥经 init.sh 不覆盖；tty 守卫(管道无 tty 报错)
 - TC-3 | stack: shell | command: review tty 分支 | result: pass | note: 非交互路径实测通过；交互读 /dev/tty、无 tty 且非 --non-interactive 即报错引导(代码核对)
+- TC-5 | stack: other | command: review README.md + docs/deployment.md | result: pass | note: 一行安装为主、手动 details 备选、含先下后审/钉 tag/非交互 env；变量名与 install.sh 一致
 
 ## 7. Change Requests (append-only)
 - （无）

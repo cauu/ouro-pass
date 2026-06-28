@@ -39,6 +39,26 @@ So there is no separate frontend container. The compose stack is three services:
 
 ## Quick start
 
+### Install script (recommended)
+
+One command checks prerequisites, downloads the compose stack, generates secrets,
+prompts for the essentials (domain, owner wallet, chain source) and starts it:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/cauu/ouro-pass/main/deploy/install.sh | sh
+```
+
+- **Inspect first:** `curl -fsSLO .../deploy/install.sh && less install.sh && sh install.sh`
+- **Pin a release:** `... /v0.2.0/deploy/install.sh | OURO_REF=v0.2.0 sh`
+- **Non-interactive (CI):** pipe with `--non-interactive` and `OURO_*` env vars
+  (`OURO_DOMAIN`, `OURO_OWNER_ADDR` or `OURO_OWNER_KEYS`, `OURO_NETWORK`,
+  `OURO_CHAIN_KIND`, `OURO_KOIOS_BASE_URL`, `OURO_TELEGRAM_*`, `OUROPASS_TAG`,
+  `OURO_START`). Run `install.sh --help` for the full list.
+
+The installer never overwrites existing secrets and is safe to re-run.
+
+### Manual setup
+
 You do **not** need the source tree — only four files (keep the directory layout):
 
 ```
