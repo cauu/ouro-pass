@@ -55,6 +55,14 @@ const (
 )
 
 func main() {
+	// CLI subcommands run before server setup so they emit no log noise. This lets
+	// operators running only the published image compute their owner key hash:
+	//   docker run --rm ghcr.io/cauu/ouro-pass stake-hash stake1...
+	if len(os.Args) > 1 && os.Args[1] == "stake-hash" {
+		stakeHashCmd(os.Args[2:])
+		return
+	}
+
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
@@ -62,6 +70,22 @@ func main() {
 		logger.Error("fatal", "err", err)
 		os.Exit(1)
 	}
+}
+
+// stakeHashCmd prints the 28-byte stake credential hash for a CIP-19 reward
+// (stake) address — the value to put in OUROPASS_OWNER_KEYS. Mirrors the
+// standalone cmd/stakehash so the issuer image alone is enough.
+func stakeHashCmd(args []string) {
+	if len(args) != 1 || args[0] == "" {
+		fmt.Fprintln(os.Stderr, "usage: issuer stake-hash <stake1...|reward-address-hex>")
+		os.Exit(2)
+	}
+	hash, err := chain.StakeHashFromRewardAddress(args[0])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "error:", err)
+		os.Exit(1)
+	}
+	fmt.Println(hash)
 }
 
 func run() error {

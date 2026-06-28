@@ -75,7 +75,7 @@ on push tag `v*`：checkout → `docker/setup-qemu-action` + `docker/setup-build
 
 ## 3. Execution Plan
 ### p1 issuer 子命令
-- [ ] p1-1 `cmd/issuer` 增 `stake-hash` 子命令（复用 `chain.StakeHashFromRewardAddress`），与 `cmd/stakehash` 输出一致（TC-1, TC-4）。
+- [x] p1-1 `cmd/issuer` 增 `stake-hash` 子命令（复用 `chain.StakeHashFromRewardAddress`），与 `cmd/stakehash` 输出一致（TC-1, TC-4）。
 
 ### p2 镜像构建与发布
 - [ ] p2-1 `Dockerfile` 跨架构就绪（`$BUILDPLATFORM` web/go 阶段 + `$TARGETOS/$TARGETARCH` 交叉编译；pnpm→10）（TC-2, TC-5）。
@@ -101,9 +101,13 @@ on push tag `v*`：checkout → `docker/setup-qemu-action` + `docker/setup-build
 
 ## 5. Execution Log (append-only)
 - 2026-06-28 S0010 创建并激活（active）：前序 S0009 已 delivered。范围经用户确认 = GHCR 全做（CI build/push + compose 改拉取 + stakehash 子命令）。镜像 `ghcr.io/cauu/ouro-pass`，多架构 amd64+arm64。
+- 2026-06-28 p1-1 完成：`cmd/issuer/main.go` 在 `main()` 首部加 `stake-hash` 子命令分发（`os.Args[1]=="stake-hash"` → `stakeHashCmd` 复用 `chain.StakeHashFromRewardAddress`，无参打印 usage 退 2），仅此分流、不影响正常启动。与 `cmd/stakehash` 对同一 stake1 地址输出一致（337b62...7251）；`go build ./...`/`go vet ./cmd/issuer` 绿；`make test` 全绿。`cmd/stakehash` 保留。
 
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: go|docker|shell|other | command: ... | result: pass|fail | note: ...` 追加）
+
+- TC-1 | stack: go | command: go run ./cmd/issuer stake-hash <addr> vs ./cmd/stakehash | result: pass | note: 同输入输出一致(337b62…7251)；无参 usage + 非零退出
+- TC-4 | stack: go | command: go build ./... + go vet ./cmd/issuer + make test | result: pass | note: 编译/vet 绿、单元+e2e 全绿；子命令分发不影响服务启动路径
 
 ## 7. Change Requests (append-only)
 - （无）
