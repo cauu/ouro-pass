@@ -1,0 +1,26 @@
+# Keep the build context small and deterministic (S0009).
+# Only web/ and server/ sources are needed by the Dockerfile.
+
+.git
+.github
+.claude
+code_review
+docs
+tmp
+data
+deploy
+*.md
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# web — bring sources, not installed deps or prior builds
+web/node_modules
+web/dist
+
+# server — drop local dev state, test caches and prior staged SPA
+server/.dev
+server/coverage.out
+**/*.db
+server/internal/httpapi/adminui/dist

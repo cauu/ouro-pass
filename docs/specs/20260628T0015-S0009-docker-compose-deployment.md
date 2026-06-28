@@ -85,7 +85,7 @@ Caddy 据 `DOMAIN` 自动签发/续期证书；`ACME_EMAIL`（可选）走全局
 
 ## 3. Execution Plan
 ### p1 镜像与编排
-- [ ] p1-1 `Dockerfile`（多阶段 web→go→alpine，CGO=0、非 root、HEALTHCHECK）+ `.dockerignore`（TC-1, TC-4）。
+- [x] p1-1 `Dockerfile`（多阶段 web→go→alpine，CGO=0、非 root、HEALTHCHECK）+ `.dockerignore`（TC-1, TC-4）。
 - [ ] p1-2 `docker-compose.yml`（issuer+postgres+caddy；`./data/*` bind-mount；健康门控；restart；external-db profile）（TC-1, TC-2, TC-3）。
 - [ ] p1-3 `deploy/Caddyfile`（`{$DOMAIN}` 自动 HTTPS → issuer:8080）（TC-1, TC-2）。
 
@@ -108,9 +108,14 @@ Caddy 据 `DOMAIN` 自动签发/续期证书；`ACME_EMAIL`（可选）走全局
 
 ## 5. Execution Log (append-only)
 - 2026-06-28 S0009 创建并激活（active）：前序 S0008 已 delivered。范围经用户确认 = 单 compose 一键部署，链源默认 koios、内置 Postgres（数据 bind-mount 到 `./data`）、内置 Caddy 自动 HTTPS；零应用代码改动。
+- 2026-06-28 p1-1 完成：`Dockerfile` 三阶段——node:22-alpine(pnpm) 构建 SPA → golang:1.25-alpine `CGO_ENABLED=0 -trimpath -ldflags=-s -w` 构建 issuer（COPY SPA dist 到 adminui/dist 供 `//go:embed all:dist`）→ alpine:3.20 运行层（ca-certificates、非 root 用户 ouro、`HEALTHCHECK wget /healthz`）。`.dockerignore` 收窄上下文（仅 web/server 源，排除 node_modules/dist/data/.git 等）。`docker build` 成功，镜像 31.8MB；smoke run：/healthz=200、/admin/ 返回真实内嵌 SPA、容器内 `id`=uid 100(ouro) 非 root、HEALTHCHECK present。
 
 ## 6. Validation Evidence (append-only)
 - （待执行后按 `TC-<n> | stack: docker|shell|other | command: ... | result: pass|fail | note: ...` 追加）
+
+- TC-1 | stack: docker | command: docker build -t ouropass/issuer:local . | result: pass | note: p1-1 三阶段构建成功，镜像 31.8MB（含 SPA embed）
+- TC-1 | stack: docker | command: docker run + curl /healthz /admin/ | result: pass | note: /healthz=200；/admin/ 返回真实内嵌 SPA（非 placeholder）
+- TC-4 | stack: docker | command: docker exec id + inspect Healthcheck | result: pass | note: 运行用户 uid 100(ouro) 非 root；HEALTHCHECK 已配置；基础镜像 tag 钉死(node:22/golang:1.25/alpine:3.20)
 
 ## 7. Change Requests (append-only)
 - （无）
