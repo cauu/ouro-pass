@@ -1,12 +1,12 @@
 # Ouro Pass 一键 Docker Compose 部署（issuer + Postgres + Caddy 自动 HTTPS）
 
 Spec-ID: S0009
-Status: active
+Status: completed
 Created Time: 2026-06-28T00:15:00+08:00
 Start Time: 2026-06-28T00:15:00+08:00
-Completion Time:
+Completion Time: 2026-06-28T01:30:00+08:00
 Previous Spec-ID: S0008
-Closure Reason:
+Closure Reason: delivered
 
 > 目标：用户配置好 `.env` 后，`docker compose up -d` 一键拉起全栈（issuer 单二进制 = API + 内嵌 Admin SPA + worker；Postgres 数据库；Caddy 自动 HTTPS 反代）。对标自托管去中心化开源项目（Umbrel / Start9 / Gitea / nostr relay）的最佳实践：单一 compose + `.env` + profiles、宿主可见数据卷、可复现镜像、自动 TLS、secret 引导脚本。**不改任何应用代码**——纯交付编排/打包/文档。
 
@@ -132,3 +132,4 @@ Caddy 据 `DOMAIN` 自动签发/续期证书；`ACME_EMAIL`（可选）走全局
 
 ## 7. Change Requests (append-only)
 - （无）
+- 2026-06-28 S0009 关闭（active→completed，Closure Reason: `delivered`）：p1–p4 全部交付（Dockerfile/compose/Caddyfile/.env.example/init.sh/docs），本机 build+compose config+init+smoke 全绿。当前 compose 为 `build: .`（克隆源码本地构建）形态。**镜像发布(GHCR)+ compose 改拉取 + stakehash 子命令** 属新的分发范围，另立 **S0010**（Previous Spec-ID: S0009）执行。
