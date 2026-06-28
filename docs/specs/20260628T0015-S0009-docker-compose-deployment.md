@@ -90,8 +90,8 @@ Caddy 据 `DOMAIN` 自动签发/续期证书；`ACME_EMAIL`（可选）走全局
 - [x] p1-3 `deploy/Caddyfile`（`{$DOMAIN}` 自动 HTTPS → issuer:8080）（TC-1, TC-2）。
 
 ### p2 配置与引导
-- [ ] p2-1 `.env.example`（全量变量 + 注释，对照 config.go）+ `.gitignore` 加 `/data/`（TC-3, TC-5）。
-- [ ] p2-2 `deploy/init.sh`（幂等 secret 引导 + 建 data 目录 + 指引）（TC-5, TC-6）。
+- [x] p2-1 `.env.example`（全量变量 + 注释，对照 config.go）+ `.gitignore` 加 `/data/`（TC-3, TC-5）。
+- [x] p2-2 `deploy/init.sh`（幂等 secret 引导 + 建 data 目录 + 指引）（TC-5, TC-6）。
 
 ### p3 文档与验收
 - [ ] p3-1 `docs/deployment.md`（一键指南：前置/init/up/owner 首登/备份/链源切换/主权节点/排错）（TC-6）。
@@ -108,6 +108,8 @@ Caddy 据 `DOMAIN` 自动签发/续期证书；`ACME_EMAIL`（可选）走全局
 
 ## 5. Execution Log (append-only)
 - 2026-06-28 S0009 创建并激活（active）：前序 S0008 已 delivered。范围经用户确认 = 单 compose 一键部署，链源默认 koios、内置 Postgres（数据 bind-mount 到 `./data`）、内置 Caddy 自动 HTTPS；零应用代码改动。
+- 2026-06-28 p2-2 完成：`deploy/init.sh`（POSIX sh，幂等）——缺 `.env` 则从 example 复制；用 awk 仅填**空**的 `OUROPASS_FIELD_KEY`(`openssl rand -hex 32`)/`OUROPASS_SERVER_SALT`(`-hex 16`)/`POSTGRES_PASSWORD`(`-hex 24`)，已有值不覆盖；建 `./data/{postgres,caddy/config}`；打印下一步。已验证：生成长度 64/32/48，重复运行 FIELD_KEY 不变（幂等 ✓）。
+- 2026-06-28 p2-1 完成：`.env.example` 覆盖部署变量(DOMAIN/ACME_EMAIL/OUROPASS_TAG/POSTGRES_*)与全部非派生 `OUROPASS_*`(NETWORK/CHAIN_KIND=koios/KOIOS_BASE_URL 三网注释/CHAIN_API_KEY/FIELD_KEY/SERVER_SALT/OWNER_KEYS/TELEGRAM_*，node_lsq 主权路径注释)，并注明 ADDR/ISSUER/TRUSTED_PROXY/TLS/DB_DRIVER/DB_DSN 由 compose 派生；逐项对照 `config.go`。`.gitignore` 加 `/data/`（`.env*` 已被忽略、留 example）。
 - 2026-06-28 p1-2 完成：`docker-compose.yml` 三服务——`issuer`(build .; image ouropass/issuer:${OUROPASS_TAG}; env_file .env; environment 派生 ADDR/ISSUER=https://${DOMAIN}/TRUSTED_PROXY/TLS/DB_DRIVER/DB_DSN→postgres 服务; depends_on postgres service_healthy; 不对宿主暴露端口)、`postgres`(postgres:16-alpine; `./data/postgres` bind-mount; pg_isready healthcheck)、`caddy`(caddy:2.8-alpine; 80/443; 挂 Caddyfile + `./data/caddy{,/config}`; depends_on issuer service_healthy)。external-db 以注释指引(注释 postgres + 改 DSN)取代 profile（简化、避开 depends_on-on-profiled 边界）。均 restart: unless-stopped。
 - 2026-06-28 p1-3 完成：`deploy/Caddyfile`——`{$DOMAIN}` 站点块 `reverse_proxy issuer:8080` + `encode zstd gzip`，Caddy 自动 ACME；可选 email 全局块注释示意。
 - 2026-06-28 p1-1 完成：`Dockerfile` 三阶段——node:22-alpine(pnpm) 构建 SPA → golang:1.25-alpine `CGO_ENABLED=0 -trimpath -ldflags=-s -w` 构建 issuer（COPY SPA dist 到 adminui/dist 供 `//go:embed all:dist`）→ alpine:3.20 运行层（ca-certificates、非 root 用户 ouro、`HEALTHCHECK wget /healthz`）。`.dockerignore` 收窄上下文（仅 web/server 源，排除 node_modules/dist/data/.git 等）。`docker build` 成功，镜像 31.8MB；smoke run：/healthz=200、/admin/ 返回真实内嵌 SPA、容器内 `id`=uid 100(ouro) 非 root、HEALTHCHECK present。
@@ -121,6 +123,8 @@ Caddy 据 `DOMAIN` 自动签发/续期证书；`ACME_EMAIL`（可选）走全局
 - TC-1 | stack: docker | command: docker compose config | result: pass | note: p1-2/p1-3 解析无误；插值正确(OUROPASS_ISSUER=https://${DOMAIN}、DB_DSN→postgres:5432、images 钉死)
 - TC-2 | stack: docker | command: docker compose config（核对） | result: pass | note: caddy 暴露 80/443 + 反代 issuer:8080；issuer 无 published 端口；postgres/issuer depends_on condition: service_healthy
 - TC-3 | stack: docker | command: docker compose config（卷核对） | result: pass | note: ./data/postgres→/var/lib/postgresql/data、./data/caddy→/data bind-mount；Caddyfile ro 挂载
+- TC-5 | stack: shell | command: sh deploy/init.sh + awk 长度核对 | result: pass | note: FIELD_KEY=64hex(32B)、SERVER_SALT=32hex(16B)、POSTGRES_PASSWORD=48hex(24B)；重复运行不覆盖(幂等)；.env/.data 已 gitignore，不入库/不入镜像
+- TC-5 | stack: shell | command: diff .env.example vs config.go OUROPASS_* | result: pass | note: 非派生变量全覆盖；派生项(ADDR/ISSUER/TRUSTED_PROXY/TLS/DB_DRIVER/DB_DSN)由 compose 注入，已注明
 
 ## 7. Change Requests (append-only)
 - （无）
