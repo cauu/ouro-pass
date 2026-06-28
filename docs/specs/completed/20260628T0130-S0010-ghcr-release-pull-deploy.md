@@ -1,12 +1,12 @@
 # Ouro Pass 镜像发布与拉取式一键部署（GHCR + CI + stakehash 子命令）
 
 Spec-ID: S0010
-Status: active
+Status: completed
 Created Time: 2026-06-28T01:30:00+08:00
 Start Time: 2026-06-28T01:30:00+08:00
-Completion Time:
+Completion Time: 2026-06-28T14:00:00+08:00
 Previous Spec-ID: S0009
-Closure Reason:
+Closure Reason: delivered
 
 > S0009 交付了 compose 全栈，但 issuer 服务为 `build: .`（用户需克隆整仓本地构建）。本 spec 把分发模式改为**官方发布预构建镜像 → 用户只下少量文件、拉镜像即起**：(1) CI 在打 tag 时构建并推送多架构镜像到 **GHCR**(`ghcr.io/cauu/ouro-pass`)；(2) `docker-compose.yml` 改为拉取该镜像；(3) 把取 owner key 的 `stakehash` 暴露为 issuer 子命令，纯拉镜像的用户用 `docker run` 即可算。目标发布/部署流程：维护者打 tag→镜像发布；用户下 `docker-compose.yml`+`deploy/`+`.env.example`→`init.sh`→填 `.env`→`docker compose up -d`。
 
@@ -137,3 +137,4 @@ on push tag `v*`：checkout → `docker/setup-qemu-action` + `docker/setup-build
 ## 7. Change Requests (append-only)
 - （无）
 - 2026-06-28 p6-2（实地发布发现）：docker/metadata-action 的 `type=semver` 会去掉 git tag 的 `v` 前缀，故镜像 tag 为 `0.1.0`（非 `v0.1.0`）。原 `.env.example`/`docs` 示例 "pin v0.1.0" 会指向不存在的镜像 tag。已订正文档为无 v 形式（git tag 仍用 `v0.1.0`，镜像 tag 用 `0.1.0`）。不改 workflow（保持 Docker 社区惯例的无 v 镜像 tag）。
+- 2026-06-28 S0010 关闭（active→completed，Closure Reason: `delivered`）：p1–p7 交付——stakehash 子命令、跨架构 Dockerfile、GHCR release workflow、拉取式 compose、文档、README，且实地发布 v0.1.0(镜像 public 可匿名拉)。**一键安装脚本(install.sh)** 把"手动 curl 多文件 + 填 .env"合并为一条命令,属新分发范围,另立 **S0011**（Previous Spec-ID: S0010）。
