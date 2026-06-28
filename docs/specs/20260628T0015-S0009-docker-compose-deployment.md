@@ -86,8 +86,8 @@ Caddy 据 `DOMAIN` 自动签发/续期证书；`ACME_EMAIL`（可选）走全局
 ## 3. Execution Plan
 ### p1 镜像与编排
 - [x] p1-1 `Dockerfile`（多阶段 web→go→alpine，CGO=0、非 root、HEALTHCHECK）+ `.dockerignore`（TC-1, TC-4）。
-- [ ] p1-2 `docker-compose.yml`（issuer+postgres+caddy；`./data/*` bind-mount；健康门控；restart；external-db profile）（TC-1, TC-2, TC-3）。
-- [ ] p1-3 `deploy/Caddyfile`（`{$DOMAIN}` 自动 HTTPS → issuer:8080）（TC-1, TC-2）。
+- [x] p1-2 `docker-compose.yml`（issuer+postgres+caddy；`./data/*` bind-mount；健康门控；restart；external-db 注释说明）（TC-1, TC-2, TC-3）。
+- [x] p1-3 `deploy/Caddyfile`（`{$DOMAIN}` 自动 HTTPS → issuer:8080）（TC-1, TC-2）。
 
 ### p2 配置与引导
 - [ ] p2-1 `.env.example`（全量变量 + 注释，对照 config.go）+ `.gitignore` 加 `/data/`（TC-3, TC-5）。
@@ -108,6 +108,8 @@ Caddy 据 `DOMAIN` 自动签发/续期证书；`ACME_EMAIL`（可选）走全局
 
 ## 5. Execution Log (append-only)
 - 2026-06-28 S0009 创建并激活（active）：前序 S0008 已 delivered。范围经用户确认 = 单 compose 一键部署，链源默认 koios、内置 Postgres（数据 bind-mount 到 `./data`）、内置 Caddy 自动 HTTPS；零应用代码改动。
+- 2026-06-28 p1-2 完成：`docker-compose.yml` 三服务——`issuer`(build .; image ouropass/issuer:${OUROPASS_TAG}; env_file .env; environment 派生 ADDR/ISSUER=https://${DOMAIN}/TRUSTED_PROXY/TLS/DB_DRIVER/DB_DSN→postgres 服务; depends_on postgres service_healthy; 不对宿主暴露端口)、`postgres`(postgres:16-alpine; `./data/postgres` bind-mount; pg_isready healthcheck)、`caddy`(caddy:2.8-alpine; 80/443; 挂 Caddyfile + `./data/caddy{,/config}`; depends_on issuer service_healthy)。external-db 以注释指引(注释 postgres + 改 DSN)取代 profile（简化、避开 depends_on-on-profiled 边界）。均 restart: unless-stopped。
+- 2026-06-28 p1-3 完成：`deploy/Caddyfile`——`{$DOMAIN}` 站点块 `reverse_proxy issuer:8080` + `encode zstd gzip`，Caddy 自动 ACME；可选 email 全局块注释示意。
 - 2026-06-28 p1-1 完成：`Dockerfile` 三阶段——node:22-alpine(pnpm) 构建 SPA → golang:1.25-alpine `CGO_ENABLED=0 -trimpath -ldflags=-s -w` 构建 issuer（COPY SPA dist 到 adminui/dist 供 `//go:embed all:dist`）→ alpine:3.20 运行层（ca-certificates、非 root 用户 ouro、`HEALTHCHECK wget /healthz`）。`.dockerignore` 收窄上下文（仅 web/server 源，排除 node_modules/dist/data/.git 等）。`docker build` 成功，镜像 31.8MB；smoke run：/healthz=200、/admin/ 返回真实内嵌 SPA、容器内 `id`=uid 100(ouro) 非 root、HEALTHCHECK present。
 
 ## 6. Validation Evidence (append-only)
@@ -116,6 +118,9 @@ Caddy 据 `DOMAIN` 自动签发/续期证书；`ACME_EMAIL`（可选）走全局
 - TC-1 | stack: docker | command: docker build -t ouropass/issuer:local . | result: pass | note: p1-1 三阶段构建成功，镜像 31.8MB（含 SPA embed）
 - TC-1 | stack: docker | command: docker run + curl /healthz /admin/ | result: pass | note: /healthz=200；/admin/ 返回真实内嵌 SPA（非 placeholder）
 - TC-4 | stack: docker | command: docker exec id + inspect Healthcheck | result: pass | note: 运行用户 uid 100(ouro) 非 root；HEALTHCHECK 已配置；基础镜像 tag 钉死(node:22/golang:1.25/alpine:3.20)
+- TC-1 | stack: docker | command: docker compose config | result: pass | note: p1-2/p1-3 解析无误；插值正确(OUROPASS_ISSUER=https://${DOMAIN}、DB_DSN→postgres:5432、images 钉死)
+- TC-2 | stack: docker | command: docker compose config（核对） | result: pass | note: caddy 暴露 80/443 + 反代 issuer:8080；issuer 无 published 端口；postgres/issuer depends_on condition: service_healthy
+- TC-3 | stack: docker | command: docker compose config（卷核对） | result: pass | note: ./data/postgres→/var/lib/postgresql/data、./data/caddy→/data bind-mount；Caddyfile ro 挂载
 
 ## 7. Change Requests (append-only)
 - （无）

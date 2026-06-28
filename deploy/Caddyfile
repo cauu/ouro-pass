@@ -1,0 +1,15 @@
+# Ouro Pass reverse proxy (S0009).
+# Caddy terminates TLS and proxies to the issuer. With a real public DOMAIN it
+# obtains and renews a Let's Encrypt certificate automatically — no extra config.
+#
+# DOMAIN is injected from .env (e.g. pass.example.com). To receive certificate
+# expiry notices, uncomment the global block and set ACME_EMAIL in .env.
+
+# {
+#     email {$ACME_EMAIL}
+# }
+
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy issuer:8080
+}

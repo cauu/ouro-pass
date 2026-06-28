@@ -1,0 +1,74 @@
+# Ouro Pass — one-command deployment (S0009).
+#
+#   1) ./deploy/init.sh         # generate .env + secrets + ./data dirs
+#   2) edit .env                # set DOMAIN and OUROPASS_OWNER_KEYS (at least)
+#   3) docker compose up -d     # build + start issuer + postgres + caddy
+#
+# Caddy terminates TLS (automatic HTTPS via Let's Encrypt for ${DOMAIN}) and
+# reverse-proxies to the issuer. The issuer is a single binary: API + embedded
+# Admin SPA (/admin) + background workers. All persistent state lives under
+# ./data on the host (bind mounts) so it is visible and easy to back up.
+
+services:
+  issuer:
+    build: .
+    image: ouropass/issuer:${OUROPASS_TAG:-local}
+    restart: unless-stopped
+    # All OUROPASS_* knobs + secrets come from .env; the few values below are
+    # derived from deployment vars and override anything in .env.
+    env_file: .env
+    environment:
+      OUROPASS_ADDR: ":8080"
+      OUROPASS_ISSUER: "https://${DOMAIN}"
+      OUROPASS_TRUSTED_PROXY: "true"
+      OUROPASS_TLS: "true"
+      OUROPASS_DB_DRIVER: "postgres"
+      OUROPASS_DB_DSN: "postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+    # Not published to the host — only Caddy is reachable from outside.
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      # Host-visible data dir — back this up.
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+    # External database instead of this bundled one? Comment out this whole
+    # `postgres:` service and the issuer's `depends_on: postgres`, then set
+    # OUROPASS_DB_DSN in .env to your external Postgres.
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      issuer:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # ACME certificates + Caddy config/state — host-visible, back this up.
+      - ./data/caddy:/data
+      - ./data/caddy/config:/config
+    networks: [internal]
+
+networks:
+  internal:
+    driver: bridge
