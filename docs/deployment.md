@@ -24,7 +24,8 @@ So there is no separate frontend container. The compose stack is three services:
 
 - **caddy** terminates TLS and gets/renews a Let's Encrypt certificate for your
   domain automatically.
-- **issuer** is stateless (signing keys live in the DB); built from this repo.
+- **issuer** is stateless (signing keys live in the DB); pulled as a prebuilt
+  multi-arch image from GHCR (`ghcr.io/cauu/ouro-pass`).
 - **postgres** holds all data; bind-mounted to `./data/postgres` so it is visible
   on the host and easy to back up.
 
@@ -38,36 +39,64 @@ So there is no separate frontend container. The compose stack is three services:
 
 ## Quick start
 
-```sh
-git clone <this-repo> ouro-pass && cd ouro-pass
+You do **not** need the source tree — only four files (keep the directory layout):
 
+```
+ouro-pass/
+├── docker-compose.yml
+├── .env.example
+└── deploy/
+    ├── Caddyfile
+    └── init.sh
+```
+
+Grab them from the repo, e.g.:
+
+```sh
+mkdir -p ouro-pass/deploy && cd ouro-pass
+BASE=https://raw.githubusercontent.com/cauu/ouro-pass/main
+curl -fsSLO $BASE/docker-compose.yml
+curl -fsSLO $BASE/.env.example
+curl -fsSL  $BASE/deploy/Caddyfile -o deploy/Caddyfile
+curl -fsSL  $BASE/deploy/init.sh   -o deploy/init.sh && chmod +x deploy/init.sh
+```
+
+Then:
+
+```sh
 # 1) generate .env with strong random secrets + create ./data dirs
 ./deploy/init.sh
 
 # 2) edit .env — set at minimum:
 #      DOMAIN=pass.example.com
 #      OUROPASS_OWNER_KEYS=<your owner stake-key hash>     (see below)
-#    and review OUROPASS_NETWORK / OUROPASS_CHAIN_KIND / OUROPASS_KOIOS_BASE_URL
+#    review OUROPASS_TAG (pin a version), OUROPASS_NETWORK / CHAIN_KIND / KOIOS_BASE_URL
 $EDITOR .env
 
-# 3) build + start everything
+# 3) pull + start everything
 docker compose up -d
 
 # 4) open https://<DOMAIN>/admin and sign in with your owner wallet
 ```
 
-`docker compose up -d` builds the issuer image on first run (a few minutes), then
+`docker compose up -d` pulls the issuer image from GHCR (no local build), then
 starts postgres → issuer → caddy in dependency order. The issuer migrates the
 database on startup; there is no separate migration step.
+
+> The GHCR package must be **public** for an unauthenticated `docker pull`. The
+> maintainer sets this once in the GitHub repo → Packages → package settings.
 
 ### Getting your owner key hash
 
 `OUROPASS_OWNER_KEYS` is a comma-separated list of on-chain owner stake-key
-hashes allowed to sign in to `/admin` as owner. From the repo:
+hashes allowed to sign in to `/admin` as owner. Compute it straight from the
+image — no source checkout needed:
 
 ```sh
-cd server && make stake-hash ADDR=stake1...   # prints the hash to put in OUROPASS_OWNER_KEYS
+docker run --rm ghcr.io/cauu/ouro-pass stake-hash stake1...   # prints the hash
 ```
+
+(From a full checkout you can also use `cd server && make stake-hash ADDR=stake1...`.)
 
 ## Configuration reference
 
@@ -130,10 +159,16 @@ docker compose logs -f issuer     # follow issuer logs (JSON)
 docker compose restart issuer     # restart one service
 docker compose down               # stop + remove containers (data in ./data stays)
 
-# update to a new version:
-git pull
-docker compose build issuer
+# update to a new version: bump OUROPASS_TAG in .env (e.g. v0.2.0), then:
+docker compose pull
 docker compose up -d
+```
+
+To build the image yourself instead of pulling (from a full checkout):
+
+```sh
+docker build -t ghcr.io/cauu/ouro-pass:local .
+OUROPASS_TAG=local docker compose up -d
 ```
 
 ## External database
