@@ -1,0 +1,172 @@
+#!/usr/bin/env sh
+# Ouro Pass one-line installer (S0011).
+#
+#   curl -fsSL https://raw.githubusercontent.com/cauu/ouro-pass/main/deploy/install.sh | sh
+#
+# Downloads the compose stack, generates secrets, asks a few questions, writes .env,
+# and (optionally) starts everything. Prefer pinning a release ref:
+#   curl -fsSL https://raw.githubusercontent.com/cauu/ouro-pass/v0.2.0/deploy/install.sh | OURO_REF=v0.2.0 sh
+#
+# Non-interactive (automation): pass --non-interactive plus OURO_* env vars, e.g.
+#   curl -fsSL .../install.sh | OURO_DOMAIN=pass.example.com OURO_OWNER_ADDR=stake1... \
+#     sh -s -- --non-interactive
+#
+# Security: review before running —
+#   curl -fsSLO .../install.sh && less install.sh && sh install.sh
+set -eu
+
+# ── settings (override via env) ──────────────────────────────────────────────
+OURO_REF="${OURO_REF:-main}"                       # git ref to fetch files from
+OURO_DIR="${OURO_DIR:-ouro-pass}"                  # install directory
+OURO_BASEURL="${OURO_BASEURL:-https://raw.githubusercontent.com/cauu/ouro-pass/${OURO_REF}}"
+IMAGE="ghcr.io/cauu/ouro-pass"
+NONINTERACTIVE="${OURO_NONINTERACTIVE:-0}"
+
+info() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
+warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
+err()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
+on_exit() {
+  st=$?
+  [ "$st" -ne 0 ] && printf '\033[1;31minstall failed (exit %s)\033[0m\n' "$st" >&2
+  return 0
+}
+trap on_exit EXIT
+
+usage() {
+  cat <<USAGE
+Ouro Pass installer
+
+Usage: install.sh [--non-interactive|-y] [--ref REF] [--dir DIR]
+
+Options:
+  --non-interactive, -y   no prompts; take values from OURO_* env vars
+  --ref REF               git ref to download files from (default: ${OURO_REF})
+  --dir DIR               install directory (default: ${OURO_DIR})
+  -h, --help              show this help
+
+Non-interactive env vars: OURO_DOMAIN, OURO_ACME_EMAIL, OURO_NETWORK,
+  OURO_CHAIN_KIND, OURO_KOIOS_BASE_URL, OURO_OWNER_ADDR (or OURO_OWNER_KEYS),
+  OURO_TELEGRAM_BOT, OURO_TELEGRAM_TOKEN, OUROPASS_TAG, OURO_START (yes|no)
+USAGE
+}
+
+# ── parse flags ──────────────────────────────────────────────────────────────
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --non-interactive|-y) NONINTERACTIVE=1 ;;
+    --ref) shift; OURO_REF="${1:?--ref needs a value}"; OURO_BASEURL="https://raw.githubusercontent.com/cauu/ouro-pass/${OURO_REF}" ;;
+    --dir) shift; OURO_DIR="${1:?--dir needs a value}" ;;
+    -h|--help) usage; trap - EXIT; exit 0 ;;
+    *) err "unknown argument: $1 (see --help)" ;;
+  esac
+  shift
+done
+
+# ── preflight ────────────────────────────────────────────────────────────────
+need() { command -v "$1" >/dev/null 2>&1 || err "$1 is required but not found. $2"; }
+info "Checking prerequisites"
+need curl "Install curl and retry."
+need openssl "Install openssl and retry."
+need docker "Install Docker: https://docs.docker.com/engine/install/"
+docker compose version >/dev/null 2>&1 || err "Docker Compose v2 plugin is required ('docker compose')."
+
+# ── interactivity guard ──────────────────────────────────────────────────────
+# When piped (curl | sh) stdin is the script, so prompts must read /dev/tty.
+if [ "$NONINTERACTIVE" != "1" ] && { [ ! -e /dev/tty ] || ! (: >/dev/tty) 2>/dev/null; }; then
+  err "no terminal available for prompts. Re-run with --non-interactive and OURO_* env vars (see --help)."
+fi
+
+# ── download files (pinned to OURO_REF) ──────────────────────────────────────
+info "Installing into ./${OURO_DIR} (ref: ${OURO_REF})"
+mkdir -p "$OURO_DIR/deploy"
+cd "$OURO_DIR"
+fetch() { curl -fsSL "$OURO_BASEURL/$1" -o "$1" || err "download failed: $OURO_BASEURL/$1"; }
+fetch docker-compose.yml
+fetch .env.example
+fetch deploy/Caddyfile
+fetch deploy/init.sh
+chmod +x deploy/init.sh
+
+# ── secrets + ./data (reuse init.sh; idempotent, never overwrites) ───────────
+info "Generating secrets and data directories"
+sh deploy/init.sh >/dev/null
+
+# ── collect configuration ────────────────────────────────────────────────────
+# ask VAR "prompt" "default" [required]
+ask() {
+  _var="$1"; _msg="$2"; _def="${3:-}"; _req="${4:-}"
+  if [ "$NONINTERACTIVE" = "1" ]; then
+    _val="$_def"
+  else
+    if [ -n "$_def" ]; then printf '%s [%s]: ' "$_msg" "$_def" >/dev/tty
+    else printf '%s: ' "$_msg" >/dev/tty; fi
+    IFS= read -r _val </dev/tty || _val=""
+    [ -z "$_val" ] && _val="$_def"
+  fi
+  if [ "$_req" = "required" ] && [ -z "$_val" ]; then
+    err "a value for \"$_msg\" is required"
+  fi
+  eval "$_var=\$_val"
+}
+
+# set_env KEY VALUE — overwrite (or append) KEY in .env
+set_env() {
+  _k="$1"; _v="$2"; _t="$(mktemp)"
+  awk -v k="$_k" -v v="$_v" '
+    !done && $0 ~ "^"k"=" { print k"="v; done=1; next }
+    { print }
+    END { if (!done) print k"="v }
+  ' .env > "$_t" && mv "$_t" .env
+}
+
+info "Configuration"
+ask DOMAIN "Public domain (must resolve to this host)" "${OURO_DOMAIN:-}" required
+ask ACME_EMAIL "ACME/Let's Encrypt email (optional)" "${OURO_ACME_EMAIL:-}"
+ask NETWORK "Cardano network (mainnet|preprod|preview)" "${OURO_NETWORK:-preprod}"
+case "$NETWORK" in
+  mainnet) KOIOS_DEF="https://api.koios.rest/api/v1" ;;
+  preview) KOIOS_DEF="https://preview.koios.rest/api/v1" ;;
+  *)       KOIOS_DEF="https://preprod.koios.rest/api/v1" ;;
+esac
+ask CHAIN_KIND "Chain data source (koios|blockfrost|node_lsq|db_sync|mock)" "${OURO_CHAIN_KIND:-koios}"
+ask KOIOS_BASE_URL "Koios base URL" "${OURO_KOIOS_BASE_URL:-$KOIOS_DEF}"
+ask TAG "Image tag (e.g. 0.1.0, no leading v; or latest)" "${OUROPASS_TAG:-latest}"
+ask OWNER_ADDR "Owner stake address (stake1...) to admit as admin owner" "${OURO_OWNER_ADDR:-}"
+ask TELEGRAM_BOT "Telegram bot username (optional)" "${OURO_TELEGRAM_BOT:-}"
+ask TELEGRAM_TOKEN "Telegram bot token (optional)" "${OURO_TELEGRAM_TOKEN:-}"
+
+# Owner key hash: from stake address (via the image) or a precomputed value.
+OWNER_KEYS="${OURO_OWNER_KEYS:-}"
+if [ -z "$OWNER_KEYS" ] && [ -n "$OWNER_ADDR" ]; then
+  info "Computing owner key hash from $OWNER_ADDR"
+  OWNER_KEYS="$(docker run --rm "$IMAGE:$TAG" stake-hash "$OWNER_ADDR")" \
+    || err "could not compute stake hash (check the address / image tag)"
+fi
+[ -z "$OWNER_KEYS" ] && warn "no owner key set — set OUROPASS_OWNER_KEYS in .env before you can sign in to /admin"
+
+# ── write .env ───────────────────────────────────────────────────────────────
+info "Writing .env"
+set_env DOMAIN "$DOMAIN"
+set_env ACME_EMAIL "$ACME_EMAIL"
+set_env OUROPASS_TAG "$TAG"
+set_env OUROPASS_NETWORK "$NETWORK"
+set_env OUROPASS_CHAIN_KIND "$CHAIN_KIND"
+set_env OUROPASS_KOIOS_BASE_URL "$KOIOS_BASE_URL"
+set_env OUROPASS_OWNER_KEYS "$OWNER_KEYS"
+set_env OUROPASS_TELEGRAM_BOT "$TELEGRAM_BOT"
+set_env OUROPASS_TELEGRAM_TOKEN "$TELEGRAM_TOKEN"
+
+# ── optionally start ─────────────────────────────────────────────────────────
+ask START "Start the stack now? (yes/no)" "${OURO_START:-yes}"
+case "$START" in
+  y|Y|yes|YES|true|1)
+    info "Starting: docker compose up -d"
+    docker compose up -d
+    info "Done. Open https://${DOMAIN}/admin and sign in with your owner wallet."
+    ;;
+  *)
+    info "Skipped start. When ready:  cd ${OURO_DIR} && docker compose up -d"
+    ;;
+esac
+
+trap - EXIT
