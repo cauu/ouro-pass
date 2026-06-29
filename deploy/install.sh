@@ -46,7 +46,10 @@ Options:
 
 Non-interactive env vars: OURO_DOMAIN, OURO_ACME_EMAIL, OURO_NETWORK,
   OURO_CHAIN_KIND, OURO_KOIOS_BASE_URL, OURO_OWNER_ADDR (or OURO_OWNER_KEYS),
-  OURO_TELEGRAM_BOT, OURO_TELEGRAM_TOKEN, OUROPASS_TAG, OURO_START (yes|no)
+  OUROPASS_TAG, OURO_START (yes|no)
+
+Channels (Telegram, …) are configured in the admin console (/admin) after deploy,
+not here — each is a first-class instance with its own token stored in the DB.
 USAGE
 }
 
@@ -143,8 +146,6 @@ else
   ask TAG "Image tag (e.g. 0.1.0, no leading v; or latest)" "${OUROPASS_TAG:-latest}"
   case "$TAG" in v[0-9]*) TAG="${TAG#v}" ;; esac   # image tags have no leading 'v'
   ask OWNER_ADDR "Owner stake address (stake1...) to admit as admin owner" "${OURO_OWNER_ADDR:-}"
-  ask TELEGRAM_BOT "Telegram bot username (optional)" "${OURO_TELEGRAM_BOT:-}"
-  ask TELEGRAM_TOKEN "Telegram bot token (optional)" "${OURO_TELEGRAM_TOKEN:-}"
 
   # Owner key hash: from stake address (via the image) or a precomputed value.
   OWNER_KEYS="${OURO_OWNER_KEYS:-}"
@@ -164,8 +165,6 @@ else
   set_env OUROPASS_CHAIN_KIND "$CHAIN_KIND"
   set_env OUROPASS_KOIOS_BASE_URL "$KOIOS_BASE_URL"
   set_env OUROPASS_OWNER_KEYS "$OWNER_KEYS"
-  set_env OUROPASS_TELEGRAM_BOT "$TELEGRAM_BOT"
-  set_env OUROPASS_TELEGRAM_TOKEN "$TELEGRAM_TOKEN"
 
   # Caddy errors on an empty `email` directive, so only enable it when provided.
   if [ -n "$ACME_EMAIL" ] && ! grep -q '^[[:space:]]*email ' deploy/Caddyfile; then
@@ -184,6 +183,7 @@ case "$START" in
     info "Starting: docker compose up -d"
     docker compose up -d
     info "Done. Open https://${DOMAIN}/admin and sign in with your owner wallet."
+    info "Add delivery channels (Telegram, …) from the admin console after signing in."
     ;;
   *)
     info "Skipped start. When ready:  cd ${OURO_DIR} && docker compose up -d"
