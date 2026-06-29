@@ -24,7 +24,8 @@ NONINTERACTIVE="${OURO_NONINTERACTIVE:-0}"
 # Reverse-proxy mode: 'caddy' (bundled, auto-HTTPS on 80/443) or 'external' (run behind
 # an existing reverse proxy, e.g. nginx). external mode publishes the issuer on a local
 # host port instead and emits an nginx snippet — it never touches your host proxy/TLS.
-OURO_PROXY_MODE="${OURO_PROXY_MODE:-caddy}"
+# Empty here = not chosen yet; resolved later (flag/env, else interactive prompt+probe).
+OURO_PROXY_MODE="${OURO_PROXY_MODE:-}"
 OURO_HTTP_PORT="${OURO_HTTP_PORT:-8080}"           # external mode: host port for the issuer
 OURO_BIND_ADDR="${OURO_BIND_ADDR:-127.0.0.1}"      # external mode: bind address for that port
 
@@ -77,11 +78,25 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-# Validate reverse-proxy mode early (before any work).
-case "$OURO_PROXY_MODE" in
-  caddy|external) ;;
-  *) err "invalid --proxy / OURO_PROXY_MODE: '$OURO_PROXY_MODE' (use 'caddy' or 'external')" ;;
-esac
+# Validate an explicit reverse-proxy mode early (flag/env). Empty = resolve later (prompt).
+if [ -n "$OURO_PROXY_MODE" ]; then
+  case "$OURO_PROXY_MODE" in
+    caddy|external) ;;
+    *) err "invalid --proxy / OURO_PROXY_MODE: '$OURO_PROXY_MODE' (use 'caddy' or 'external')" ;;
+  esac
+fi
+
+# Best-effort: is something already listening on :80 or :443? Used ONLY to pre-select the
+# interactive proxy prompt; any uncertainty (no tool / blocked) → "caddy". Never errors.
+detect_proxy_default() {
+  _ports=""
+  if command -v ss >/dev/null 2>&1; then
+    _ports="$(ss -ltnH 2>/dev/null | awk '{print $4}')"
+  elif command -v netstat >/dev/null 2>&1; then
+    _ports="$(netstat -ltn 2>/dev/null | awk '{print $4}')"
+  fi
+  if printf '%s\n' "$_ports" | grep -qE '[:.](80|443)$'; then echo external; else echo caddy; fi
+}
 
 # ── preflight ────────────────────────────────────────────────────────────────
 need() { command -v "$1" >/dev/null 2>&1 || err "$1 is required but not found. $2"; }
@@ -149,9 +164,27 @@ if [ "$ENV_PREEXISTED" = "1" ]; then
   warn "existing .env found — keeping your configuration (only missing secrets were filled)."
   warn "to change settings, edit .env directly or use deploy/update.sh."
   DOMAIN="$(sed -n 's/^DOMAIN=//p' .env | head -n1)"
+  [ -z "$OURO_PROXY_MODE" ] && OURO_PROXY_MODE="caddy"   # p2-7 will infer external from override
 else
   info "Configuration"
   ask DOMAIN "Public domain (must resolve to this host)" "${OURO_DOMAIN:-}" required
+
+  # Resolve reverse-proxy mode: an explicit --proxy/OURO_PROXY_MODE wins; otherwise pick a
+  # smart default — interactive uses a best-effort 80/443 probe, non-interactive uses caddy.
+  if [ -z "$OURO_PROXY_MODE" ]; then
+    if [ "$NONINTERACTIVE" = "1" ]; then
+      OURO_PROXY_MODE="caddy"
+    else
+      OURO_PROXY_MODE="$(detect_proxy_default)"
+      [ "$OURO_PROXY_MODE" = "external" ] && info "Detected a listener on 80/443 — pre-selecting 'external'."
+    fi
+  fi
+  ask OURO_PROXY_MODE "Reverse proxy: caddy (bundled auto-HTTPS) or external (your own nginx)" "$OURO_PROXY_MODE"
+  case "$OURO_PROXY_MODE" in
+    caddy|external) ;;
+    *) err "invalid reverse-proxy mode: '$OURO_PROXY_MODE' (use 'caddy' or 'external')" ;;
+  esac
+
   if [ "$OURO_PROXY_MODE" = "caddy" ]; then
     ask ACME_EMAIL "ACME/Let's Encrypt email (optional)" "${OURO_ACME_EMAIL:-}"
   else

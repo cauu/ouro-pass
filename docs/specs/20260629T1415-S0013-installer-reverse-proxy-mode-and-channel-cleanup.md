@@ -170,6 +170,15 @@ itself: in `caddy` mode it tries to bind 80/443 and fails loudly if they are tak
 - [x] p3-1 Docs: document external-proxy mode + installer-scope boundary in
       `README.md` and `docs/deployment.md`; fold the runbook's nginx variant in.
 - [x] p3-2 Full validation pass against all TCs.
+- [x] p2-6 Interactive proxy-mode prompt + best-effort port detection for its default.
+      A fresh interactive install asks "caddy | external" (defaulting via a 80/443
+      listener probe); explicit `--proxy`/`OURO_PROXY_MODE` wins; detection is
+      interactive-only and silent-fail (no tool / blocked → caddy); non-interactive
+      never detects. (Closes the gap where p2-1 added only env/flag parsing, no prompt.)
+- [ ] p2-7 Re-run mode inference: when config collection is skipped (existing .env) and
+      no explicit mode is given, infer `external` from a present
+      `docker-compose.override.yml` so re-run messaging/self-check match the deployed
+      topology (state was already idempotent; this fixes installer output only).
 
 ## 4. Test and Acceptance Criteria
 
@@ -200,7 +209,17 @@ itself: in `caddy` mode it tries to bind 80/443 and fails loudly if they are tak
   freed converges to the full stack with no duplicate containers and no data loss
   (`docker compose ps` shows all healthy; `./data/postgres` intact).
 
-Pass/fail: all TC-1..TC-11 pass; `caddy`-mode regression (TC-1) is mandatory.
+- TC-12 Interactive prompt: a fresh interactive run prompts for proxy mode; default is
+  `external` when a listener is detected on 80/443, else `caddy`; an explicit
+  `--proxy`/`OURO_PROXY_MODE` overrides the detected default; non-interactive neither
+  prompts nor detects (uses the explicit value or `caddy`).
+- TC-13 Detection is best-effort/silent: with no `ss`/`netstat` available (or the probe
+  erroring), the run proceeds with the `caddy` default and prints no error.
+- TC-14 Re-run inference: with an existing `.env` + `docker-compose.override.yml` and no
+  explicit mode, the installer treats the deployment as `external` (external
+  messaging/self-check), not `caddy`; an explicit `--proxy` still overrides.
+
+Pass/fail: all TC-1..TC-14 pass; `caddy`-mode regression (TC-1) is mandatory.
 
 ## 5. Execution Log (append-only)
 
@@ -215,7 +234,8 @@ Pass/fail: all TC-1..TC-11 pass; `caddy`-mode regression (TC-1) is mandatory.
 - 2026-06-29T14:15:56+08:00 p2-4 started/completed: external mode writes an idempotent deploy/ouro-pass.nginx.conf reference (HTTP→HTTPS redirect + 443 proxy block) with DOMAIN/bind/port substituted and nginx $vars kept literal; includes a comment on the two TLS paths + the cert-ordering caveat (nginx -t fails before certbot). Verified all TC-5 elements via isolated generation.
 - 2026-06-29T14:15:56+08:00 p2-5 started/completed: external success branch now probes http://bind:port/healthz with a bounded retry (15×2s, since up -d returns pre-health) and prints an honest contract — "not yet reachable over HTTPS" + the 3 operator steps (cp config → certbot → reload) + verify/admin/channels pointers; caddy branch unchanged. Verified mode split (external-healthy / external-unhealthy / caddy) via isolated harness.
 - 2026-06-29T14:15:56+08:00 p3-1 started/completed: added "Behind an existing reverse proxy" section to docs/deployment.md, a pointer + anchor in README.md, and gitignore entries for the two installer-generated artifacts (docker-compose.override.yml, deploy/ouro-pass.nginx.conf). Canonical external-proxy guidance now lives in deployment.md; docs/server-test-runbook.md left as an untracked personal doc.
-- 2026-06-29T14:15:56+08:00 p3-2 started/completed: ran the full local validation suite. Fully passed locally: TC-2, TC-3, TC-5, TC-6, TC-8, TC-10 (real shellcheck via docker, clean), TC-1 (artifact-absence in caddy mode), TC-4 (probe logic), TC-9 (static: update.sh only calls compose, never touches the override → caddy stays excluded by construction). Confirmed update.sh has no override/Caddyfile/refetch coupling. Deferred to an operator Docker host with the production image + a real domain (environment-blocked here): TC-4 real /healthz over the stack, TC-7 full real 80/443 conflict hint, TC-11 idempotent re-run after a real conflict. p3-2 closes the local-validatable surface; spec remains active pending optional on-server confirmation + user sign-off.
+- 2026-06-29T14:20:00+08:00 Change Request accepted (post p3-2): (1) the interactive proxy-mode prompt was specified in the design but never implemented (p2-1 added only env/flag parsing) — a defect against the spec's own design; (2) operator asked to also run a best-effort 80/443 probe to pre-select that prompt's default, silent-fail on permission/tool gaps. Added items p2-6 (prompt + detection) and p2-7 (re-run inference) + TC-12/13/14. This reopens local-validation work; spec stays active.
+- 2026-06-29T14:20:00+08:00 p2-6 started/completed: OURO_PROXY_MODE now resolves as explicit(flag/env) > interactive detect > caddy; added detect_proxy_default() (ss→netstat, address-column $4, regex [:.](80|443)$ so :8080 never matches) used interactive-only; added the "Reverse proxy: caddy|external" ask before the (caddy-only) ACME prompt with post-prompt re-validation; re-run branch keeps a caddy fallback (superseded by p2-7). Verified: shellcheck clean; detection busy80/busy443→external, only8080/notool→caddy; precedence explicit-wins / NI-no-detect / interactive-detect all correct. Fully passed locally: TC-2, TC-3, TC-5, TC-6, TC-8, TC-10 (real shellcheck via docker, clean), TC-1 (artifact-absence in caddy mode), TC-4 (probe logic), TC-9 (static: update.sh only calls compose, never touches the override → caddy stays excluded by construction). Confirmed update.sh has no override/Caddyfile/refetch coupling. Deferred to an operator Docker host with the production image + a real domain (environment-blocked here): TC-4 real /healthz over the stack, TC-7 full real 80/443 conflict hint, TC-11 idempotent re-run after a real conflict. p3-2 closes the local-validatable surface; spec remains active pending optional on-server confirmation + user sign-off.
 
 ## 6. Validation Evidence (append-only)
 
@@ -233,6 +253,8 @@ Pass/fail: all TC-1..TC-11 pass; `caddy`-mode regression (TC-1) is mandatory.
 - TC-6 | stack: other | command: isolated guarded-block test, external re-run with seeded sentinel files | result: pass | note: second run warns and keeps existing override + nginx.conf (no clobber), mirroring .env handling.
 - TC-9 (static) | stack: other | command: grep -nE 'docker compose|override|fetch|Caddyfile' deploy/update.sh | result: pass | note: update.sh only runs docker compose pull/up -d/ps/exec/logs; never references or deletes the override, never refetches files. With the override auto-loaded, caddy stays excluded (per TC-3) → update path compatible by construction. Full live update recommended on-server.
 - TC-4 (real) / TC-7 (full) / TC-11 | stack: other | command: (deferred — requires production issuer image + real domain on a Docker host) | result: deferred | note: environment-blocked here; logic/static evidence captured under TC-4-logic, TC-8, TC-3, TC-9. To be exercised by the operator on the target server.
+- TC-12 | stack: other | command: isolated harness — detect_proxy_default with realistic `ss -ltnH` rows + resolution precedence | result: pass | note: busy :80/:443 → external default, only :8080 → caddy (8080 not matched); explicit --proxy/env overrides detection; non-interactive neither prompts nor detects.
+- TC-13 | stack: other | command: harness with command -v stubbed to fail (no ss/netstat) | result: pass | note: probe yields caddy, no error raised (silent-fail).
 
 ## 7. Change Requests (append-only)
 
