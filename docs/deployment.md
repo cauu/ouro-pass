@@ -59,7 +59,7 @@ The installer never overwrites existing secrets and is safe to re-run.
 
 ### Manual setup
 
-You do **not** need the source tree — only four files (keep the directory layout):
+You do **not** need the source tree — only these files (keep the directory layout):
 
 ```
 ouro-pass/
@@ -67,7 +67,8 @@ ouro-pass/
 ├── .env.example
 └── deploy/
     ├── Caddyfile
-    └── init.sh
+    ├── init.sh
+    └── update.sh
 ```
 
 Grab them from the repo, e.g.:
@@ -78,8 +79,14 @@ BASE=https://raw.githubusercontent.com/cauu/ouro-pass/main
 curl -fsSLO $BASE/docker-compose.yml
 curl -fsSLO $BASE/.env.example
 curl -fsSL  $BASE/deploy/Caddyfile -o deploy/Caddyfile
-curl -fsSL  $BASE/deploy/init.sh   -o deploy/init.sh && chmod +x deploy/init.sh
+curl -fsSL  $BASE/deploy/init.sh   -o deploy/init.sh
+curl -fsSL  $BASE/deploy/update.sh -o deploy/update.sh
+chmod +x deploy/init.sh deploy/update.sh
 ```
+
+> Setting `ACME_EMAIL` for cert-expiry notices? The installer wires it automatically;
+> for a manual setup, add a `{ email you@example.com }` block at the top of
+> `deploy/Caddyfile` (an empty email value breaks Caddy).
 
 Then:
 

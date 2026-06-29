@@ -15,6 +15,7 @@ cd "$ROOT"
 
 BACKUP=1
 NEWTAG=""
+IMAGE="ghcr.io/cauu/ouro-pass"
 
 info() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
@@ -91,7 +92,7 @@ if [ "$BACKUP" = "1" ]; then
       err "pg_dump failed; aborting update (use --no-backup to override)"
     fi
   else
-    warn "postgres is not running — skipping DB backup"
+    err "postgres is not running — cannot take a pre-update backup. Start it (docker compose up -d postgres) or re-run with --no-backup."
   fi
 else
   warn "skipping backup (--no-backup)"
@@ -99,6 +100,9 @@ fi
 
 # ── 2) pin version if requested ──────────────────────────────────────────────
 if [ -n "$NEWTAG" ]; then
+  info "Validating image $IMAGE:$NEWTAG"
+  docker pull "$IMAGE:$NEWTAG" >/dev/null \
+    || err "image $IMAGE:$NEWTAG not found — leaving .env unchanged (use a published tag, no leading 'v')"
   info "Setting OUROPASS_TAG=$NEWTAG (was: $OLD_TAG)"
   set_env OUROPASS_TAG "$NEWTAG"
 fi

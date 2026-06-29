@@ -89,6 +89,9 @@ fetch deploy/update.sh
 chmod +x deploy/init.sh deploy/update.sh
 
 # ── secrets + ./data (reuse init.sh; idempotent, never overwrites) ───────────
+# Detect a re-run BEFORE init.sh creates .env, so we never clobber existing config.
+ENV_PREEXISTED=0
+[ -f .env ] && ENV_PREEXISTED=1
 info "Generating secrets and data directories"
 sh deploy/init.sh >/dev/null
 
@@ -120,42 +123,59 @@ set_env() {
   ' .env > "$_t" && mv "$_t" .env
 }
 
-info "Configuration"
-ask DOMAIN "Public domain (must resolve to this host)" "${OURO_DOMAIN:-}" required
-ask ACME_EMAIL "ACME/Let's Encrypt email (optional)" "${OURO_ACME_EMAIL:-}"
-ask NETWORK "Cardano network (mainnet|preprod|preview)" "${OURO_NETWORK:-preprod}"
-case "$NETWORK" in
-  mainnet) KOIOS_DEF="https://api.koios.rest/api/v1" ;;
-  preview) KOIOS_DEF="https://preview.koios.rest/api/v1" ;;
-  *)       KOIOS_DEF="https://preprod.koios.rest/api/v1" ;;
-esac
-ask CHAIN_KIND "Chain data source (koios|blockfrost|node_lsq|db_sync|mock)" "${OURO_CHAIN_KIND:-koios}"
-ask KOIOS_BASE_URL "Koios base URL" "${OURO_KOIOS_BASE_URL:-$KOIOS_DEF}"
-ask TAG "Image tag (e.g. 0.1.0, no leading v; or latest)" "${OUROPASS_TAG:-latest}"
-ask OWNER_ADDR "Owner stake address (stake1...) to admit as admin owner" "${OURO_OWNER_ADDR:-}"
-ask TELEGRAM_BOT "Telegram bot username (optional)" "${OURO_TELEGRAM_BOT:-}"
-ask TELEGRAM_TOKEN "Telegram bot token (optional)" "${OURO_TELEGRAM_TOKEN:-}"
+if [ "$ENV_PREEXISTED" = "1" ]; then
+  # Re-run on an existing install: keep the operator's config, don't clobber it.
+  warn "existing .env found — keeping your configuration (only missing secrets were filled)."
+  warn "to change settings, edit .env directly or use deploy/update.sh."
+  DOMAIN="$(sed -n 's/^DOMAIN=//p' .env | head -n1)"
+else
+  info "Configuration"
+  ask DOMAIN "Public domain (must resolve to this host)" "${OURO_DOMAIN:-}" required
+  ask ACME_EMAIL "ACME/Let's Encrypt email (optional)" "${OURO_ACME_EMAIL:-}"
+  ask NETWORK "Cardano network (mainnet|preprod|preview)" "${OURO_NETWORK:-preprod}"
+  case "$NETWORK" in
+    mainnet) KOIOS_DEF="https://api.koios.rest/api/v1" ;;
+    preview) KOIOS_DEF="https://preview.koios.rest/api/v1" ;;
+    *)       KOIOS_DEF="https://preprod.koios.rest/api/v1" ;;
+  esac
+  ask CHAIN_KIND "Chain data source (koios|blockfrost|node_lsq|db_sync|mock)" "${OURO_CHAIN_KIND:-koios}"
+  ask KOIOS_BASE_URL "Koios base URL" "${OURO_KOIOS_BASE_URL:-$KOIOS_DEF}"
+  ask TAG "Image tag (e.g. 0.1.0, no leading v; or latest)" "${OUROPASS_TAG:-latest}"
+  case "$TAG" in v[0-9]*) TAG="${TAG#v}" ;; esac   # image tags have no leading 'v'
+  ask OWNER_ADDR "Owner stake address (stake1...) to admit as admin owner" "${OURO_OWNER_ADDR:-}"
+  ask TELEGRAM_BOT "Telegram bot username (optional)" "${OURO_TELEGRAM_BOT:-}"
+  ask TELEGRAM_TOKEN "Telegram bot token (optional)" "${OURO_TELEGRAM_TOKEN:-}"
 
-# Owner key hash: from stake address (via the image) or a precomputed value.
-OWNER_KEYS="${OURO_OWNER_KEYS:-}"
-if [ -z "$OWNER_KEYS" ] && [ -n "$OWNER_ADDR" ]; then
-  info "Computing owner key hash from $OWNER_ADDR"
-  OWNER_KEYS="$(docker run --rm "$IMAGE:$TAG" stake-hash "$OWNER_ADDR")" \
-    || err "could not compute stake hash (check the address / image tag)"
+  # Owner key hash: from stake address (via the image) or a precomputed value.
+  OWNER_KEYS="${OURO_OWNER_KEYS:-}"
+  if [ -z "$OWNER_KEYS" ] && [ -n "$OWNER_ADDR" ]; then
+    info "Computing owner key hash from $OWNER_ADDR"
+    OWNER_KEYS="$(docker run --rm "$IMAGE:$TAG" stake-hash "$OWNER_ADDR")" \
+      || err "could not compute stake hash (check the address / image tag)"
+  fi
+  [ -z "$OWNER_KEYS" ] && warn "no owner key set — set OUROPASS_OWNER_KEYS in .env before you can sign in to /admin"
+
+  # ── write .env ─────────────────────────────────────────────────────────────
+  info "Writing .env"
+  set_env DOMAIN "$DOMAIN"
+  set_env ACME_EMAIL "$ACME_EMAIL"
+  set_env OUROPASS_TAG "$TAG"
+  set_env OUROPASS_NETWORK "$NETWORK"
+  set_env OUROPASS_CHAIN_KIND "$CHAIN_KIND"
+  set_env OUROPASS_KOIOS_BASE_URL "$KOIOS_BASE_URL"
+  set_env OUROPASS_OWNER_KEYS "$OWNER_KEYS"
+  set_env OUROPASS_TELEGRAM_BOT "$TELEGRAM_BOT"
+  set_env OUROPASS_TELEGRAM_TOKEN "$TELEGRAM_TOKEN"
+
+  # Caddy errors on an empty `email` directive, so only enable it when provided.
+  if [ -n "$ACME_EMAIL" ] && ! grep -q '^[[:space:]]*email ' deploy/Caddyfile; then
+    # literal {$ACME_EMAIL} is a Caddy env placeholder, resolved at runtime — keep single quotes.
+    # shellcheck disable=SC2016
+    printf '{\n\temail {$ACME_EMAIL}\n}\n\n%s\n' "$(cat deploy/Caddyfile)" > deploy/Caddyfile.tmp \
+      && mv deploy/Caddyfile.tmp deploy/Caddyfile
+    info "Enabled Caddy ACME email block"
+  fi
 fi
-[ -z "$OWNER_KEYS" ] && warn "no owner key set — set OUROPASS_OWNER_KEYS in .env before you can sign in to /admin"
-
-# ── write .env ───────────────────────────────────────────────────────────────
-info "Writing .env"
-set_env DOMAIN "$DOMAIN"
-set_env ACME_EMAIL "$ACME_EMAIL"
-set_env OUROPASS_TAG "$TAG"
-set_env OUROPASS_NETWORK "$NETWORK"
-set_env OUROPASS_CHAIN_KIND "$CHAIN_KIND"
-set_env OUROPASS_KOIOS_BASE_URL "$KOIOS_BASE_URL"
-set_env OUROPASS_OWNER_KEYS "$OWNER_KEYS"
-set_env OUROPASS_TELEGRAM_BOT "$TELEGRAM_BOT"
-set_env OUROPASS_TELEGRAM_TOKEN "$TELEGRAM_TOKEN"
 
 # ── optionally start ─────────────────────────────────────────────────────────
 ask START "Start the stack now? (yes/no)" "${OURO_START:-yes}"

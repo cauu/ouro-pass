@@ -69,7 +69,8 @@ curl -fsSL https://raw.githubusercontent.com/cauu/ouro-pass/main/deploy/install.
 ```
 
 You don't need the source tree — the installer fetches only the compose stack
-(`docker-compose.yml`, `.env.example`, `deploy/Caddyfile`, `deploy/init.sh`).
+(`docker-compose.yml`, `.env.example`, `deploy/Caddyfile`, `deploy/init.sh`,
+`deploy/update.sh`).
 
 <details><summary>Or set it up manually</summary>
 
@@ -79,7 +80,9 @@ BASE=https://raw.githubusercontent.com/cauu/ouro-pass/main
 curl -fsSLO $BASE/docker-compose.yml
 curl -fsSLO $BASE/.env.example
 curl -fsSL  $BASE/deploy/Caddyfile -o deploy/Caddyfile
-curl -fsSL  $BASE/deploy/init.sh   -o deploy/init.sh && chmod +x deploy/init.sh
+curl -fsSL  $BASE/deploy/init.sh   -o deploy/init.sh
+curl -fsSL  $BASE/deploy/update.sh -o deploy/update.sh
+chmod +x deploy/init.sh deploy/update.sh
 
 ./deploy/init.sh                 # generate .env + random secrets + ./data dirs
 docker run --rm ghcr.io/cauu/ouro-pass stake-hash stake1...   # your owner key hash
