@@ -164,7 +164,12 @@ if [ "$ENV_PREEXISTED" = "1" ]; then
   warn "existing .env found — keeping your configuration (only missing secrets were filled)."
   warn "to change settings, edit .env directly or use deploy/update.sh."
   DOMAIN="$(sed -n 's/^DOMAIN=//p' .env | head -n1)"
-  [ -z "$OURO_PROXY_MODE" ] && OURO_PROXY_MODE="caddy"   # p2-7 will infer external from override
+  # Re-run: recover the mode the prior install chose so messaging/self-check match the
+  # deployed topology. The generated override is the on-disk record of "external"; absent
+  # it, this is a bundled-caddy deployment. An explicit --proxy/OURO_PROXY_MODE overrides.
+  if [ -z "$OURO_PROXY_MODE" ]; then
+    if [ -f docker-compose.override.yml ]; then OURO_PROXY_MODE="external"; else OURO_PROXY_MODE="caddy"; fi
+  fi
 else
   info "Configuration"
   ask DOMAIN "Public domain (must resolve to this host)" "${OURO_DOMAIN:-}" required
