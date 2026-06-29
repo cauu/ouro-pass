@@ -1,12 +1,12 @@
 # Ouro Pass 一键安装脚本（curl | sh 引导式部署）
 
 Spec-ID: S0011
-Status: active
+Status: completed
 Created Time: 2026-06-28T14:00:00+08:00
 Start Time: 2026-06-28T14:00:00+08:00
-Completion Time:
+Completion Time: 2026-06-29T10:00:00+08:00
 Previous Spec-ID: S0010
-Closure Reason:
+Closure Reason: delivered
 
 > S0010 后用户仍需手动 `curl` 下 4 个文件再跑 `init.sh`。本 spec 提供 **一条命令引导式安装**（自托管圈 Pi-hole/k3s/rustup 范式）：`curl -fsSL .../deploy/install.sh | sh` → 检测前置 → 钉 ref 下载编排文件 → 复用 `init.sh` 生成密钥/目录 → **交互问答**填 `.env`（域名/网络/链源/owner 地址→自动算 hash/可选 Telegram）→ 可选 `docker compose up -d`。交互层经用户确认用 **POSIX `read`（零依赖）**，检测到 `gum` 则渐进增强；支持 `--non-interactive`+env 自动化。零应用代码改动。
 
@@ -123,3 +123,4 @@ main:
 
 ## 7. Change Requests (append-only)
 - （无）
+- 2026-06-29 S0011 关闭（active→completed，Closure Reason: `delivered`）：p1–p4 交付——`deploy/install.sh` 一行引导安装器(POSIX、非交互、owner 地址→hash)、README/docs 接入、v0.2.0 实地发布(镜像 + 钉版本一行链路可用)。**升级脚本(`deploy/update.sh`，简单可靠、容忍短暂停机、热备/--tag/健康等待/回滚提示)** 属新的更新生命周期范围，另立 **S0012**（Previous Spec-ID: S0011）。
