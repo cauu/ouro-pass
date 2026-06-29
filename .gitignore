@@ -39,6 +39,7 @@ tmp/
 # ---- Deployment (S0013): installer-generated artifacts (external proxy mode) ----
 /docker-compose.override.yml
 /deploy/ouro-pass.nginx.conf
+/.ouro-configured
 
 # ---- Claude Code (local agent config) ----
 .claude/

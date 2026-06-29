@@ -170,6 +170,13 @@ itself: in `caddy` mode it tries to bind 80/443 and fails loudly if they are tak
 - [x] p3-1 Docs: document external-proxy mode + installer-scope boundary in
       `README.md` and `docs/deployment.md`; fold the runbook's nginx variant in.
 - [x] p3-2 Full validation pass against all TCs.
+- [x] p4-1 Interrupted-install recovery (completion marker + perceive/fix UX). Write
+      `.ouro-configured` only after config fully succeeds; on re-run distinguish a finished
+      install (marker present, or legacy real DOMAIN → self-heal the marker) from an
+      interrupted one (no marker + placeholder/empty DOMAIN) → notify and offer to
+      re-configure (interactive) or fail fast (non-interactive). Add `--reconfigure` /
+      `OURO_RECONFIGURE`. Re-configure only rewrites `.env` config fields; never touches
+      `./data` (no destructive reset in this item).
 - [x] p2-6 Interactive proxy-mode prompt + best-effort port detection for its default.
       A fresh interactive install asks "caddy | external" (defaulting via a 80/443
       listener probe); explicit `--proxy`/`OURO_PROXY_MODE` wins; detection is
@@ -218,8 +225,16 @@ itself: in `caddy` mode it tries to bind 80/443 and fails loudly if they are tak
 - TC-14 Re-run inference: with an existing `.env` + `docker-compose.override.yml` and no
   explicit mode, the installer treats the deployment as `external` (external
   messaging/self-check), not `caddy`; an explicit `--proxy` still overrides.
+- TC-15 Interrupted-install detection: `.env` present with the placeholder/empty DOMAIN and
+  no `.ouro-configured` → interactive run reports an unfinished install and offers
+  re-configure; non-interactive fails fast unless `--reconfigure`/`OURO_RECONFIGURE`.
+- TC-16 Finished install untouched: `.ouro-configured` present → re-run keeps config (no
+  re-prompt); a legacy finished install (no marker but real DOMAIN) is treated as
+  configured and self-heals the marker.
+- TC-17 Marker lifecycle: a completed configure writes `.ouro-configured` as the final
+  step; an abort before that step leaves no marker (so the next run detects interrupted).
 
-Pass/fail: all TC-1..TC-14 pass; `caddy`-mode regression (TC-1) is mandatory.
+Pass/fail: all TC-1..TC-17 pass; `caddy`-mode regression (TC-1) is mandatory.
 
 ## 5. Execution Log (append-only)
 
@@ -236,6 +251,7 @@ Pass/fail: all TC-1..TC-14 pass; `caddy`-mode regression (TC-1) is mandatory.
 - 2026-06-29T14:15:56+08:00 p3-1 started/completed: added "Behind an existing reverse proxy" section to docs/deployment.md, a pointer + anchor in README.md, and gitignore entries for the two installer-generated artifacts (docker-compose.override.yml, deploy/ouro-pass.nginx.conf). Canonical external-proxy guidance now lives in deployment.md; docs/server-test-runbook.md left as an untracked personal doc.
 - 2026-06-29T14:20:00+08:00 Change Request accepted (post p3-2): (1) the interactive proxy-mode prompt was specified in the design but never implemented (p2-1 added only env/flag parsing) — a defect against the spec's own design; (2) operator asked to also run a best-effort 80/443 probe to pre-select that prompt's default, silent-fail on permission/tool gaps. Added items p2-6 (prompt + detection) and p2-7 (re-run inference) + TC-12/13/14. This reopens local-validation work; spec stays active.
 - 2026-06-29T14:20:00+08:00 p2-6 started/completed: OURO_PROXY_MODE now resolves as explicit(flag/env) > interactive detect > caddy; added detect_proxy_default() (ss→netstat, address-column $4, regex [:.](80|443)$ so :8080 never matches) used interactive-only; added the "Reverse proxy: caddy|external" ask before the (caddy-only) ACME prompt with post-prompt re-validation; re-run branch keeps a caddy fallback (superseded by p2-7). Verified: shellcheck clean; detection busy80/busy443→external, only8080/notool→caddy; precedence explicit-wins / NI-no-detect / interactive-detect all correct.
+- 2026-06-29T14:35:00+08:00 p4-1 started/completed: added a `.ouro-configured` completion marker written as the final config step; replaced the binary ENV_PREEXISTED gate with a three-state decision (fresh / --reconfigure / finished-keep / interrupted-recover) via is_configured() (marker present, or legacy real-DOMAIN bridge that self-heals the marker); interrupted installs now warn + offer re-configure interactively, or fail fast non-interactively (pointing at --reconfigure / delete .env). Added `--reconfigure`/`OURO_RECONFIGURE`, --help text, gitignore + a deployment.md troubleshooting entry. Re-configure only rewrites .env config fields; ./data untouched. Verified: shellcheck clean (fixed an SC2154 on the eval-assigned _redo); all 7 decision branches correct (fresh→configure, marker→keep, legacy→keep+heal, --reconfigure→configure, interrupted+NI→fail, interrupted+yes→configure, interrupted+no→abort).
 - 2026-06-29T14:20:00+08:00 p2-7 started/completed: re-run branch (existing .env) now infers OURO_PROXY_MODE=external when docker-compose.override.yml is present (else caddy), with an explicit flag/env still overriding — so re-run messaging/self-check match the deployed topology. Verified via harness: no-override→caddy, override→external, override+explicit-caddy→caddy. shellcheck clean. Fully passed locally: TC-2, TC-3, TC-5, TC-6, TC-8, TC-10 (real shellcheck via docker, clean), TC-1 (artifact-absence in caddy mode), TC-4 (probe logic), TC-9 (static: update.sh only calls compose, never touches the override → caddy stays excluded by construction). Confirmed update.sh has no override/Caddyfile/refetch coupling. Deferred to an operator Docker host with the production image + a real domain (environment-blocked here): TC-4 real /healthz over the stack, TC-7 full real 80/443 conflict hint, TC-11 idempotent re-run after a real conflict. p3-2 closes the local-validatable surface; spec remains active pending optional on-server confirmation + user sign-off.
 
 ## 6. Validation Evidence (append-only)
@@ -257,6 +273,9 @@ Pass/fail: all TC-1..TC-14 pass; `caddy`-mode regression (TC-1) is mandatory.
 - TC-12 | stack: other | command: isolated harness — detect_proxy_default with realistic `ss -ltnH` rows + resolution precedence | result: pass | note: busy :80/:443 → external default, only :8080 → caddy (8080 not matched); explicit --proxy/env overrides detection; non-interactive neither prompts nor detects.
 - TC-13 | stack: other | command: harness with command -v stubbed to fail (no ss/netstat) | result: pass | note: probe yields caddy, no error raised (silent-fail).
 - TC-14 | stack: other | command: isolated re-run-inference harness toggling override presence + explicit mode | result: pass | note: no override→caddy, override present→external, override+explicit caddy→caddy (explicit overrides). shellcheck clean on the full script.
+- TC-15 | stack: other | command: decision-block harness, .env DOMAIN=pass.example.com + no marker | result: pass | note: interactive → warns "Unfinished install" + asks re-configure (yes→DO_CONFIGURE=1, no→abort); non-interactive → fail-fast err pointing at --reconfigure / delete .env.
+- TC-16 | stack: other | command: decision-block harness, marker present and legacy (no marker, real DOMAIN) | result: pass | note: marker present → DO_CONFIGURE=0 (keep); legacy real DOMAIN → DO_CONFIGURE=0 and marker self-healed to present; --reconfigure forces DO_CONFIGURE=1 even with marker.
+- TC-17 | stack: other | command: grep placement + harness | result: pass | note: `: > "$CONFIGURED_MARKER"` is the last statement of the configure branch (after the Caddyfile step, before the branch `fi`); fresh install leaves marker absent until that step runs, so an earlier abort is detected next run. shellcheck clean.
 
 ## 7. Change Requests (append-only)
 
@@ -271,3 +290,14 @@ Pass/fail: all TC-1..TC-14 pass; `caddy`-mode regression (TC-1) is mandatory.
   - The same honest-state principle applies to p2-5's final message (no false "nothing
     deployed" / no false "all done").
   - Added TC-11 to cover idempotent re-run after a conflict.
+
+- 2026-06-29T14:35:00+08:00 Change Request accepted (during on-server testing): an
+  interrupted install (operator quit right after the DOMAIN prompt) left a placeholder
+  `.env` (init.sh creates `.env` BEFORE the questions), so the next run took the "existing
+  install" path, skipped all prompts, and deployed with the example DOMAIN — i.e. the
+  installer was not safely re-runnable after an abort. This is a pre-existing S0011
+  robustness gap, but it blocks S0013's own on-server acceptance, and the one-active-spec
+  rule precludes a parallel S0014 — so it is appended here as bucket p4 rather than a new
+  spec. Chosen approach: A (completion marker) + perceive/fix UX, with a legacy real-DOMAIN
+  bridge for installs predating the marker. Added p4-1 + TC-15/16/17. Out of scope for this
+  item: destructive `--reset` and DOMAIN input sanitization (candidate follow-ups).

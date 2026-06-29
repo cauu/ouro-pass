@@ -296,6 +296,11 @@ mock chain), then open `http://localhost:8080`.
 - **No members / chain errors** — verify `OUROPASS_CHAIN_KIND`,
   `OUROPASS_KOIOS_BASE_URL` matches `OUROPASS_NETWORK`, and the koios instance is
   reachable.
+- **"Unfinished install detected" / a previous run was interrupted** — the installer
+  writes `.env` before the questions, so quitting mid-setup leaves a placeholder `.env`.
+  On the next run it detects this (no `.ouro-configured` marker yet) and offers to
+  re-configure; non-interactively, pass `--reconfigure`. To start completely fresh
+  instead, delete `.env` (nothing is deployed until you finish, so `./data` is empty).
 
 ## Hardening notes (optional)
 

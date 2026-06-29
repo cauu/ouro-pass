@@ -28,6 +28,8 @@ NONINTERACTIVE="${OURO_NONINTERACTIVE:-0}"
 OURO_PROXY_MODE="${OURO_PROXY_MODE:-}"
 OURO_HTTP_PORT="${OURO_HTTP_PORT:-8080}"           # external mode: host port for the issuer
 OURO_BIND_ADDR="${OURO_BIND_ADDR:-127.0.0.1}"      # external mode: bind address for that port
+RECONFIGURE="${OURO_RECONFIGURE:-0}"               # force re-running the config questions
+CONFIGURED_MARKER=".ouro-configured"               # written only after config fully succeeds
 
 info() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
@@ -43,12 +45,14 @@ usage() {
   cat <<USAGE
 Ouro Pass installer
 
-Usage: install.sh [--non-interactive|-y] [--proxy MODE] [--ref REF] [--dir DIR]
+Usage: install.sh [--non-interactive|-y] [--proxy MODE] [--reconfigure] [--ref REF] [--dir DIR]
 
 Options:
   --non-interactive, -y   no prompts; take values from OURO_* env vars
   --proxy MODE            reverse proxy: 'caddy' (bundled TLS, default) or 'external'
                           (run behind your own nginx/proxy; no 80/443 needed)
+  --reconfigure           re-run the configuration questions even if .env exists
+                          (also how to recover an interrupted install)
   --ref REF               git ref to download files from (default: ${OURO_REF})
   --dir DIR               install directory (default: ${OURO_DIR})
   -h, --help              show this help
@@ -69,6 +73,7 @@ USAGE
 while [ $# -gt 0 ]; do
   case "$1" in
     --non-interactive|-y) NONINTERACTIVE=1 ;;
+    --reconfigure) RECONFIGURE=1 ;;
     --proxy) shift; OURO_PROXY_MODE="${1:?--proxy needs a value (caddy|external)}" ;;
     --ref) shift; OURO_REF="${1:?--ref needs a value}"; OURO_BASEURL="https://raw.githubusercontent.com/cauu/ouro-pass/${OURO_REF}" ;;
     --dir) shift; OURO_DIR="${1:?--dir needs a value}" ;;
@@ -159,8 +164,41 @@ set_env() {
   ' .env > "$_t" && mv "$_t" .env
 }
 
-if [ "$ENV_PREEXISTED" = "1" ]; then
-  # Re-run on an existing install: keep the operator's config, don't clobber it.
+# ── decide: configure now, or keep a finished install? ──────────────────────
+# init.sh creates .env BEFORE the questions, so an aborted run leaves a placeholder .env.
+# A completion marker (.ouro-configured), written only after config fully succeeds, tells a
+# finished install apart from an interrupted one. Installs predating the marker are
+# recognized by a real (non-placeholder) DOMAIN and self-heal the marker.
+_cur_domain="$(sed -n 's/^DOMAIN=//p' .env | head -n1)"
+is_configured() {
+  [ -f "$CONFIGURED_MARKER" ] && return 0
+  [ -n "$_cur_domain" ] && [ "$_cur_domain" != "pass.example.com" ]
+}
+
+DO_CONFIGURE=0
+if [ "$ENV_PREEXISTED" = "0" ]; then
+  DO_CONFIGURE=1                                   # brand-new install
+elif [ "$RECONFIGURE" = "1" ]; then
+  DO_CONFIGURE=1                                   # operator forced re-configure
+elif is_configured; then
+  DO_CONFIGURE=0                                   # finished install — keep config
+  [ -f "$CONFIGURED_MARKER" ] || : > "$CONFIGURED_MARKER"   # self-heal legacy installs
+else
+  # .env exists but configuration never completed — a previous run was interrupted.
+  warn "Unfinished install detected: .env exists but configuration wasn't completed"
+  warn "(a previous run was interrupted before finishing). Nothing was deployed yet."
+  if [ "$NONINTERACTIVE" = "1" ]; then
+    err "re-run with --reconfigure to finish configuration, or delete .env to start fresh."
+  fi
+  _redo=yes; ask _redo "Re-configure now? (yes/no)" "yes"
+  case "$_redo" in
+    y|Y|yes|YES|true|1) DO_CONFIGURE=1 ;;
+    *) err "aborted. Re-run with --reconfigure, or remove .env to start over." ;;
+  esac
+fi
+
+if [ "$DO_CONFIGURE" = "0" ]; then
+  # Re-run on a finished install: keep the operator's config, don't clobber it.
   warn "existing .env found — keeping your configuration (only missing secrets were filled)."
   warn "to change settings, edit .env directly or use deploy/update.sh."
   DOMAIN="$(sed -n 's/^DOMAIN=//p' .env | head -n1)"
@@ -235,6 +273,10 @@ else
       && mv deploy/Caddyfile.tmp deploy/Caddyfile
     info "Enabled Caddy ACME email block"
   fi
+
+  # Mark configuration complete — MUST be the last step so an abort above leaves no marker
+  # and the next run detects an interrupted install.
+  : > "$CONFIGURED_MARKER"
 fi
 
 # ── external reverse-proxy mode: compose override ────────────────────────────
