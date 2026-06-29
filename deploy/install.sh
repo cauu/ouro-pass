@@ -199,9 +199,26 @@ ask START "Start the stack now? (yes/no)" "${OURO_START:-yes}"
 case "$START" in
   y|Y|yes|YES|true|1)
     info "Starting: docker compose up -d"
-    docker compose up -d
-    info "Done. Open https://${DOMAIN}/admin and sign in with your owner wallet."
-    info "Add delivery channels (Telegram, …) from the admin console after signing in."
+    # Run inside an `if` so `set -e` doesn't abort before we can explain a failure.
+    if docker compose up -d; then
+      info "Done. Open https://${DOMAIN}/admin and sign in with your owner wallet."
+      info "Add delivery channels (Telegram, …) from the admin console after signing in."
+    else
+      st=$?
+      warn "docker compose up -d failed (exit ${st})."
+      if [ "$OURO_PROXY_MODE" = "caddy" ]; then
+        # The usual cause is 80/443 already in use (e.g. an existing nginx). compose is
+        # not transactional: postgres/issuer may already be running — a normal partial
+        # state, not data loss (./data persists). See README "behind an existing proxy".
+        warn "Ports 80/443 may be in use (e.g. an existing reverse proxy)."
+        warn "postgres/issuer may already be running — that is an expected partial state,"
+        warn "not data loss; ./data is intact."
+        warn "Fix and finish one of two ways:"
+        warn "  • free 80/443, then re-run (idempotent):  docker compose up -d"
+        warn "  • redeploy behind your existing proxy:    install.sh --proxy external"
+      fi
+      exit "${st}"
+    fi
     ;;
   *)
     info "Skipped start. When ready:  cd ${OURO_DIR} && docker compose up -d"
