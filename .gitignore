@@ -36,6 +36,10 @@ tmp/
 # ---- Deployment (S0009): host-mounted runtime data, never commit ----
 /data/
 
+# ---- Deployment (S0013): installer-generated artifacts (external proxy mode) ----
+/docker-compose.override.yml
+/deploy/ouro-pass.nginx.conf
+
 # ---- Claude Code (local agent config) ----
 .claude/
 code_review/

@@ -167,7 +167,7 @@ itself: in `caddy` mode it tries to bind 80/443 and fails loudly if they are tak
       `DOMAIN` + port/bind.
 - [x] p2-5 External mode: post-start local `/healthz` self-check + operator-steps final
       message (no false "public ready" claim).
-- [ ] p3-1 Docs: document external-proxy mode + installer-scope boundary in
+- [x] p3-1 Docs: document external-proxy mode + installer-scope boundary in
       `README.md` and `docs/deployment.md`; fold the runbook's nginx variant in.
 - [ ] p3-2 Full validation pass against all TCs.
 
@@ -214,6 +214,7 @@ Pass/fail: all TC-1..TC-11 pass; `caddy`-mode regression (TC-1) is mandatory.
 - 2026-06-29T14:15:56+08:00 p2-3 started/completed: external mode now (a) skips the ACME_EMAIL prompt (sets ACME_EMAIL="" to stay set -u safe), (b) skips the Caddyfile email-block injection, and (c) writes an idempotent docker-compose.override.yml publishing issuer on ${OURO_BIND_ADDR}:${OURO_HTTP_PORT} and assigning caddy an inactive profile. Risk retired: verified on real docker compose v2.31 that the override-applied profile excludes caddy from default `up` (TC-3).
 - 2026-06-29T14:15:56+08:00 p2-4 started/completed: external mode writes an idempotent deploy/ouro-pass.nginx.conf reference (HTTP→HTTPS redirect + 443 proxy block) with DOMAIN/bind/port substituted and nginx $vars kept literal; includes a comment on the two TLS paths + the cert-ordering caveat (nginx -t fails before certbot). Verified all TC-5 elements via isolated generation.
 - 2026-06-29T14:15:56+08:00 p2-5 started/completed: external success branch now probes http://bind:port/healthz with a bounded retry (15×2s, since up -d returns pre-health) and prints an honest contract — "not yet reachable over HTTPS" + the 3 operator steps (cp config → certbot → reload) + verify/admin/channels pointers; caddy branch unchanged. Verified mode split (external-healthy / external-unhealthy / caddy) via isolated harness.
+- 2026-06-29T14:15:56+08:00 p3-1 started/completed: added "Behind an existing reverse proxy" section to docs/deployment.md, a pointer + anchor in README.md, and gitignore entries for the two installer-generated artifacts (docker-compose.override.yml, deploy/ouro-pass.nginx.conf). Canonical external-proxy guidance now lives in deployment.md; docs/server-test-runbook.md left as an untracked personal doc.
 
 ## 6. Validation Evidence (append-only)
 

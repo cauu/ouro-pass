@@ -92,6 +92,12 @@ docker compose up -d             # pull image + start issuer + postgres + caddy
 ```
 </details>
 
+By default the stack includes **Caddy** for automatic HTTPS on ports 80/443. Already
+running nginx (or another proxy) there? Install with `--proxy external` (or
+`OURO_PROXY_MODE=external`): the issuer is published on a local port and the installer
+emits a reference nginx config for you to wire up — see
+[docs/deployment.md](docs/deployment.md#behind-an-existing-reverse-proxy-no-bundled-caddy).
+
 The image is published multi-arch (linux/amd64 + linux/arm64) to GHCR:
 
 ```

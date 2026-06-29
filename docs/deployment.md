@@ -217,6 +217,53 @@ docker build -t ghcr.io/cauu/ouro-pass:local .
 OUROPASS_TAG=local docker compose up -d
 ```
 
+## Behind an existing reverse proxy (no bundled Caddy)
+
+If the host already runs a reverse proxy on ports 80/443 (e.g. nginx), the bundled
+Caddy can't bind those ports. Use **external proxy mode**: the installer runs the
+issuer on a local host port and lets *your* proxy terminate TLS and forward to it.
+
+```sh
+# interactive — pick "external" when asked, or:
+sh install.sh --proxy external
+# non-interactive:
+... install.sh | OURO_PROXY_MODE=external OURO_DOMAIN=pass.example.com OURO_OWNER_ADDR=stake1... sh -s -- --non-interactive
+```
+
+Optional knobs: `OURO_HTTP_PORT` (default `8080`) and `OURO_BIND_ADDR` (default
+`127.0.0.1`, i.e. only reachable from the host — correct for a same-host nginx).
+
+What external mode does — and deliberately does **not** do:
+
+- Writes `docker-compose.override.yml` that publishes the issuer on
+  `${OURO_BIND_ADDR}:${OURO_HTTP_PORT}` and moves Caddy into an inactive compose
+  profile, so `docker compose up -d` starts **only postgres + issuer**. The committed
+  `docker-compose.yml` is untouched, so `deploy/update.sh` keeps working unchanged.
+- Generates `deploy/ouro-pass.nginx.conf` — a **reference** server block (HTTP→HTTPS
+  redirect + a 443 proxy block with the required forwarded headers). It does **not**
+  edit your nginx config or obtain certificates; TLS stays under your control.
+- After start, it probes `http://<bind>:<port>/healthz` locally and prints the
+  remaining operator steps (it never claims public readiness it can't verify).
+
+Finish the wiring yourself (the installer prints these):
+
+```sh
+sudo cp deploy/ouro-pass.nginx.conf /etc/nginx/conf.d/<domain>.conf
+sudo certbot --nginx -d <domain>          # or point ssl_certificate at an existing cert
+sudo nginx -t && sudo systemctl reload nginx
+curl -fsS https://<domain>/healthz        # verify, then open https://<domain>/admin
+```
+
+> The generated 443 block assumes certs already exist at the certbot default path, so
+> `nginx -t` fails until they do. Either place an HTTP-only version first and let
+> `certbot --nginx` add the 443 block, or run `certbot certonly` before enabling it.
+> The issuer trusts `X-Forwarded-Proto`/`X-Forwarded-For` (it already runs with
+> `OUROPASS_TLS=true` + `OUROPASS_TRUSTED_PROXY=true`), so keep those headers set —
+> the generated config already does.
+
+To switch back to bundled Caddy later, delete `docker-compose.override.yml` and
+re-run `docker compose up -d` (Caddy needs 80/443 free).
+
 ## External database
 
 To use an existing Postgres instead of the bundled one: comment out the whole
