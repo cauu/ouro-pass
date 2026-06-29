@@ -277,8 +277,31 @@ case "$START" in
     info "Starting: docker compose up -d"
     # Run inside an `if` so `set -e` doesn't abort before we can explain a failure.
     if docker compose up -d; then
-      info "Done. Open https://${DOMAIN}/admin and sign in with your owner wallet."
-      info "Add delivery channels (Telegram, …) from the admin console after signing in."
+      if [ "$OURO_PROXY_MODE" = "external" ]; then
+        # `up -d` returns once containers start, not once healthy — the issuer migrates
+        # the DB first. Probe the published port locally (this is all install.sh can verify;
+        # public reachability depends on the operator's nginx + TLS, set up next).
+        info "Checking issuer health on http://${OURO_BIND_ADDR}:${OURO_HTTP_PORT} ..."
+        _ready=0; _try=0
+        while [ "$_try" -lt 15 ]; do
+          if curl -fsS "http://${OURO_BIND_ADDR}:${OURO_HTTP_PORT}/healthz" >/dev/null 2>&1; then _ready=1; break; fi
+          _try=$((_try + 1)); sleep 2
+        done
+        if [ "$_ready" = "1" ]; then
+          info "issuer healthy (local /healthz OK). postgres + issuer are up."
+        else
+          warn "issuer not healthy yet after ~30s — inspect: docker compose logs -f issuer"
+        fi
+        info "Not yet reachable over HTTPS. Finish with your existing nginx:"
+        info "  1) install the proxy config:  sudo cp deploy/ouro-pass.nginx.conf /etc/nginx/conf.d/${DOMAIN}.conf"
+        info "  2) obtain a certificate:      sudo certbot --nginx -d ${DOMAIN}"
+        info "  3) reload nginx:              sudo nginx -t && sudo systemctl reload nginx"
+        info "Then verify:  curl -fsS https://${DOMAIN}/healthz  →  open https://${DOMAIN}/admin"
+        info "Add delivery channels (Telegram, …) in /admin after signing in."
+      else
+        info "Done. Open https://${DOMAIN}/admin and sign in with your owner wallet."
+        info "Add delivery channels (Telegram, …) from the admin console after signing in."
+      fi
     else
       st=$?
       warn "docker compose up -d failed (exit ${st})."

@@ -165,7 +165,7 @@ itself: in `caddy` mode it tries to bind 80/443 and fails loudly if they are tak
       (issuer host port + caddy profiled-off) and skip ACME/Caddyfile logic.
 - [x] p2-4 External mode: generate idempotent `deploy/ouro-pass.nginx.conf` from
       `DOMAIN` + port/bind.
-- [ ] p2-5 External mode: post-start local `/healthz` self-check + operator-steps final
+- [x] p2-5 External mode: post-start local `/healthz` self-check + operator-steps final
       message (no false "public ready" claim).
 - [ ] p3-1 Docs: document external-proxy mode + installer-scope boundary in
       `README.md` and `docs/deployment.md`; fold the runbook's nginx variant in.
@@ -213,6 +213,7 @@ Pass/fail: all TC-1..TC-11 pass; `caddy`-mode regression (TC-1) is mandatory.
 - 2026-06-29T14:15:56+08:00 p2-2 started/completed: wrapped the start `docker compose up -d` in an if/else (suspends set -e) so a failure prints an enriched hint — partial-state/idempotent re-run guidance + `--proxy external` alternative, gated on caddy mode. Verified via isolated harness (caddy-fail→hint+exit1, external-fail→no caddy hint+exit1, caddy-success→Done+exit0).
 - 2026-06-29T14:15:56+08:00 p2-3 started/completed: external mode now (a) skips the ACME_EMAIL prompt (sets ACME_EMAIL="" to stay set -u safe), (b) skips the Caddyfile email-block injection, and (c) writes an idempotent docker-compose.override.yml publishing issuer on ${OURO_BIND_ADDR}:${OURO_HTTP_PORT} and assigning caddy an inactive profile. Risk retired: verified on real docker compose v2.31 that the override-applied profile excludes caddy from default `up` (TC-3).
 - 2026-06-29T14:15:56+08:00 p2-4 started/completed: external mode writes an idempotent deploy/ouro-pass.nginx.conf reference (HTTP→HTTPS redirect + 443 proxy block) with DOMAIN/bind/port substituted and nginx $vars kept literal; includes a comment on the two TLS paths + the cert-ordering caveat (nginx -t fails before certbot). Verified all TC-5 elements via isolated generation.
+- 2026-06-29T14:15:56+08:00 p2-5 started/completed: external success branch now probes http://bind:port/healthz with a bounded retry (15×2s, since up -d returns pre-health) and prints an honest contract — "not yet reachable over HTTPS" + the 3 operator steps (cp config → certbot → reload) + verify/admin/channels pointers; caddy branch unchanged. Verified mode split (external-healthy / external-unhealthy / caddy) via isolated harness.
 
 ## 6. Validation Evidence (append-only)
 
@@ -223,6 +224,8 @@ Pass/fail: all TC-1..TC-11 pass; `caddy`-mode regression (TC-1) is mandatory.
 - TC-8 (partial, caddy-fail path) | stack: other | command: isolated start-block harness with stubbed failing `docker` | result: pass | note: caddy-mode up failure prints partial-state + idempotent-rerun + --proxy external hint and exits non-zero; external mode skips the caddy hint; success path prints Done. Real-stack caddy port-conflict (TC-7 full) + idempotent re-run (TC-11) to be exercised at p3-2 on a Docker host.
 - TC-3 | stack: other | command: docker compose config --services (real docker-compose.yml + generated override + minimal .env), v2.31.0 | result: pass | note: default services = {issuer, postgres}, caddy ABSENT; `--profile caddy-disabled` re-includes caddy (proves profiled-off not removed); issuer publishes 127.0.0.1:8080:8080.
 - TC-5 | stack: other | command: isolated heredoc generation + grep assertions | result: pass | note: server_name=pass.example.com, proxy_pass=http://127.0.0.1:8080, all four forwarded headers present incl X-Forwarded-Proto; nginx $host/$scheme/etc kept literal; DOMAIN/bind/port expanded.
+- TC-4 (logic) | stack: other | command: isolated success-branch harness (stub docker/curl/sleep) | result: pass | note: external mode probes /healthz with bounded retry; healthy→"issuer healthy", unhealthy→warn; real /healthz on a Docker host deferred to p3-2.
+- TC-8 | stack: other | command: same harness, assert messaging by mode | result: pass | note: external prints "not yet reachable over HTTPS" + 3 operator steps and NEVER the "Done. Open https://…" line; caddy prints only the Done line. Honest-state contract met.
 
 ## 7. Change Requests (append-only)
 
