@@ -163,7 +163,7 @@ itself: in `caddy` mode it tries to bind 80/443 and fails loudly if they are tak
       (Docker's bind failure is the detector; no pre-flight port scan).
 - [x] p2-3 External mode: generate idempotent `docker-compose.override.yml`
       (issuer host port + caddy profiled-off) and skip ACME/Caddyfile logic.
-- [ ] p2-4 External mode: generate idempotent `deploy/ouro-pass.nginx.conf` from
+- [x] p2-4 External mode: generate idempotent `deploy/ouro-pass.nginx.conf` from
       `DOMAIN` + port/bind.
 - [ ] p2-5 External mode: post-start local `/healthz` self-check + operator-steps final
       message (no false "public ready" claim).
@@ -212,6 +212,7 @@ Pass/fail: all TC-1..TC-11 pass; `caddy`-mode regression (TC-1) is mandatory.
 - 2026-06-29T14:15:56+08:00 p2-1 started/completed: added OURO_PROXY_MODE (default caddy) + OURO_HTTP_PORT (8080) + OURO_BIND_ADDR (127.0.0.1) settings, `--proxy MODE` flag, --help text, and early mode validation. New vars are not yet consumed → caddy flow byte-for-byte unchanged. Noted: `--proxy` missing-value exit-code quirk is identical to existing --ref/--dir (pre-existing, out of scope).
 - 2026-06-29T14:15:56+08:00 p2-2 started/completed: wrapped the start `docker compose up -d` in an if/else (suspends set -e) so a failure prints an enriched hint — partial-state/idempotent re-run guidance + `--proxy external` alternative, gated on caddy mode. Verified via isolated harness (caddy-fail→hint+exit1, external-fail→no caddy hint+exit1, caddy-success→Done+exit0).
 - 2026-06-29T14:15:56+08:00 p2-3 started/completed: external mode now (a) skips the ACME_EMAIL prompt (sets ACME_EMAIL="" to stay set -u safe), (b) skips the Caddyfile email-block injection, and (c) writes an idempotent docker-compose.override.yml publishing issuer on ${OURO_BIND_ADDR}:${OURO_HTTP_PORT} and assigning caddy an inactive profile. Risk retired: verified on real docker compose v2.31 that the override-applied profile excludes caddy from default `up` (TC-3).
+- 2026-06-29T14:15:56+08:00 p2-4 started/completed: external mode writes an idempotent deploy/ouro-pass.nginx.conf reference (HTTP→HTTPS redirect + 443 proxy block) with DOMAIN/bind/port substituted and nginx $vars kept literal; includes a comment on the two TLS paths + the cert-ordering caveat (nginx -t fails before certbot). Verified all TC-5 elements via isolated generation.
 
 ## 6. Validation Evidence (append-only)
 
@@ -221,6 +222,7 @@ Pass/fail: all TC-1..TC-11 pass; `caddy`-mode regression (TC-1) is mandatory.
 - TC-7 (partial) | stack: other | command: sh deploy/install.sh --help; sh deploy/install.sh --proxy bogus | result: pass | note: --help lists --proxy + reverse-proxy env vars; invalid mode fails fast (exit 1) before preflight; default mode = caddy.
 - TC-8 (partial, caddy-fail path) | stack: other | command: isolated start-block harness with stubbed failing `docker` | result: pass | note: caddy-mode up failure prints partial-state + idempotent-rerun + --proxy external hint and exits non-zero; external mode skips the caddy hint; success path prints Done. Real-stack caddy port-conflict (TC-7 full) + idempotent re-run (TC-11) to be exercised at p3-2 on a Docker host.
 - TC-3 | stack: other | command: docker compose config --services (real docker-compose.yml + generated override + minimal .env), v2.31.0 | result: pass | note: default services = {issuer, postgres}, caddy ABSENT; `--profile caddy-disabled` re-includes caddy (proves profiled-off not removed); issuer publishes 127.0.0.1:8080:8080.
+- TC-5 | stack: other | command: isolated heredoc generation + grep assertions | result: pass | note: server_name=pass.example.com, proxy_pass=http://127.0.0.1:8080, all four forwarded headers present incl X-Forwarded-Proto; nginx $host/$scheme/etc kept literal; DOMAIN/bind/port expanded.
 
 ## 7. Change Requests (append-only)
 
