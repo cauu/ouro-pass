@@ -21,6 +21,12 @@ OURO_DIR="${OURO_DIR:-ouro-pass}"                  # install directory
 OURO_BASEURL="${OURO_BASEURL:-https://raw.githubusercontent.com/cauu/ouro-pass/${OURO_REF}}"
 IMAGE="ghcr.io/cauu/ouro-pass"
 NONINTERACTIVE="${OURO_NONINTERACTIVE:-0}"
+# Reverse-proxy mode: 'caddy' (bundled, auto-HTTPS on 80/443) or 'external' (run behind
+# an existing reverse proxy, e.g. nginx). external mode publishes the issuer on a local
+# host port instead and emits an nginx snippet — it never touches your host proxy/TLS.
+OURO_PROXY_MODE="${OURO_PROXY_MODE:-caddy}"
+OURO_HTTP_PORT="${OURO_HTTP_PORT:-8080}"           # external mode: host port for the issuer
+OURO_BIND_ADDR="${OURO_BIND_ADDR:-127.0.0.1}"      # external mode: bind address for that port
 
 info() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
@@ -36,10 +42,12 @@ usage() {
   cat <<USAGE
 Ouro Pass installer
 
-Usage: install.sh [--non-interactive|-y] [--ref REF] [--dir DIR]
+Usage: install.sh [--non-interactive|-y] [--proxy MODE] [--ref REF] [--dir DIR]
 
 Options:
   --non-interactive, -y   no prompts; take values from OURO_* env vars
+  --proxy MODE            reverse proxy: 'caddy' (bundled TLS, default) or 'external'
+                          (run behind your own nginx/proxy; no 80/443 needed)
   --ref REF               git ref to download files from (default: ${OURO_REF})
   --dir DIR               install directory (default: ${OURO_DIR})
   -h, --help              show this help
@@ -47,6 +55,9 @@ Options:
 Non-interactive env vars: OURO_DOMAIN, OURO_ACME_EMAIL, OURO_NETWORK,
   OURO_CHAIN_KIND, OURO_KOIOS_BASE_URL, OURO_OWNER_ADDR (or OURO_OWNER_KEYS),
   OUROPASS_TAG, OURO_START (yes|no)
+
+Reverse-proxy env vars: OURO_PROXY_MODE (caddy|external), and for external mode
+  OURO_HTTP_PORT (default ${OURO_HTTP_PORT}), OURO_BIND_ADDR (default ${OURO_BIND_ADDR}).
 
 Channels (Telegram, …) are configured in the admin console (/admin) after deploy,
 not here — each is a first-class instance with its own token stored in the DB.
@@ -57,6 +68,7 @@ USAGE
 while [ $# -gt 0 ]; do
   case "$1" in
     --non-interactive|-y) NONINTERACTIVE=1 ;;
+    --proxy) shift; OURO_PROXY_MODE="${1:?--proxy needs a value (caddy|external)}" ;;
     --ref) shift; OURO_REF="${1:?--ref needs a value}"; OURO_BASEURL="https://raw.githubusercontent.com/cauu/ouro-pass/${OURO_REF}" ;;
     --dir) shift; OURO_DIR="${1:?--dir needs a value}" ;;
     -h|--help) usage; trap - EXIT; exit 0 ;;
@@ -64,6 +76,12 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+# Validate reverse-proxy mode early (before any work).
+case "$OURO_PROXY_MODE" in
+  caddy|external) ;;
+  *) err "invalid --proxy / OURO_PROXY_MODE: '$OURO_PROXY_MODE' (use 'caddy' or 'external')" ;;
+esac
 
 # ── preflight ────────────────────────────────────────────────────────────────
 need() { command -v "$1" >/dev/null 2>&1 || err "$1 is required but not found. $2"; }

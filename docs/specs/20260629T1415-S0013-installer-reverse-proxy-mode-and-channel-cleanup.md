@@ -156,7 +156,7 @@ itself: in `caddy` mode it tries to bind 80/443 and fails loudly if they are tak
 - [x] p1-1 Remove Telegram/channel config from installer (prompts, `set_env`,
       non-interactive env vars, `--help`); add `/admin` pointer to final messages;
       annotate `OUROPASS_TELEGRAM_*` as optional/legacy in `.env.example`.
-- [ ] p2-1 Add `OURO_PROXY_MODE` + `OURO_HTTP_PORT` + `OURO_BIND_ADDR` parsing
+- [x] p2-1 Add `OURO_PROXY_MODE` + `OURO_HTTP_PORT` + `OURO_BIND_ADDR` parsing
       (`--proxy` flag, env, `--help`), defaulting to `caddy`; no behavior change in
       `caddy` mode.
 - [ ] p2-2 On `caddy`-mode `docker compose up -d` failure, print an external-mode hint
@@ -195,8 +195,12 @@ itself: in `caddy` mode it tries to bind 80/443 and fails loudly if they are tak
 - TC-9 `update.sh` compatibility: `docker compose pull && up -d` under an external-mode
   override still excludes caddy and keeps issuer/postgres healthy.
 - TC-10 `shellcheck deploy/install.sh` passes (no new warnings vs. baseline).
+- TC-11 Idempotent re-run after a start conflict: when `docker compose up -d` fails on a
+  port bind (caddy) leaving postgres+issuer running, re-running `up -d` after the port is
+  freed converges to the full stack with no duplicate containers and no data loss
+  (`docker compose ps` shows all healthy; `./data/postgres` intact).
 
-Pass/fail: all TC-1..TC-10 pass; `caddy`-mode regression (TC-1) is mandatory.
+Pass/fail: all TC-1..TC-11 pass; `caddy`-mode regression (TC-1) is mandatory.
 
 ## 5. Execution Log (append-only)
 
@@ -204,10 +208,26 @@ Pass/fail: all TC-1..TC-10 pass; `caddy`-mode regression (TC-1) is mandatory.
 - 2026-06-29T14:15:56+08:00 design refined: dropped pre-flight port scan in favor of Docker bind-failure + hint (per review). Promoted draft → active.
 - 2026-06-29T14:15:56+08:00 p1-1 started: remove Telegram/channel config from installer.
 - 2026-06-29T14:15:56+08:00 p1-1 completed: dropped TELEGRAM_BOT/TOKEN prompts + set_env writes + non-interactive env list in deploy/install.sh; added /admin channels pointer to --help and final message; annotated OUROPASS_TELEGRAM_* as optional/legacy in .env.example.
+- 2026-06-29T14:15:56+08:00 p1-1 spec annotations (CR + TC-11) and p2-1 deferred to ride with p2-1 commit.
+- 2026-06-29T14:15:56+08:00 p2-1 started/completed: added OURO_PROXY_MODE (default caddy) + OURO_HTTP_PORT (8080) + OURO_BIND_ADDR (127.0.0.1) settings, `--proxy MODE` flag, --help text, and early mode validation. New vars are not yet consumed → caddy flow byte-for-byte unchanged. Noted: `--proxy` missing-value exit-code quirk is identical to existing --ref/--dir (pre-existing, out of scope).
 
 ## 6. Validation Evidence (append-only)
 
 - TC-2 | stack: other | command: grep -ni 'OUROPASS_TELEGRAM\|OURO_TELEGRAM\|TELEGRAM_BOT\|TELEGRAM_TOKEN' deploy/install.sh | result: pass | note: no Telegram prompts/env-writes remain; only two intentional /admin pointer strings (--help + final message).
 - TC-10 | stack: other | command: sh -n deploy/install.sh | result: pass | note: shellcheck not installed on host; syntax check via `sh -n` clean. Full shellcheck deferred to p3-2 validation pass.
+- TC-1 (partial) | stack: other | command: sh -n deploy/install.sh + manual read | result: pass | note: p2-1 vars added but unconsumed; no override produced, caddy path unchanged. Full caddy dry-run regression re-verified at p3-2.
+- TC-7 (partial) | stack: other | command: sh deploy/install.sh --help; sh deploy/install.sh --proxy bogus | result: pass | note: --help lists --proxy + reverse-proxy env vars; invalid mode fails fast (exit 1) before preflight; default mode = caddy.
 
 ## 7. Change Requests (append-only)
+
+- 2026-06-29T14:15:56+08:00 Failure-semantics clarification (informs p2-2 + p2-5).
+  `docker compose up -d` is not transactional: a caddy port-bind failure leaves
+  postgres+issuer running (partial bring-up), there is no auto-rollback, but re-running
+  `up -d` is idempotent and converges once the port is freed; `./data` persists and is not
+  corrupted by the partial failure. Therefore:
+  - p2-2's hint must say more than "ports in use": note that postgres/issuer may already be
+    running (normal partial state), that re-running `docker compose up -d` after freeing the
+    port completes the stack, and offer `OURO_PROXY_MODE=external` as the alternative.
+  - The same honest-state principle applies to p2-5's final message (no false "nothing
+    deployed" / no false "all done").
+  - Added TC-11 to cover idempotent re-run after a conflict.
