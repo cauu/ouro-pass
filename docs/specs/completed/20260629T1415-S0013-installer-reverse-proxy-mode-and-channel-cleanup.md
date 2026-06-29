@@ -1,12 +1,12 @@
 # Installer reverse-proxy mode + channel-config cleanup
 
 Spec-ID: S0013
-Status: active
+Status: completed
 Created Time: 2026-06-29T14:15:56+08:00
 Start Time: 2026-06-29T14:15:56+08:00
-Completion Time:
+Completion Time: 2026-06-29T20:13:09+08:00
 Previous Spec-ID:
-Closure Reason:
+Closure Reason: delivered
 
 ## 1. Requirement Details
 
@@ -262,6 +262,13 @@ Pass/fail: all TC-1..TC-18 pass; `caddy`-mode regression (TC-1) is mandatory.
 - 2026-06-29T14:15:56+08:00 p3-1 started/completed: added "Behind an existing reverse proxy" section to docs/deployment.md, a pointer + anchor in README.md, and gitignore entries for the two installer-generated artifacts (docker-compose.override.yml, deploy/ouro-pass.nginx.conf). Canonical external-proxy guidance now lives in deployment.md; docs/server-test-runbook.md left as an untracked personal doc.
 - 2026-06-29T14:20:00+08:00 Change Request accepted (post p3-2): (1) the interactive proxy-mode prompt was specified in the design but never implemented (p2-1 added only env/flag parsing) — a defect against the spec's own design; (2) operator asked to also run a best-effort 80/443 probe to pre-select that prompt's default, silent-fail on permission/tool gaps. Added items p2-6 (prompt + detection) and p2-7 (re-run inference) + TC-12/13/14. This reopens local-validation work; spec stays active.
 - 2026-06-29T14:20:00+08:00 p2-6 started/completed: OURO_PROXY_MODE now resolves as explicit(flag/env) > interactive detect > caddy; added detect_proxy_default() (ss→netstat, address-column $4, regex [:.](80|443)$ so :8080 never matches) used interactive-only; added the "Reverse proxy: caddy|external" ask before the (caddy-only) ACME prompt with post-prompt re-validation; re-run branch keeps a caddy fallback (superseded by p2-7). Verified: shellcheck clean; detection busy80/busy443→external, only8080/notool→caddy; precedence explicit-wins / NI-no-detect / interactive-detect all correct.
+- 2026-06-29T20:13:09+08:00 Spec closed by operator (delivered). All 11 items [x]; external
+  reverse-proxy mode validated end-to-end on the target server (TC-4 real). Not exercised
+  this round and accepted as such: TC-7 (intentional caddy 80/443 conflict hint — operator
+  went straight to external) and TC-11 (idempotent re-run after a real conflict); their
+  logic/static evidence stands. Deferred candidate (not adopted): p4-2 preflight
+  `docker info` reachability check, and DOMAIN input sanitization — both filed as future
+  installer-robustness follow-ups.
 - 2026-06-29T19:55:00+08:00 p4-3 started/completed: changed the generated ouro-pass.nginx.conf from (HTTP-redirect + 443-with-cert-paths) to a single HTTP-only proxy block — so it passes `nginx -t` before any cert exists and `certbot --nginx` upgrades it to HTTPS (copying the proxy + forwarded headers into the 443 server it creates). Reordered/reworded the installer's operator steps to cp → reload → certbot, added a prereqs line (certbot+plugin installed; 80/443 open in host firewall AND cloud SG), and updated docs/deployment.md to match. Verified: shellcheck clean; generated config has no 443/ssl_certificate; real `nginx -t` (nginx:alpine) passes with NO cert present; all four forwarded headers present.
 - 2026-06-29T14:35:00+08:00 p4-1 started/completed: added a `.ouro-configured` completion marker written as the final config step; replaced the binary ENV_PREEXISTED gate with a three-state decision (fresh / --reconfigure / finished-keep / interrupted-recover) via is_configured() (marker present, or legacy real-DOMAIN bridge that self-heals the marker); interrupted installs now warn + offer re-configure interactively, or fail fast non-interactively (pointing at --reconfigure / delete .env). Added `--reconfigure`/`OURO_RECONFIGURE`, --help text, gitignore + a deployment.md troubleshooting entry. Re-configure only rewrites .env config fields; ./data untouched. Verified: shellcheck clean (fixed an SC2154 on the eval-assigned _redo); all 7 decision branches correct (fresh→configure, marker→keep, legacy→keep+heal, --reconfigure→configure, interrupted+NI→fail, interrupted+yes→configure, interrupted+no→abort).
 - 2026-06-29T14:20:00+08:00 p2-7 started/completed: re-run branch (existing .env) now infers OURO_PROXY_MODE=external when docker-compose.override.yml is present (else caddy), with an explicit flag/env still overriding — so re-run messaging/self-check match the deployed topology. Verified via harness: no-override→caddy, override→external, override+explicit-caddy→caddy. shellcheck clean. Fully passed locally: TC-2, TC-3, TC-5, TC-6, TC-8, TC-10 (real shellcheck via docker, clean), TC-1 (artifact-absence in caddy mode), TC-4 (probe logic), TC-9 (static: update.sh only calls compose, never touches the override → caddy stays excluded by construction). Confirmed update.sh has no override/Caddyfile/refetch coupling. Deferred to an operator Docker host with the production image + a real domain (environment-blocked here): TC-4 real /healthz over the stack, TC-7 full real 80/443 conflict hint, TC-11 idempotent re-run after a real conflict. p3-2 closes the local-validatable surface; spec remains active pending optional on-server confirmation + user sign-off.
