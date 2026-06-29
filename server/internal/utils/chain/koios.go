@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -21,7 +22,11 @@ type KoiosSource struct {
 }
 
 // NewKoiosSource builds a Koios source; baseURL defaults to mainnet if empty.
+// Surrounding whitespace and trailing slashes are trimmed so a value like
+// "https://api.koios.rest/api/v1/" doesn't produce "…/v1//account_info" (which koios
+// 404s as "Query not found"). p2-1.
 func NewKoiosSource(baseURL, apiKey, network string) *KoiosSource {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
 	if baseURL == "" {
 		baseURL = "https://api.koios.rest/api/v1"
 	}
