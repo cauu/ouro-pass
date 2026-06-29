@@ -178,12 +178,30 @@ docker compose ps                 # status
 docker compose logs -f issuer     # follow issuer logs (JSON)
 docker compose restart issuer     # restart one service
 docker compose down               # stop + remove containers (data in ./data stays)
-
-# update to a new version: bump OUROPASS_TAG in .env (e.g. 0.2.0 — no leading "v";
-# git tag v0.2.0 publishes image tags 0.2.0 / 0.2 / latest), then:
-docker compose pull
-docker compose up -d
 ```
+
+### Updating
+
+Use the update script — it takes a hot database backup, pulls the new image,
+restarts (a few seconds of downtime), waits for health, and prints rollback hints
+if the new version is unhealthy:
+
+```sh
+cd ouro-pass
+./deploy/update.sh                 # update to the newest image for the current tag
+./deploy/update.sh --tag 0.3.0     # pin a specific version (no leading "v")
+./deploy/update.sh --no-backup     # skip the pre-update backup
+```
+
+Backups land in `./backups/` (`db-<ts>.sql.gz` + `env-<ts>.bak` — keep the env
+copy, it holds `OUROPASS_FIELD_KEY`). The issuer migrates the DB on startup; `./data`
+and `.env` are untouched. Equivalent manual steps: edit `OUROPASS_TAG` in `.env`,
+then `docker compose pull && docker compose up -d`.
+
+> **Rollback caveat:** migrations are forward-only. Reverting `OUROPASS_TAG` to an
+> older image is safe only if the schema didn't change; if it did, restore the
+> pre-update backup:
+> `gunzip -c backups/db-<ts>.sql.gz | docker compose exec -T postgres psql -U <user> -d <db>`.
 
 To build the image yourself instead of pulling (from a full checkout):
 

@@ -99,6 +99,17 @@ ghcr.io/cauu/ouro-pass:latest
 Full guide — prerequisites, chain-source options, backups, upgrades, sovereign
 `cardano-node` path, troubleshooting — in **[docs/deployment.md](docs/deployment.md)**.
 
+### Updating
+
+```sh
+cd ouro-pass
+./deploy/update.sh                 # hot backup → pull → restart → health-check
+./deploy/update.sh --tag 0.3.0     # pin a specific version
+```
+
+A short restart blip is expected. Backups land in `./backups/`; if a new version is
+unhealthy the script prints rollback steps. See [docs/deployment.md](docs/deployment.md#updating).
+
 ## Run from source / development
 
 ```sh
