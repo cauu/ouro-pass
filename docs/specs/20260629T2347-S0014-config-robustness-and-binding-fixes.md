@@ -170,7 +170,7 @@ config time too, so admin stores a canonical value. Exact-match semantics preser
       previously defaulted `preprod`; now no network prompt, admin defaults `mainnet`).
 - [x] p2-1 koios base URL robustness: trim whitespace + trailing `/` in `NewKoiosSource`
       (applies to per-network override values).
-- [ ] p2-2 Installer DOMAIN sanitization: strip `http(s)://` + trailing `/`.
+- [x] p2-2 Installer DOMAIN sanitization: strip `http(s)://` + trailing `/`.
 - [ ] p3-1 Telegram `getUpdates` 409: detect, back off, log a single clear diagnostic
       (another poller/webhook owns this token); optional `deleteWebhook` on start.
 - [ ] p4-1 Pool-ID normalization: single canonical helper applied at `DeriveState` entry to
@@ -233,5 +233,6 @@ mainnet bind) mandatory; TC-8 must keep `StateNone` for non-delegators (no loose
 ## 6. Validation Evidence (append-only)
 
 - TC-5 | stack: node/go | command: go test ./internal/utils/chain/ -run TrimsBaseURL | result: pass | note: trailing slash(es) + whitespace trimmed (`…/api/v1/`→`…/api/v1`); empty→mainnet default. go build ./... clean.
+- TC-6 | stack: other | command: shellcheck + sanitize harness | result: pass | note: `https://host/`→`host`, `http://host`→`host`, `host/admin/`→`host`, `host:8443` preserved. shellcheck clean.
 
 ## 7. Change Requests (append-only)

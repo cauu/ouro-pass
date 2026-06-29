@@ -211,6 +211,9 @@ if [ "$DO_CONFIGURE" = "0" ]; then
 else
   info "Configuration"
   ask DOMAIN "Public domain (must resolve to this host)" "${OURO_DOMAIN:-}" required
+  # Accept a pasted URL but store a bare host: a scheme or trailing slash/path would break
+  # OUROPASS_ISSUER (https://${DOMAIN}), the nginx server_name, and cert paths. p2-2.
+  DOMAIN="${DOMAIN#http://}"; DOMAIN="${DOMAIN#https://}"; DOMAIN="${DOMAIN%%/*}"
 
   # Resolve reverse-proxy mode: an explicit --proxy/OURO_PROXY_MODE wins; otherwise pick a
   # smart default — interactive uses a best-effort 80/443 probe, non-interactive uses caddy.
