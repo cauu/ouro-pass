@@ -85,7 +85,8 @@ fetch docker-compose.yml
 fetch .env.example
 fetch deploy/Caddyfile
 fetch deploy/init.sh
-chmod +x deploy/init.sh
+fetch deploy/update.sh
+chmod +x deploy/init.sh deploy/update.sh
 
 # ── secrets + ./data (reuse init.sh; idempotent, never overwrites) ───────────
 info "Generating secrets and data directories"
