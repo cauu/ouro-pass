@@ -177,6 +177,13 @@ itself: in `caddy` mode it tries to bind 80/443 and fails loudly if they are tak
       re-configure (interactive) or fail fast (non-interactive). Add `--reconfigure` /
       `OURO_RECONFIGURE`. Re-configure only rewrites `.env` config fields; never touches
       `./data` (no destructive reset in this item).
+- [x] p4-3 Make the generated nginx config first-cert-friendly. On-server acceptance hit
+      a real failure: the generated `ouro-pass.nginx.conf` shipped a full 443 block whose
+      `ssl_certificate` paths don't exist before issuance, so `nginx -t` failed and
+      `certbot --nginx` couldn't run. Fix = emit an **HTTP-only** proxy block (passes
+      `nginx -t` with no cert; certbot upgrades it to HTTPS automatically) + correct the
+      operator-steps order/wording in install.sh and docs (cp → reload → certbot), plus a
+      prerequisites note (certbot installed; 80/443 open).
 - [x] p2-6 Interactive proxy-mode prompt + best-effort port detection for its default.
       A fresh interactive install asks "caddy | external" (defaulting via a 80/443
       listener probe); explicit `--proxy`/`OURO_PROXY_MODE` wins; detection is
@@ -233,8 +240,12 @@ itself: in `caddy` mode it tries to bind 80/443 and fails loudly if they are tak
   configured and self-heals the marker.
 - TC-17 Marker lifecycle: a completed configure writes `.ouro-configured` as the final
   step; an abort before that step leaves no marker (so the next run detects interrupted).
+- TC-18 Generated nginx config is first-cert-friendly: `ouro-pass.nginx.conf` is HTTP-only
+  (no `443`/`ssl_certificate`), proxies to `${bind}:${port}` with the four forwarded
+  headers, and passes `nginx -t` with no certificate present; the operator steps read
+  cp → reload → `certbot --nginx`.
 
-Pass/fail: all TC-1..TC-17 pass; `caddy`-mode regression (TC-1) is mandatory.
+Pass/fail: all TC-1..TC-18 pass; `caddy`-mode regression (TC-1) is mandatory.
 
 ## 5. Execution Log (append-only)
 
@@ -251,6 +262,7 @@ Pass/fail: all TC-1..TC-17 pass; `caddy`-mode regression (TC-1) is mandatory.
 - 2026-06-29T14:15:56+08:00 p3-1 started/completed: added "Behind an existing reverse proxy" section to docs/deployment.md, a pointer + anchor in README.md, and gitignore entries for the two installer-generated artifacts (docker-compose.override.yml, deploy/ouro-pass.nginx.conf). Canonical external-proxy guidance now lives in deployment.md; docs/server-test-runbook.md left as an untracked personal doc.
 - 2026-06-29T14:20:00+08:00 Change Request accepted (post p3-2): (1) the interactive proxy-mode prompt was specified in the design but never implemented (p2-1 added only env/flag parsing) — a defect against the spec's own design; (2) operator asked to also run a best-effort 80/443 probe to pre-select that prompt's default, silent-fail on permission/tool gaps. Added items p2-6 (prompt + detection) and p2-7 (re-run inference) + TC-12/13/14. This reopens local-validation work; spec stays active.
 - 2026-06-29T14:20:00+08:00 p2-6 started/completed: OURO_PROXY_MODE now resolves as explicit(flag/env) > interactive detect > caddy; added detect_proxy_default() (ss→netstat, address-column $4, regex [:.](80|443)$ so :8080 never matches) used interactive-only; added the "Reverse proxy: caddy|external" ask before the (caddy-only) ACME prompt with post-prompt re-validation; re-run branch keeps a caddy fallback (superseded by p2-7). Verified: shellcheck clean; detection busy80/busy443→external, only8080/notool→caddy; precedence explicit-wins / NI-no-detect / interactive-detect all correct.
+- 2026-06-29T19:55:00+08:00 p4-3 started/completed: changed the generated ouro-pass.nginx.conf from (HTTP-redirect + 443-with-cert-paths) to a single HTTP-only proxy block — so it passes `nginx -t` before any cert exists and `certbot --nginx` upgrades it to HTTPS (copying the proxy + forwarded headers into the 443 server it creates). Reordered/reworded the installer's operator steps to cp → reload → certbot, added a prereqs line (certbot+plugin installed; 80/443 open in host firewall AND cloud SG), and updated docs/deployment.md to match. Verified: shellcheck clean; generated config has no 443/ssl_certificate; real `nginx -t` (nginx:alpine) passes with NO cert present; all four forwarded headers present.
 - 2026-06-29T14:35:00+08:00 p4-1 started/completed: added a `.ouro-configured` completion marker written as the final config step; replaced the binary ENV_PREEXISTED gate with a three-state decision (fresh / --reconfigure / finished-keep / interrupted-recover) via is_configured() (marker present, or legacy real-DOMAIN bridge that self-heals the marker); interrupted installs now warn + offer re-configure interactively, or fail fast non-interactively (pointing at --reconfigure / delete .env). Added `--reconfigure`/`OURO_RECONFIGURE`, --help text, gitignore + a deployment.md troubleshooting entry. Re-configure only rewrites .env config fields; ./data untouched. Verified: shellcheck clean (fixed an SC2154 on the eval-assigned _redo); all 7 decision branches correct (fresh→configure, marker→keep, legacy→keep+heal, --reconfigure→configure, interrupted+NI→fail, interrupted+yes→configure, interrupted+no→abort).
 - 2026-06-29T14:20:00+08:00 p2-7 started/completed: re-run branch (existing .env) now infers OURO_PROXY_MODE=external when docker-compose.override.yml is present (else caddy), with an explicit flag/env still overriding — so re-run messaging/self-check match the deployed topology. Verified via harness: no-override→caddy, override→external, override+explicit-caddy→caddy. shellcheck clean. Fully passed locally: TC-2, TC-3, TC-5, TC-6, TC-8, TC-10 (real shellcheck via docker, clean), TC-1 (artifact-absence in caddy mode), TC-4 (probe logic), TC-9 (static: update.sh only calls compose, never touches the override → caddy stays excluded by construction). Confirmed update.sh has no override/Caddyfile/refetch coupling. Deferred to an operator Docker host with the production image + a real domain (environment-blocked here): TC-4 real /healthz over the stack, TC-7 full real 80/443 conflict hint, TC-11 idempotent re-run after a real conflict. p3-2 closes the local-validatable surface; spec remains active pending optional on-server confirmation + user sign-off.
 
@@ -276,6 +288,8 @@ Pass/fail: all TC-1..TC-17 pass; `caddy`-mode regression (TC-1) is mandatory.
 - TC-15 | stack: other | command: decision-block harness, .env DOMAIN=pass.example.com + no marker | result: pass | note: interactive → warns "Unfinished install" + asks re-configure (yes→DO_CONFIGURE=1, no→abort); non-interactive → fail-fast err pointing at --reconfigure / delete .env.
 - TC-16 | stack: other | command: decision-block harness, marker present and legacy (no marker, real DOMAIN) | result: pass | note: marker present → DO_CONFIGURE=0 (keep); legacy real DOMAIN → DO_CONFIGURE=0 and marker self-healed to present; --reconfigure forces DO_CONFIGURE=1 even with marker.
 - TC-17 | stack: other | command: grep placement + harness | result: pass | note: `: > "$CONFIGURED_MARKER"` is the last statement of the configure branch (after the Caddyfile step, before the branch `fi`); fresh install leaves marker absent until that step runs, so an earlier abort is detected next run. shellcheck clean.
+- TC-18 | stack: other | command: regenerate config + `grep -E '443|ssl_certificate'` + `docker run --rm -v conf:/etc/nginx/conf.d/ouro.conf nginx:alpine nginx -t` | result: pass | note: generated config is HTTP-only (no 443/ssl_certificate); real nginx -t reports "syntax is ok / test is successful" with NO cert present (old 443-with-cert config would fail here); four forwarded headers present; installer steps reordered to cp → reload → certbot.
+- TC-4 (real, on-server) | stack: other | command: curl http://<domain>/healthz through public :80 → nginx → issuer | result: pass | note: operator-confirmed deploy success; HEAD→405 Allow: GET (chain intact), GET→200; HTTPS reached after certbot. External reverse-proxy mode validated end-to-end on the target host.
 
 ## 7. Change Requests (append-only)
 
@@ -301,3 +315,13 @@ Pass/fail: all TC-1..TC-17 pass; `caddy`-mode regression (TC-1) is mandatory.
   spec. Chosen approach: A (completion marker) + perceive/fix UX, with a legacy real-DOMAIN
   bridge for installs predating the marker. Added p4-1 + TC-15/16/17. Out of scope for this
   item: destructive `--reset` and DOMAIN input sanitization (candidate follow-ups).
+
+- 2026-06-29T19:50:00+08:00 On-server acceptance (operator host, mainnet/koios, nginx
+  already on 80/443): external mode deployed successfully end-to-end. ENVIRONMENT issues
+  surfaced and resolved (not code): user not in `docker` group (added), `certbot` not
+  installed (installed with nginx plugin), ufw blocking :80 (allowed 80/443). p4-1 worked
+  as designed — an interrupted run was detected on re-run and recovered. Public reachability
+  confirmed: `curl http://<domain>/healthz` reached the issuer through nginx (HEAD→405
+  Allow: GET = chain intact; GET→200). One real DEFECT found → p4-3: the generated nginx
+  config pre-configured TLS (443 block with non-existent cert paths), breaking `nginx -t`
+  and `certbot --nginx` on first issuance.

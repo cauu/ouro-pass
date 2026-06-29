@@ -239,27 +239,32 @@ What external mode does — and deliberately does **not** do:
   `${OURO_BIND_ADDR}:${OURO_HTTP_PORT}` and moves Caddy into an inactive compose
   profile, so `docker compose up -d` starts **only postgres + issuer**. The committed
   `docker-compose.yml` is untouched, so `deploy/update.sh` keeps working unchanged.
-- Generates `deploy/ouro-pass.nginx.conf` — a **reference** server block (HTTP→HTTPS
-  redirect + a 443 proxy block with the required forwarded headers). It does **not**
-  edit your nginx config or obtain certificates; TLS stays under your control.
+- Generates `deploy/ouro-pass.nginx.conf` — a **reference**, **HTTP-only** proxy server
+  block with the required forwarded headers. It is intentionally HTTP-only so it passes
+  `nginx -t` before any cert exists; `certbot --nginx` then upgrades it to HTTPS for you.
+  It does **not** edit your nginx config or obtain certificates; TLS stays under your control.
 - After start, it probes `http://<bind>:<port>/healthz` locally and prints the
   remaining operator steps (it never claims public readiness it can't verify).
+
+Prerequisites: install certbot with its nginx plugin (`apt install certbot
+python3-certbot-nginx`, or the snap), and open ports **80 and 443** to the internet —
+in both the host firewall (e.g. `ufw allow 80,443/tcp`) **and** any cloud security group.
 
 Finish the wiring yourself (the installer prints these):
 
 ```sh
 sudo cp deploy/ouro-pass.nginx.conf /etc/nginx/conf.d/<domain>.conf
-sudo certbot --nginx -d <domain>          # or point ssl_certificate at an existing cert
-sudo nginx -t && sudo systemctl reload nginx
-curl -fsS https://<domain>/healthz        # verify, then open https://<domain>/admin
+sudo nginx -t && sudo systemctl reload nginx   # HTTP-only block — loads with no cert yet
+sudo certbot --nginx -d <domain>               # obtains the cert, adds 443 + HTTP→HTTPS redirect
+curl -fsS https://<domain>/healthz             # verify, then open https://<domain>/admin
 ```
 
-> The generated 443 block assumes certs already exist at the certbot default path, so
-> `nginx -t` fails until they do. Either place an HTTP-only version first and let
-> `certbot --nginx` add the 443 block, or run `certbot certonly` before enabling it.
-> The issuer trusts `X-Forwarded-Proto`/`X-Forwarded-For` (it already runs with
-> `OUROPASS_TLS=true` + `OUROPASS_TRUSTED_PROXY=true`), so keep those headers set —
-> the generated config already does.
+> `certbot --nginx` copies this server block to a new TLS (443) server, injects the
+> certificate, and adds the HTTP→HTTPS redirect — so you don't hand-write the 443 block.
+> The issuer trusts `X-Forwarded-Proto`/`X-Forwarded-For` (it runs with `OUROPASS_TLS=true`
+> + `OUROPASS_TRUSTED_PROXY=true`), and the generated config already sets those headers
+> (they carry into the 443 server certbot creates). Already have a cert? Add your own
+> `listen 443 ssl;` + `ssl_certificate` lines instead of running certbot.
 
 To switch back to bundled Caddy later, delete `docker-compose.override.yml` and
 re-run `docker compose up -d` (Caddy needs 80/443 free).
