@@ -171,7 +171,7 @@ config time too, so admin stores a canonical value. Exact-match semantics preser
 - [x] p2-1 koios base URL robustness: trim whitespace + trailing `/` in `NewKoiosSource`
       (applies to per-network override values).
 - [x] p2-2 Installer DOMAIN sanitization: strip `http(s)://` + trailing `/`.
-- [ ] p3-1 Telegram `getUpdates` 409: detect, back off, log a single clear diagnostic
+- [x] p3-1 Telegram `getUpdates` 409: detect, back off, log a single clear diagnostic
       (another poller/webhook owns this token); optional `deleteWebhook` on start.
 - [ ] p4-1 Pool-ID normalization: single canonical helper applied at `DeriveState` entry to
       both sides + validate/normalize attestor `pool_id` at config time; clear not-eligible
@@ -229,10 +229,13 @@ mainnet bind) mandatory; TC-8 must keep `StateNone` for non-delegators (no loose
   draft → active. Execution order: p2/p3 (robustness + 409) → p1 (network model) → p4 → p5.
 - 2026-06-29T23:47:17+08:00 p2-1 started: koios base URL trim in NewKoiosSource.
 - 2026-06-29T23:47:17+08:00 p2-1 completed: `NewKoiosSource` trims surrounding whitespace + trailing slashes before the empty→default check; added koios_test.go (TestNewKoiosSourceTrimsBaseURL). This is the direct fix for the `//account_info` 404 hit on-server.
+- 2026-06-30T00:00:00+08:00 p2-2 completed: installer strips scheme + path/trailing-slash from the DOMAIN answer (`${DOMAIN#http(s)://}`, `${DOMAIN%%/*}`); port preserved. shellcheck clean.
+- 2026-06-30T00:05:00+08:00 p3-1 completed: telegram worker detects getUpdates 409 (isConflict), backs off 30s (vs 1s transient), and throttles the log (conflict: once + ~5min heartbeat; transient: ~1/30s) with a clear "another poller/webhook owns this token" message. Added backoff_test.go. Deferred (optional in spec): deleteWebhook-on-start — the common cause is a dual poller, not a webhook; can add later if needed.
 
 ## 6. Validation Evidence (append-only)
 
 - TC-5 | stack: node/go | command: go test ./internal/utils/chain/ -run TrimsBaseURL | result: pass | note: trailing slash(es) + whitespace trimmed (`…/api/v1/`→`…/api/v1`); empty→mainnet default. go build ./... clean.
 - TC-6 | stack: other | command: shellcheck + sanitize harness | result: pass | note: `https://host/`→`host`, `http://host`→`host`, `host/admin/`→`host`, `host:8443` preserved. shellcheck clean.
+- TC-7 | stack: go | command: go test ./internal/worker/telegram/ -run 'Conflict|Backoff' | result: pass | note: isConflict detects 409; conflict→30s backoff, transient→1s; Run on a persistent 409 doesn't busy-loop (≤5 polls) and returns promptly on ctx cancel; clear conflict message logged once (failures==1, then throttled).
 
 ## 7. Change Requests (append-only)

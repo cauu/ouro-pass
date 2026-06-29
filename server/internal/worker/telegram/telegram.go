@@ -179,6 +179,32 @@ func parseCommand(text string) (cmd, arg string) {
 	return cmd, arg
 }
 
+const (
+	// conflictBackoff throttles polling when getUpdates returns 409 — another poller or a
+	// webhook owns this bot token. Hammering at the 1s interval floods the log and the API;
+	// back off hard instead (p3-1).
+	conflictBackoff = 30 * time.Second
+	// transientLogEvery / conflictLogEvery throttle repeated error logs so a persistent
+	// failure doesn't flood the log on every poll.
+	transientLogEvery = 30 // at the 1s interval, ~one log per 30s
+	conflictLogEvery  = 10 // at conflictBackoff, ~one log per 5min (a heartbeat, not a flood)
+)
+
+// isConflict reports whether a getUpdates error is a Telegram 409 Conflict (a second
+// poller or a webhook owns the update stream).
+func isConflict(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "status 409")
+}
+
+// getUpdatesBackoff is the sleep after a failed poll: a long backoff for a 409 conflict,
+// else the normal poll interval.
+func getUpdatesBackoff(err error, interval time.Duration) time.Duration {
+	if isConflict(err) {
+		return conflictBackoff
+	}
+	return interval
+}
+
 // Worker drives a Processor over a Transport via long polling.
 type Worker struct {
 	proc      *Processor
@@ -194,6 +220,7 @@ func NewWorker(proc *Processor, transport Transport) *Worker {
 // Run polls for updates until ctx is cancelled, replying to each.
 func (w *Worker) Run(ctx context.Context) {
 	offset := 0
+	failures := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -202,12 +229,22 @@ func (w *Worker) Run(ctx context.Context) {
 		}
 		updates, err := w.transport.GetUpdates(ctx, offset)
 		if err != nil {
-			slog.Warn("telegram getUpdates failed", "err", err)
-			if !sleep(ctx, w.interval) {
+			failures++
+			// Throttle the log so a persistent error (e.g. a 409 conflict) doesn't flood it,
+			// and back off hard on a conflict instead of hammering every interval (p3-1).
+			if isConflict(err) {
+				if failures == 1 || failures%conflictLogEvery == 0 {
+					slog.Warn("telegram getUpdates conflict (409): another poller or a webhook owns this bot token — run one instance per token and clear any webhook", "failures", failures)
+				}
+			} else if failures == 1 || failures%transientLogEvery == 0 {
+				slog.Warn("telegram getUpdates failed", "failures", failures, "err", err)
+			}
+			if !sleep(ctx, getUpdatesBackoff(err, w.interval)) {
 				return
 			}
 			continue
 		}
+		failures = 0
 		for _, up := range updates {
 			if up.UpdateID >= offset {
 				offset = up.UpdateID + 1
