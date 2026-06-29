@@ -40,13 +40,16 @@ func DeriveState(snap *chain.Snapshot, poolID string) State {
 	if snap == nil || poolID == "" {
 		return StateNone
 	}
+	// Normalize all pool ids to canonical bech32 so a hex-configured pool compares equal
+	// to the bech32 form Koios returns (S0014 p4-1); without this a hex pool never matched.
+	want := chain.CanonicalPoolID(poolID)
 	// `active`: the effective active-stake snapshot credits our pool. This is the
 	// authoritative membership signal and naturally carries the leaving tail.
-	if snap.ActiveStakePoolID == poolID {
+	if chain.CanonicalPoolID(snap.ActiveStakePoolID) == want {
 		return StateActive
 	}
 	// `pending`: entered (registered + live delegation to us) but not yet active.
-	if snap.AccountStatus == "registered" && snap.DelegatedPoolID == poolID {
+	if snap.AccountStatus == "registered" && chain.CanonicalPoolID(snap.DelegatedPoolID) == want {
 		return StatePending
 	}
 	return StateNone

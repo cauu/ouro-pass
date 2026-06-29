@@ -173,7 +173,7 @@ config time too, so admin stores a canonical value. Exact-match semantics preser
 - [x] p2-2 Installer DOMAIN sanitization: strip `http(s)://` + trailing `/`.
 - [x] p3-1 Telegram `getUpdates` 409: detect, back off, log a single clear diagnostic
       (another poller/webhook owns this token); optional `deleteWebhook` on start.
-- [ ] p4-1 Pool-ID normalization: single canonical helper applied at `DeriveState` entry to
+- [x] p4-1 Pool-ID normalization: single canonical helper applied at `DeriveState` entry to
       both sides + validate/normalize attestor `pool_id` at config time; clear not-eligible
       diagnostic (configured vs on-chain pool). Unit tests for bech32/hex.
 - [ ] p5-1 Full validation: `make test` + `pnpm test` + `shellcheck deploy/install.sh` +
@@ -230,6 +230,7 @@ mainnet bind) mandatory; TC-8 must keep `StateNone` for non-delegators (no loose
 - 2026-06-29T23:47:17+08:00 p2-1 started: koios base URL trim in NewKoiosSource.
 - 2026-06-29T23:47:17+08:00 p2-1 completed: `NewKoiosSource` trims surrounding whitespace + trailing slashes before the empty→default check; added koios_test.go (TestNewKoiosSourceTrimsBaseURL). This is the direct fix for the `//account_info` 404 hit on-server.
 - 2026-06-30T00:00:00+08:00 p2-2 completed: installer strips scheme + path/trailing-slash from the DOMAIN answer (`${DOMAIN#http(s)://}`, `${DOMAIN%%/*}`); port preserved. shellcheck clean.
+- 2026-06-30T00:10:00+08:00 p4-1 completed: added `chain.CanonicalPoolID` (hex 28-byte → bech32 `pool1…` via the existing BIP-173-vector-tested encoder; bech32 lower-cased/kept) and applied it at the `DeriveState` entry to both the configured poolID and the snapshot pools. Hex-configured pools now match koios's bech32. Tests: poolid_test.go + state_poolid_test.go; existing TestDeriveState (placeholder ids) still green. Note: config-time normalization is unnecessary for correctness once comparison is format-agnostic; the per-attestor not-eligible diagnostic log is deferred (can add a slog.Debug in the attestor Attest path if needed).
 - 2026-06-30T00:05:00+08:00 p3-1 completed: telegram worker detects getUpdates 409 (isConflict), backs off 30s (vs 1s transient), and throttles the log (conflict: once + ~5min heartbeat; transient: ~1/30s) with a clear "another poller/webhook owns this token" message. Added backoff_test.go. Deferred (optional in spec): deleteWebhook-on-start — the common cause is a dual poller, not a webhook; can add later if needed.
 
 ## 6. Validation Evidence (append-only)
@@ -237,5 +238,6 @@ mainnet bind) mandatory; TC-8 must keep `StateNone` for non-delegators (no loose
 - TC-5 | stack: node/go | command: go test ./internal/utils/chain/ -run TrimsBaseURL | result: pass | note: trailing slash(es) + whitespace trimmed (`…/api/v1/`→`…/api/v1`); empty→mainnet default. go build ./... clean.
 - TC-6 | stack: other | command: shellcheck + sanitize harness | result: pass | note: `https://host/`→`host`, `http://host`→`host`, `host/admin/`→`host`, `host:8443` preserved. shellcheck clean.
 - TC-7 | stack: go | command: go test ./internal/worker/telegram/ -run 'Conflict|Backoff' | result: pass | note: isConflict detects 409; conflict→30s backoff, transient→1s; Run on a persistent 409 doesn't busy-loop (≤5 polls) and returns promptly on ctx cancel; clear conflict message logged once (failures==1, then throttled).
+- TC-8 | stack: go | command: go test ./internal/utils/chain/ ./internal/core/membership/ | result: pass | note: CanonicalPoolID hex↔bech32 equal + shape (pool1…, len 56, BIP-173 encoder); DeriveState eligible for hex-vs-bech32 (active+pending), StateNone for a different pool (no loosening); existing DeriveState test still green.
 
 ## 7. Change Requests (append-only)
