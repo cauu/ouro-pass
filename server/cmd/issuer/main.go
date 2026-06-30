@@ -105,7 +105,7 @@ func run() error {
 	}
 	slog.Info("database ready", "driver", cfg.DBDriver)
 
-	deps, err := buildServices(cfg, st)
+	deps, err := buildServices(cfg, st, nil)
 	if err != nil {
 		return err
 	}
@@ -251,7 +251,12 @@ func run() error {
 // config against an open store. Services degrade gracefully: without a field key
 // the signing-key/JWKS routes are disabled; without field key + server salt the
 // OAuth issuance routes are disabled. Extracted from run() so wiring is testable.
-func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, error) {
+//
+// chainOverride is the test seam (S0015): when non-nil it is used as the raw
+// chain source for every network (still wrapped with the active-membership
+// cache), so tests inject a deterministic chain.MockSource without env. In
+// production it is nil and each network builds its public Koios source.
+func buildServices(cfg *config.Config, st *store.Store, chainOverride chain.Source) (httpapi.Deps, error) {
 	walletSvc := walletauth.New(st, nonceTTL)
 	var serverSalt []byte
 	if cfg.ServerSaltHex != "" {
@@ -297,18 +302,14 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, error) {
 		if s, ok := srcCache[network]; ok {
 			return s, nil
 		}
-		// Resolve the koios endpoint for THIS network (S0014 p1-1): per-network override,
-		// else the public default. A single global URL would query the wrong network.
-		koiosURL := cfg.KoiosBaseURLByNetwork[network]
-		if koiosURL == "" {
-			koiosURL = chain.DefaultKoiosBaseURL(network)
-		}
-		raw, err := chain.NewSource(chain.Config{
-			Kind: cfg.ChainKind, KoiosBaseURL: koiosURL, APIKey: cfg.ChainAPIKey,
-			NodeSocket: cfg.NodeSocket, CardanoCLI: cfg.CardanoCLI, Network: network,
-		})
-		if err != nil {
-			return nil, err
+		// Koios is the single chain origin (S0015): build the per-network public Koios
+		// source directly (DefaultKoiosBaseURL resolves the right endpoint per network).
+		// Tests inject a deterministic source via chainOverride instead.
+		var raw chain.Source
+		if chainOverride != nil {
+			raw = chainOverride
+		} else {
+			raw = chain.NewKoiosSource(chain.DefaultKoiosBaseURL(network), cfg.ChainAPIKey, network)
 		}
 		s := membership.NewCachedSource(raw, st.SnapshotCache(), network, 10*time.Second)
 		srcCache[network] = s

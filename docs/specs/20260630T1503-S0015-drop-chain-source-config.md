@@ -1,9 +1,9 @@
 # Drop chain-source config — Koios is the single origin
 
 Spec-ID: S0015
-Status: draft
+Status: active
 Created Time: 2026-06-30T14:32:11+08:00
-Start Time:
+Start Time: 2026-06-30T15:03:58+08:00
 Completion Time:
 Previous Spec-ID: S0014
 Closure Reason:
@@ -97,7 +97,7 @@ deploy-time env). Direct `node_lsq`/`db_sync`/`blockfrost` adapters are **delete
 
 - [ ] p1-1 Remove chain-source env from config: delete `ChainKind`, `KoiosBaseURL`,
       `KoiosBaseURLByNetwork` + their reads/deprecation; keep `ChainAPIKey`. Update config_test.
-- [ ] p1-2 `srcFor`/origin always Koios: build `KoiosSource(DefaultKoiosBaseURL(network), …)`
+- [x] p1-2 `srcFor`/origin always Koios: build `KoiosSource(DefaultKoiosBaseURL(network), …)`
       directly; remove `chain.NewSource` kind switch. Add a `buildServices` source-injection
       seam; migrate `main_test`/`e2e` and other tests to inject `MockSource`.
 - [ ] p1-3 Delete `node_lsq` + `db_sync` (+ blockfrost dispatch) adapters and their wiring;
@@ -128,7 +128,19 @@ Pass/fail: TC-1..TC-5 pass; eligibility behavior unchanged (no membership semant
   becomes the single origin; chain-source env removed; mock test-only; node_lsq/db_sync/
   blockfrost deleted; self-hosted koios deferred to a future admin-UI spec. Awaiting review
   before promotion to active.
+- 2026-06-30T15:03:58+08:00 promoted to active (Start Time set; file moved to docs/specs/).
+  Beginning execution.
+- 2026-06-30T15:12:00+08:00 p1-2 done first (ahead of p1-1) to keep every commit buildable:
+  removing the config fields (p1-1) would break main.go's compile while it still references
+  them, so srcFor must stop referencing them first. main.go: srcFor now builds
+  KoiosSource(DefaultKoiosBaseURL(network), ChainAPIKey, network) directly (no kind switch,
+  no per-network URL override); buildServices gains a `chainOverride chain.Source` seam
+  (nil → koios); run() passes nil. main_test migrated to inject chain.NewMockSource(0) via the
+  seam (no ChainKind); db_sync fail-fast subtest removed. e2e_test already injects MockSource
+  directly — unchanged. chain.NewSource/Config still exist (removed in p1-3).
 
 ## 6. Validation Evidence (append-only)
+- TC-3 | stack: go | command: go test ./cmd/issuer/ | result: pass | note: buildServices wires injected MockSource (mock+cache); full+degraded paths green via seam
+- TC-2 | stack: go | command: go build ./... | result: pass | note: srcFor builds Koios per-network directly; no kind selection
 
 ## 7. Change Requests (append-only)

@@ -10,6 +10,7 @@ import (
 	"ouro-pass/server/internal/config"
 	"ouro-pass/server/internal/core/walletauth"
 	"ouro-pass/server/internal/store"
+	"ouro-pass/server/internal/utils/chain"
 )
 
 func testStore(t *testing.T) *store.Store {
@@ -30,13 +31,14 @@ func TestBuildServices_FullVsDegraded(t *testing.T) {
 	st := testStore(t)
 
 	// Full config: field key + server salt present → OAuth + Keys wired, edge
-	// flags propagated, mock chain selected.
+	// flags propagated. The chain source is injected via the buildServices seam
+	// (S0015): a deterministic MockSource, never selected via env.
 	full := &config.Config{
-		DBDriver: "sqlite", ChainKind: "mock", Issuer: "ouropass:p", Scope: "p",
+		DBDriver: "sqlite", Issuer: "ouropass:p", Scope: "p",
 		FieldKeyHex: hex.EncodeToString(make([]byte, 32)), ServerSaltHex: hex.EncodeToString([]byte("salt")),
 		TrustedProxy: true, TLS: false,
 	}
-	deps, err := buildServices(full, st)
+	deps, err := buildServices(full, st, chain.NewMockSource(0))
 	if err != nil {
 		t.Fatalf("full: %v", err)
 	}
@@ -53,8 +55,8 @@ func TestBuildServices_FullVsDegraded(t *testing.T) {
 
 	// Degraded: no field key → OAuth/Keys nil (routes degrade to 501) but the
 	// server still builds with wallet + admin present.
-	degraded := &config.Config{DBDriver: "sqlite", ChainKind: "mock", Issuer: "ouropass:p", Scope: "p", TLS: true}
-	d2, err := buildServices(degraded, st)
+	degraded := &config.Config{DBDriver: "sqlite", Issuer: "ouropass:p", Scope: "p", TLS: true}
+	d2, err := buildServices(degraded, st, chain.NewMockSource(0))
 	if err != nil {
 		t.Fatalf("degraded: %v", err)
 	}
@@ -63,13 +65,6 @@ func TestBuildServices_FullVsDegraded(t *testing.T) {
 	}
 	if d2.Admin == nil || d2.Wallet == nil {
 		t.Error("wallet + admin must always be present")
-	}
-
-	// db_sync fails fast at construction (p12-10).
-	dbsync := *full
-	dbsync.ChainKind = "db_sync"
-	if _, err := buildServices(&dbsync, st); err == nil {
-		t.Error("db_sync must fail fast in the default build")
 	}
 }
 
