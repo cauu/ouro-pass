@@ -107,7 +107,7 @@ only, no server-side auto-selection of a "single" instance):
       propagates via `BindData.ChannelID` → `data-channel-id`; JS sends `channel_id` in the
       activation POST. Unit-test the handler (valid id → data-channel-id rendered; bad id →
       400; no id → unchanged).
-- [ ] p1-2 Admin web: per-Telegram-instance "Copy bind link"
+- [x] p1-2 Admin web: per-Telegram-instance "Copy bind link"
       (`<origin>/bind?channel_id=<id>`) in `ChannelsPage`.
 - [ ] p1-3 Validation: `make test` + `pnpm test` (+ a focused activation test asserting the
       instance `bot_username` lands in the deep link when `channel_id` is passed).
@@ -147,8 +147,12 @@ Pass/fail: TC-1..TC-6 pass; no change to eligibility/activation semantics.
   already resolves the instance username when channel_id != ""). oauthDeps test helper now wires
   Store/Cipher/TelegramBot. Added TestBind_ChannelID (valid→data-channel-id, no-id→empty attr,
   unknown/disabled→400).
+- 2026-06-30T19:50:00+08:00 p1-2: ChannelsPage adds a per-Telegram-instance "Copy bind link"
+  action that copies `${window.location.origin}/bind?channel_id=<id>` to the clipboard (toast
+  feedback). UI-only; covered by typecheck + lint + build (and pnpm test in p1-3).
 
 ## 6. Validation Evidence (append-only)
 - TC-1/TC-2/TC-3 | stack: go | command: go test ./internal/httpapi/ -run TestBind_ChannelID | result: pass | note: /bind?channel_id=<active tg> renders data-channel-id; no id → empty attr (env-default fallback); unknown/disabled → 400
+- TC-4 | stack: ui | command: npm run typecheck && npx eslint ChannelsPage.tsx | result: pass | note: per-telegram "Copy bind link" → <origin>/bind?channel_id=<id>; typecheck + lint clean
 
 ## 7. Change Requests (append-only)

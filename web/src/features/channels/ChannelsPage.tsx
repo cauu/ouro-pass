@@ -161,6 +161,19 @@ export function ChannelsPage() {
     },
   });
 
+  // The per-instance bind link (S0016): holders who open it get an activation deep
+  // link to THIS instance's bot, so the subscription binds here. Without the
+  // channel_id, /bind falls back to the deployment-wide default bot.
+  const copyBindLink = async (c: ChannelInstance) => {
+    const link = `${window.location.origin}/bind?channel_id=${encodeURIComponent(c.channel_id)}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast({ title: "Bind link copied", description: link, variant: "success" });
+    } catch {
+      toast({ title: "Copy failed — copy it manually", description: link, variant: "destructive" });
+    }
+  };
+
   return (
     <>
       <PageHeader
@@ -194,6 +207,11 @@ export function ChannelsPage() {
                   <StatusBadge status={c.status} />
                 </TD>
                 <TD className="space-x-2 text-right">
+                  {c.channel_type === "telegram" && (
+                    <Button variant="ghost" onClick={() => copyBindLink(c)}>
+                      Copy bind link
+                    </Button>
+                  )}
                   <Button variant="ghost" onClick={() => toggle.mutate(c)} disabled={toggle.isPending}>
                     {c.status === "active" ? "Disable" : "Enable"}
                   </Button>
