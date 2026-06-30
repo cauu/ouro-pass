@@ -1,12 +1,12 @@
 # Retire the env-default Telegram instance — all bots configured in admin
 
 Spec-ID: S0017
-Status: active
+Status: completed
 Created Time: 2026-06-30T20:52:15+08:00
 Start Time: 2026-06-30T20:58:08+08:00
-Completion Time:
+Completion Time: 2026-06-30T23:23:05+08:00
 Previous Spec-ID: S0016
-Closure Reason:
+Closure Reason: delivered
 
 ## 1. Requirement Details
 
@@ -183,6 +183,13 @@ Pass/fail: TC-1..TC-6 pass; admin (DB) Telegram path behavior unchanged.
   packages) green, pnpm test (web 10/10) + tsc clean, shellcheck install.sh+init.sh clean. All
   plan items p1-1..p1-5 complete & verified; spec left active pending user verification (do not
   close).
+- 2026-06-30T23:23:05+08:00 closed (Closure Reason: delivered) per user. User verified the bind
+  deep link now points at the admin-configured bot (S0016/S0017 core confirmed). A separate
+  symptom surfaced — the opened bot replied with text not present in this codebase — diagnosed
+  as a config/usage issue (admin `bot_username` not matching the `token`'s bot, or a webhook on
+  the token), NOT an S0017 defect. The follow-on idea of deriving the username from the token via
+  Telegram getMe (to prevent the mismatch) is noted for S0018 / a future spec, not appended here.
+  File moved to docs/specs/completed/.
 
 ## 6. Validation Evidence (append-only)
 - TC-2 | stack: go | command: go test ./internal/worker/telegram/ | result: pass | note: no DB instance → no worker (TestSupervisor_NoInstancesNoWorkers); adding one runs exactly it; no env fallback
