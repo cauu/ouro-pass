@@ -31,6 +31,18 @@ But that channel-selection path is **dead for the public bind page**:
 not the bot of the channel instance configured in the admin console — the configured
 channels are never consulted.
 
+**Downstream symptom (same root cause):** the Subscription/Member admin pages stay
+empty after binding. A `SubscriptionSession` row is only written when the bot worker
+processes `/start <code>` (`telegram.go:107-141`). But once an admin adds a DB telegram
+instance, the env-default (`ouro_dev_bot`) worker is no longer started — the supervisor
+runs the env fallback only while no DB instance exists (`supervisor.go:83-86`). The
+deep link points at `ouro_dev_bot`, which has no running worker, so `/start` is never
+processed, no subscription is created, and the Member page (= subscriptions,
+`handlers_admin_resources.go:99`) shows nothing. (The activation code is unbound —
+`channel_id==""` — so `Consume`'s scoping allows any telegram instance to redeem it
+(`repo_activationcode.go:53`); the only thing missing is a *running* worker for the
+linked bot — which the explicit-`channel_id` fix provides.)
+
 ### Scope
 
 Add an **explicit** per-channel bind path (operator decision — explicit `channel_id`
@@ -112,8 +124,14 @@ only, no server-side auto-selection of a "single" instance):
 - TC-4 Admin UX: `ChannelsPage` shows a copyable `<origin>/bind?channel_id=<id>` link for
   each Telegram instance.
 - TC-5 Regression: `make test` + `pnpm test` green.
+- TC-6 End-to-end (manual/dev): binding via `/bind?channel_id=<configured tg id>` yields a
+  deep link to the configured bot whose worker is running; opening it and sending `/start
+  <code>` creates a subscription, so the admin **Member/Subscription** page shows the new
+  row (resolves the "empty pages" symptom). Pre-fix confirmation: opening the *configured*
+  bot with the same `?start=<code>` already creates the subscription (proves the only defect
+  is the deep-link bot username).
 
-Pass/fail: TC-1..TC-5 pass; no change to eligibility/activation semantics.
+Pass/fail: TC-1..TC-6 pass; no change to eligibility/activation semantics.
 
 ## 5. Execution Log (append-only)
 
