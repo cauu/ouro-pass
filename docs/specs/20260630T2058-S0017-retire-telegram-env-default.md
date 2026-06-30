@@ -1,9 +1,9 @@
 # Retire the env-default Telegram instance — all bots configured in admin
 
 Spec-ID: S0017
-Status: draft
+Status: active
 Created Time: 2026-06-30T20:52:15+08:00
-Start Time:
+Start Time: 2026-06-30T20:58:08+08:00
 Completion Time:
 Previous Spec-ID: S0016
 Closure Reason:
@@ -149,6 +149,9 @@ Pass/fail: TC-1..TC-6 pass; admin (DB) Telegram path behavior unchanged.
 - 2026-06-30T20:52:15+08:00 spec drafted (S0017) after S0016 closed: operator decided to
   fully retire the env-default Telegram instance and both telegram env vars, unifying all
   bots under admin configuration. Awaiting promotion to active.
+- 2026-06-30T20:58:08+08:00 promoted to active (Start Time set; file moved to docs/specs/).
+  Execution order: p1-2/p1-3 (stop referencing cfg.TelegramBot/Token + Deps.TelegramBot)
+  run before p1-1 (remove the config fields) so every commit stays buildable.
 
 ## 6. Validation Evidence (append-only)
 
