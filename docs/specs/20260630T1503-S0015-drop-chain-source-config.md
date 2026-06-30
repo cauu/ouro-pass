@@ -180,6 +180,10 @@ Pass/fail: TC-1..TC-5 pass; eligibility behavior unchanged (no membership semant
 - 2026-06-30T15:58:00+08:00 p3-2: added TestBuildServices_ProductionKoiosPerNetwork — exercises
   buildServices(cfg, st, nil) and asserts deps.SrcFor yields koios+cache for mainnet/preprod/
   preview and empty→mainnet (same instance), plus deps.Chain fallback; closes the TC-2 gap.
+- 2026-06-30T16:15:00+08:00 full regression after the p3 review follow-ups: go vet ./... clean,
+  make test (all server packages) green, pnpm test (web 10/10) green, shellcheck install.sh+
+  init.sh clean. All plan items p1-1..p3-2 complete & verified; spec left active pending user
+  closure.
 
 ## 6. Validation Evidence (append-only)
 - TC-3 | stack: go | command: go test ./cmd/issuer/ | result: pass | note: buildServices wires injected MockSource (mock+cache); full+degraded paths green via seam
@@ -196,5 +200,8 @@ Pass/fail: TC-1..TC-5 pass; eligibility behavior unchanged (no membership semant
 - TC-5 | stack: shell | command: shellcheck deploy/install.sh | result: pass | note: installer clean
 - TC-1 | stack: docs | command: grep blockfrost/node_lsq/db_sync/cardano-node README.md | result: pass | note: p3-1 — README eligibility/architecture/install refs now Koios-only (no removed-adapter mentions)
 - TC-2 | stack: go | command: go test ./cmd/issuer/ -run TestBuildServices_ProductionKoiosPerNetwork | result: pass | note: p3-2 — buildServices(nil) yields koios+cache for mainnet/preprod/preview, ""→mainnet same instance, deps.Chain=koios+cache
+- TC-5 | stack: go | command: go vet ./... && make test | result: pass | note: full regression after p3-1/p3-2 — vet clean; all server packages green
+- TC-5 | stack: node | command: pnpm test (web) | result: pass | note: full regression — vitest 2 files / 10 tests
+- TC-5 | stack: shell | command: shellcheck deploy/install.sh deploy/init.sh | result: pass | note: full regression — both installer scripts clean
 
 ## 7. Change Requests (append-only)
