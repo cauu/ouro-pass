@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -63,7 +64,7 @@ func oauthDeps(t *testing.T) (Deps, *chain.MockSource, ed25519.PrivateKey, strin
 	st.Issuer().SetTierRules(ctx,
 		json.RawMessage(`[{"tier":"gold","when":{"fact":"total_active_stake","op":">=","value":"1000000"}}]`), time.Now())
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
-	return Deps{Wallet: wallet, Keys: ks, OAuth: srv}, mock, priv, hex.EncodeToString(pub)
+	return Deps{Wallet: wallet, Keys: ks, OAuth: srv, Store: st, Cipher: cipher, TelegramBot: "ouro_default_bot"}, mock, priv, hex.EncodeToString(pub)
 }
 
 // rewardAddrOf / coseKeyOf derive the S0003 wallet-signature wire forms from a
@@ -112,6 +113,58 @@ func TestConnect_ValidatesParams(t *testing.T) {
 	resp, _ = http.Get(srv.URL + "/connect?client_id=c1&redirect_uri=https://app/cb&aud=app:ouro&response_type=code")
 	if resp.StatusCode != 200 {
 		t.Errorf("valid connect = %d, want 200", resp.StatusCode)
+	}
+}
+
+// TestBind_ChannelID covers S0016 p1-1 / TC-1..TC-3: /bind validates an optional
+// channel_id (active telegram instance) and renders it into data-channel-id so the
+// activation request can target that instance's bot; a bad id is rejected and the
+// no-id form is unchanged.
+func TestBind_ChannelID(t *testing.T) {
+	deps, _, _, _ := oauthDeps(t)
+	ctx := context.Background()
+	// Seed one active telegram instance and one disabled one.
+	must := func(err error) {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(deps.Store.Channels().Upsert(ctx, domain.ChannelConfig{
+		ChannelID: "tg-active", PoolID: deps.PoolID, ChannelType: "telegram", Name: "Main",
+		Status: "active", CreatedAt: time.Now(),
+	}))
+	must(deps.Store.Channels().Upsert(ctx, domain.ChannelConfig{
+		ChannelID: "tg-off", PoolID: deps.PoolID, ChannelType: "telegram", Name: "Old",
+		Status: "disabled", CreatedAt: time.Now(),
+	}))
+
+	srv := httptest.NewServer(NewRouter(deps))
+	defer srv.Close()
+
+	get := func(path string) (int, string) {
+		resp, err := http.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(b)
+	}
+
+	// TC-1: valid active telegram id → 200 with data-channel-id set.
+	if code, body := get("/bind?channel_id=tg-active"); code != 200 || !strings.Contains(body, `data-channel-id="tg-active"`) {
+		t.Errorf("valid channel_id: code=%d, has-attr=%v", code, strings.Contains(body, `data-channel-id="tg-active"`))
+	}
+	// TC-2: no channel_id → 200 with empty data-channel-id (unchanged behavior).
+	if code, body := get("/bind"); code != 200 || !strings.Contains(body, `data-channel-id=""`) {
+		t.Errorf("no channel_id: code=%d, body has empty attr=%v", code, strings.Contains(body, `data-channel-id=""`))
+	}
+	// TC-3: unknown / inactive id → 400, no page rendered.
+	if code, _ := get("/bind?channel_id=nope"); code != http.StatusBadRequest {
+		t.Errorf("unknown channel_id = %d, want 400", code)
+	}
+	if code, _ := get("/bind?channel_id=tg-off"); code != http.StatusBadRequest {
+		t.Errorf("disabled channel_id = %d, want 400", code)
 	}
 }
 

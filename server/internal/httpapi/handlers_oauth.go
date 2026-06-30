@@ -45,7 +45,12 @@ func (h *apiHandlers) connect(w http.ResponseWriter, r *http.Request) {
 // connect wallet → activation → Telegram deep link. Public; the server enforces
 // eligibility when the activation is created.
 //
-//	GET /bind?channel_type=telegram
+//	GET /bind?channel_type=telegram[&channel_id=<id>]
+//
+// channel_id (S0016), when present, binds the page to one channel instance so the
+// activation deep link uses that instance's own bot. It is validated here (active
+// telegram instance) so a stale link fails fast instead of silently falling back
+// to the env-default bot after the user has signed.
 func (h *apiHandlers) bind(w http.ResponseWriter, r *http.Request) {
 	if h.d.OAuth == nil {
 		notImplemented(w, r)
@@ -55,7 +60,15 @@ func (h *apiHandlers) bind(w http.ResponseWriter, r *http.Request) {
 	if ct == "" {
 		ct = "telegram"
 	}
-	if err := authpage.RenderBind(w, authpage.BindData{ChannelType: ct}); err != nil {
+	cid := r.URL.Query().Get("channel_id")
+	if cid != "" {
+		inst, err := h.d.Store.Channels().Get(r.Context(), cid)
+		if err != nil || inst.Status != "active" || inst.ChannelType != "telegram" {
+			respond.Error(w, http.StatusBadRequest, "invalid_request", "unknown or inactive channel instance")
+			return
+		}
+	}
+	if err := authpage.RenderBind(w, authpage.BindData{ChannelType: ct, ChannelID: cid}); err != nil {
 		serverError(w, r, err)
 	}
 }

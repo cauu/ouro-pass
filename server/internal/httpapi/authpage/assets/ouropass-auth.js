@@ -146,6 +146,7 @@
     setStatus("Creating activation…");
     var res = await postJSON(cfg.submitUrl, {
       channel_type: cfg.channelType || "telegram",
+      channel_id: cfg.channelId || "",
       nonce: nonce,
       cose_key: sig.key,
       signature: sig.signature,

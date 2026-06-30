@@ -103,7 +103,7 @@ only, no server-side auto-selection of a "single" instance):
 
 ## 3. Execution Plan
 
-- [ ] p1-1 Backend bind path: `/bind` accepts + validates `channel_id` (active telegram),
+- [x] p1-1 Backend bind path: `/bind` accepts + validates `channel_id` (active telegram),
       propagates via `BindData.ChannelID` → `data-channel-id`; JS sends `channel_id` in the
       activation POST. Unit-test the handler (valid id → data-channel-id rendered; bad id →
       400; no id → unchanged).
@@ -141,7 +141,14 @@ Pass/fail: TC-1..TC-6 pass; no change to eligibility/activation semantics.
   (blocked until S0015 is closed — only one active spec at a time).
 - 2026-06-30T19:37:14+08:00 S0015 closed (delivered); promoted S0016 to active (Start Time set;
   file moved to docs/specs/). Beginning execution of p1-1.
+- 2026-06-30T19:44:00+08:00 p1-1: bind handler reads + validates channel_id (active telegram
+  instance, else 400) and passes it via BindData.ChannelID → data-channel-id in bind.html;
+  ouropass-auth.js now sends channel_id in the activation POST. activationCreate unchanged (it
+  already resolves the instance username when channel_id != ""). oauthDeps test helper now wires
+  Store/Cipher/TelegramBot. Added TestBind_ChannelID (valid→data-channel-id, no-id→empty attr,
+  unknown/disabled→400).
 
 ## 6. Validation Evidence (append-only)
+- TC-1/TC-2/TC-3 | stack: go | command: go test ./internal/httpapi/ -run TestBind_ChannelID | result: pass | note: /bind?channel_id=<active tg> renders data-channel-id; no id → empty attr (env-default fallback); unknown/disabled → 400
 
 ## 7. Change Requests (append-only)
