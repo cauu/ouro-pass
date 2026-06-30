@@ -69,6 +69,7 @@ func NewRouter(d Deps) http.Handler {
 
 	// ---- Channel activation plane ----
 	r.With(publicLimit).Get("/bind", h.bind)
+	r.With(publicLimit).Get("/api/channels", h.publicChannels)
 	r.With(publicLimit, idem).Post("/api/activation/create", h.activationCreate)
 
 	// Issuer-served Authorization/binding page asset (same-origin script).

@@ -98,7 +98,7 @@ a directory entry page that links to the existing per-channel bind page).
 
 ## 3. Execution Plan
 
-- [ ] p1-1 Public channel directory endpoint: `GET /api/channels` (active telegram
+- [x] p1-1 Public channel directory endpoint: `GET /api/channels` (active telegram
       instances with a bot username; public fields only). Handler + router + unit test
       (active-with-username listed; inactive / no-username / token excluded).
 - [ ] p1-2 Bind directory UX: `/bind` (no `channel_id`) fetches `/api/channels` and
@@ -134,7 +134,13 @@ Pass/fail: TC-1..TC-4 pass; no change to eligibility/activation/deep-link semant
   active spec at a time).
 - 2026-06-30T23:23:05+08:00 S0017 closed (delivered); promoted S0018 to active (Start Time set;
   file moved to docs/specs/). Beginning execution of p1-1.
+- 2026-06-30T23:28:00+08:00 p1-1: added GET /api/channels (public, rate-limited) →
+  {channels:[{channel_id,name,channel_type,bot_username}]} from Channels().ListActive(pool,
+  "telegram"), dropping instances with no decodable bot_username; only public fields, no token.
+  New handlers_channels.go + route in router.go. TestPublicChannels asserts active+username
+  listed; disabled / no-username excluded; no token leak.
 
 ## 6. Validation Evidence (append-only)
+- TC-1 | stack: go | command: go test ./internal/httpapi/ -run TestPublicChannels | result: pass | note: /api/channels lists active telegram w/ username; disabled & username-less excluded; no bot_token_enc/token_hint in payload
 
 ## 7. Change Requests (append-only)
