@@ -108,9 +108,9 @@ func TestAuthAsset_ServesJS(t *testing.T) {
 	}
 }
 
-// TestActivationCreate_UsesInstanceBot covers S0016 TC-1/TC-2: when the activation
-// request carries channel_id, the deep link uses THAT instance's bot username; with
-// no channel_id it falls back to the deployment-wide default bot.
+// TestActivationCreate_UsesInstanceBot covers S0016 TC-1 + S0017 TC-3: the deep
+// link uses the targeted instance's bot username; with no channel_id the request
+// is rejected (400) — there is no env-default fallback bot (S0017).
 func TestActivationCreate_UsesInstanceBot(t *testing.T) {
 	deps, mock, priv, vkey := oauthDeps(t)
 	ctx := context.Background()
@@ -158,9 +158,20 @@ func TestActivationCreate_UsesInstanceBot(t *testing.T) {
 	if dl := deepLink("tg1"); !strings.HasPrefix(dl, "https://t.me/my_real_bot?start=") {
 		t.Errorf("deep_link with channel_id = %q, want my_real_bot", dl)
 	}
-	// Without channel_id → the deployment default bot (unchanged behavior).
-	if dl := deepLink(""); !strings.HasPrefix(dl, "https://t.me/ouro_default_bot?start=") {
-		t.Errorf("deep_link without channel_id = %q, want ouro_default_bot", dl)
+
+	// Without channel_id → 400 (S0017: no env-default fallback bot).
+	nonce, _, _ := deps.Wallet.Challenge(ctx, domain.NonceActivation, rewardAddrOf(vkey))
+	body, _ := json.Marshal(map[string]string{
+		"channel_type": "telegram", "channel_id": "",
+		"nonce": nonce, "cose_key": coseKeyOf(vkey), "signature": signNonce(t, priv, nonce),
+	})
+	resp, err := http.Post(srv.URL+"/api/activation/create", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("activation without channel_id = %d, want 400", resp.StatusCode)
 	}
 }
 

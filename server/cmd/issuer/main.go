@@ -255,7 +255,6 @@ func buildServices(cfg *config.Config, st *store.Store, chainOverride chain.Sour
 		Wallet:        walletSvc,
 		Store:         st,
 		PoolID:        cfg.Scope,
-		TelegramBot:   cfg.TelegramBot,
 		TrustedProxy:  cfg.TrustedProxy,
 		SecureCookies: cfg.TLS,
 		Admin: admin.New(admin.Config{

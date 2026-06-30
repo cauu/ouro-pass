@@ -93,7 +93,7 @@ func newEnv(t *testing.T) *env {
 
 	deps := httpapi.Deps{
 		Wallet: wallet, Keys: ks, OAuth: oas, Admin: adm, Store: st,
-		PoolID: testPool, TelegramBot: "ouro_e2e_bot", SecureCookies: false,
+		PoolID: testPool, SecureCookies: false,
 	}
 	srv := httptest.NewServer(httpapi.NewRouter(deps))
 	t.Cleanup(srv.Close)
@@ -380,13 +380,22 @@ func TestE2E_ActivationToTelegramSubscription(t *testing.T) {
 		t.Fatalf("activation challenge = %d", st)
 	}
 	nonce, _ := body["nonce"].(string)
+	// S0017: activation targets an admin-configured telegram instance; its stored
+	// bot username drives the deep link (no env-default fallback). Seed one.
+	if err := e.st.Channels().Upsert(context.Background(), domain.ChannelConfig{
+		ChannelID: "tg-e2e", PoolID: testPool, ChannelType: "telegram", Name: "E2E",
+		Config: []byte(`{"bot_username":"ouro_e2e_bot"}`), Status: "active", CreatedAt: time.Now(),
+	}); err != nil {
+		t.Fatalf("seed telegram channel: %v", err)
+	}
 	st, act := e.post("/api/activation/create",
-		`{"channel_type":"telegram","nonce":"`+nonce+`","cose_key":"`+w.coseKey+`","signature":"`+cose(w.priv, nonce)+`"}`)
+		`{"channel_type":"telegram","channel_id":"tg-e2e","nonce":"`+nonce+`","cose_key":"`+w.coseKey+`","signature":"`+cose(w.priv, nonce)+`"}`)
 	if st != 200 {
 		t.Fatalf("activation create = %d (%v)", st, act)
 	}
 	code, _ := act["activation_code"].(string)
-	if code == "" || !strings.Contains(act["deep_link"].(string), code) {
+	dl, _ := act["deep_link"].(string)
+	if code == "" || !strings.Contains(dl, code) || !strings.Contains(dl, "t.me/ouro_e2e_bot") {
 		t.Fatalf("activation: %v", act)
 	}
 

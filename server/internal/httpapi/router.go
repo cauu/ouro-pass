@@ -32,14 +32,13 @@ type Deps struct {
 	Keys          *keys.Service
 	OAuth         *oauth.Server
 	Admin         *admin.Service
-	Store         *store.Store        // admin resource handlers use repos directly
-	Chain         chain.Source        // fallback chain source (admin delegator roster)
+	Store         *store.Store                               // admin resource handlers use repos directly
+	Chain         chain.Source                               // fallback chain source (admin delegator roster)
 	SrcFor        func(network string) (chain.Source, error) // per-network source (S0014 p1-3)
-	Cipher        *crypto.FieldCipher // field cipher for channel secrets (telegram bot token)
+	Cipher        *crypto.FieldCipher                        // field cipher for channel secrets (telegram bot token)
 	PoolID        string
-	TelegramBot   string // bot username for activation deep links
-	TrustedProxy  bool   // trust X-Forwarded-For for client IP (only behind a known proxy, D15)
-	SecureCookies bool   // set Secure on admin session cookies (off for local HTTP, D17)
+	TrustedProxy  bool // trust X-Forwarded-For for client IP (only behind a known proxy, D15)
+	SecureCookies bool // set Secure on admin session cookies (off for local HTTP, D17)
 }
 
 type apiHandlers struct{ d Deps }

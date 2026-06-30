@@ -120,9 +120,11 @@ per-channel stored username, with **no env fallback**.
       remove `Deps.TelegramBot`. Update `supervisor_test` + `cmd/devflow`.
       (`Deps.TelegramBot` + `cmd/devflow` are removed together with the activation
       deep-link rewrite in p1-3 — they're entangled with the `h.d.TelegramBot` fallback.)
-- [ ] p1-3 Activation/bind deep link: resolve username only from the channel instance;
+- [x] p1-3 Activation/bind deep link: resolve username only from the channel instance;
       require `channel_id` + a stored username, else 400 (no env fallback). Update
       `handlers_activation` + handler tests (no-id/no-username → 400, not env default).
+      (Also removes `Deps.TelegramBot` + `cmd/devflow` usage. `/bind` kept permissive —
+      activation is the single gate, so no misleading link is ever produced.)
 - [ ] p1-4 Docs/env: drop `OUROPASS_TELEGRAM_BOT`/`_TOKEN` from `.env.example` and
       `docs/deployment.md` (incl. the stale `OURO_TELEGRAM_*` line); document admin-only
       Telegram config + the breaking migration note.
@@ -161,8 +163,16 @@ Pass/fail: TC-1..TC-6 pass; admin (DB) Telegram path behavior unchanged.
   instance only. supervisor_test: replaced TestSupervisor_EnvFallback with
   TestSupervisor_NoInstancesNoWorkers. Deps.TelegramBot + cmd/devflow deferred to p1-3 (entangled
   with the activation fallback). go build ./... + go vet ./... clean; worker + issuer tests green.
+- 2026-06-30T21:14:00+08:00 p1-3: activationCreate now resolves the bot username only from the
+  targeted instance — channel_id required, instance must be active telegram with a stored
+  bot_username, else 400 (no env-default fallback). Removed Deps.TelegramBot (router) + its
+  setters (main.go, cmd/devflow, e2e_test, oauthDeps). /bind kept permissive (activation is the
+  single gate). Updated TestActivationCreate_UsesInstanceBot (no-id → 400) and e2e Flow D (seed
+  instance + channel_id). go vet ./... clean; httpapi + e2e + issuer tests green.
 
 ## 6. Validation Evidence (append-only)
 - TC-2 | stack: go | command: go test ./internal/worker/telegram/ | result: pass | note: no DB instance → no worker (TestSupervisor_NoInstancesNoWorkers); adding one runs exactly it; no env fallback
+- TC-3 | stack: go | command: go test ./internal/httpapi/ -run TestActivationCreate_UsesInstanceBot | result: pass | note: channel_id → t.me/my_real_bot; missing channel_id → 400 (no env-default fallback)
+- TC-3 | stack: go | command: go test ./internal/e2e/ | result: pass | note: Flow D now seeds a telegram instance + passes channel_id; deep link uses t.me/ouro_e2e_bot, /start creates the subscription
 
 ## 7. Change Requests (append-only)

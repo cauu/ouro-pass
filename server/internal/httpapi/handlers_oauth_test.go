@@ -64,7 +64,7 @@ func oauthDeps(t *testing.T) (Deps, *chain.MockSource, ed25519.PrivateKey, strin
 	st.Issuer().SetTierRules(ctx,
 		json.RawMessage(`[{"tier":"gold","when":{"fact":"total_active_stake","op":">=","value":"1000000"}}]`), time.Now())
 	pub, priv, _ := ed25519.GenerateKey(rand.Reader)
-	return Deps{Wallet: wallet, Keys: ks, OAuth: srv, Store: st, Cipher: cipher, TelegramBot: "ouro_default_bot"}, mock, priv, hex.EncodeToString(pub)
+	return Deps{Wallet: wallet, Keys: ks, OAuth: srv, Store: st, Cipher: cipher}, mock, priv, hex.EncodeToString(pub)
 }
 
 // rewardAddrOf / coseKeyOf derive the S0003 wallet-signature wire forms from a
