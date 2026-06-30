@@ -1,12 +1,12 @@
 # Bind page targets a specific channel instance (per-channel deep link)
 
 Spec-ID: S0016
-Status: active
+Status: completed
 Created Time: 2026-06-30T17:48:05+08:00
 Start Time: 2026-06-30T19:37:14+08:00
-Completion Time:
+Completion Time: 2026-06-30T20:52:15+08:00
 Previous Spec-ID: S0015
-Closure Reason:
+Closure Reason: delivered
 
 ## 1. Requirement Details
 
@@ -155,6 +155,13 @@ Pass/fail: TC-1..TC-6 pass; no change to eligibility/activation semantics.
   validation: go vet clean, make test green, pnpm test (web 10/10) green, typecheck clean.
   All plan items p1-1..p1-3 complete & verified; spec left active pending user verification
   (do not close).
+- 2026-06-30T20:52:15+08:00 closed (Closure Reason: delivered) per user. Code-level acceptance
+  (TC-1..TC-5) verified by automated tests; TC-6 (manual Telegram end-to-end) not run by user —
+  the per-channel deep link is proven at the HTTP layer and the /start→subscription path is
+  covered by existing worker tests. The discussion this spec triggered (the env-default bot
+  fallback / OUROPASS_TELEGRAM_BOT + OUROPASS_TELEGRAM_TOKEN being a footgun) is out of this
+  spec's scope and is taken up in S0017 (retire env-default + both telegram env vars; all bots
+  configured in admin). File moved to docs/specs/completed/.
 
 ## 6. Validation Evidence (append-only)
 - TC-1/TC-2/TC-3 | stack: go | command: go test ./internal/httpapi/ -run TestBind_ChannelID | result: pass | note: /bind?channel_id=<active tg> renders data-channel-id; no id → empty attr (env-default fallback); unknown/disabled → 400
