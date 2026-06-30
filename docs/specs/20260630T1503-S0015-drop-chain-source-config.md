@@ -102,7 +102,7 @@ deploy-time env). Direct `node_lsq`/`db_sync`/`blockfrost` adapters are **delete
       seam; migrate `main_test`/`e2e` and other tests to inject `MockSource`.
 - [x] p1-3 Delete `node_lsq` + `db_sync` (+ blockfrost dispatch) adapters and their wiring;
       keep `KoiosSource`/`MockSource`/`DefaultKoiosBaseURL`/`CanonicalPoolID`.
-- [ ] p1-4 `make dev`: drop the mock injection → public koios; update the dev docs/comment.
+- [x] p1-4 `make dev`: drop the mock injection → public koios; update the dev docs/comment.
 - [ ] p1-5 Installer/docs cleanup: remove the `CHAIN_KIND` prompt + chain-source/koios knobs
       from `install.sh`, `.env.example`, `docs/deployment.md`; document Koios-only + future
       self-host-in-UI.
@@ -150,11 +150,17 @@ Pass/fail: TC-1..TC-5 pass; eligibility behavior unchanged (no membership semant
   it is still used by membership.CachedSource.Delegators for sources lacking DelegatorLister
   (reworded accordingly, not a build-status marker). Removed the node_lsq/NewSource tests from
   chain_test.go. Updated stale doc comments (package chain, KoiosSource, StakeSnapshotCache.Source).
+- 2026-06-30T15:31:00+08:00 p1-4: Makefile `dev` target drops OUROPASS_CHAIN_KIND=mock → dev now
+  uses public koios per-network defaults; dev comment rewritten (no chain-source env; eligibility
+  depends on configured attestors).
+
+## 6. Validation Evidence (append-only)
 - TC-3 | stack: go | command: go test ./cmd/issuer/ | result: pass | note: buildServices wires injected MockSource (mock+cache); full+degraded paths green via seam
 - TC-2 | stack: go | command: go build ./... | result: pass | note: srcFor builds Koios per-network directly; no kind selection
 - TC-1 | stack: go | command: go test ./internal/config/ | result: pass | note: config has no ChainKind/KoiosBaseURL*; ChainAPIKey kept (defaults empty)
 - TC-4 | stack: go | command: go test ./internal/config/ -run LegacyChainEnvIgnored | result: pass | note: stale OUROPASS_CHAIN_KIND/KOIOS_BASE_URL[_NET] ignored, Load succeeds (deprecation log emitted)
 - TC-4 | stack: go | command: grep -rn 'node_lsq|db_sync|NewSource' --include='*.go' server | result: pass | note: only doc strings remained; node_lsq.go/db_sync.go deleted, chain.NewSource/Config gone
 - TC-5 | stack: go | command: go test ./... | result: pass | note: full server suite green after adapter deletion (no eligibility/membership drift)
+- TC-1 | stack: make | command: make -n dev | grep CHAIN_KIND | result: pass | note: dev target no longer injects OUROPASS_CHAIN_KIND=mock (empty grep); public koios used
 
 ## 7. Change Requests (append-only)

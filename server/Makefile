@@ -62,16 +62,17 @@ test-integration:
 ## test-all: everything (unit + e2e + integration)
 test-all: test test-integration
 
-## dev: run the issuer locally for manual/browser-wallet testing (OAuth on, mock chain).
-## Open http://localhost:8080/bind in a browser with a Cardano wallet — a real
-## wallet signature returns not_eligible (403), which proves the S0003 signature
-## path. Override e.g.: make dev DEV_ADDR=:9000
+## dev: run the issuer locally for manual/browser-wallet testing (OAuth on).
+## Koios is the single chain origin (S0015): dev uses the public per-network
+## defaults — no chain-source env. Open http://localhost:8080/bind in a browser
+## with a Cardano wallet — a real wallet signature exercises the S0003 signature
+## path (eligibility depends on the attestors you configure). Override e.g.:
+## make dev DEV_ADDR=:9000
 dev:
 	@mkdir -p .dev
 	$(GO) build -o .dev/issuer ./cmd/issuer
 	@OUROPASS_ADDR=$(DEV_ADDR) \
 	OUROPASS_ISSUER=$(DEV_ISSUER) \
-	OUROPASS_CHAIN_KIND=mock \
 	OUROPASS_FIELD_KEY=$(DEV_FIELD_KEY) \
 	OUROPASS_SERVER_SALT=$(DEV_SERVER_SALT) \
 	OUROPASS_TELEGRAM_BOT=$(DEV_TELEGRAM_BOT) \
