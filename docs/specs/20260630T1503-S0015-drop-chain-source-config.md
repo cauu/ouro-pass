@@ -106,7 +106,7 @@ deploy-time env). Direct `node_lsq`/`db_sync`/`blockfrost` adapters are **delete
 - [x] p1-5 Installer/docs cleanup: remove the `CHAIN_KIND` prompt + chain-source/koios knobs
       from `install.sh`, `.env.example`, `docs/deployment.md`; document Koios-only + future
       self-host-in-UI.
-- [ ] p2-1 Full validation: `make test` + `pnpm test` + `shellcheck deploy/install.sh`.
+- [x] p2-1 Full validation: `make test` + `pnpm test` + `shellcheck deploy/install.sh`.
 
 ## 4. Test and Acceptance Criteria
 
@@ -160,6 +160,9 @@ Pass/fail: TC-1..TC-5 pass; eligibility behavior unchanged (no membership semant
   docs/deployment.md: env table + quick-start + "Chain data source" section + troubleshooting
   rewritten to Koios-only; self-hosted koios documented as a future admin-UI option; node_lsq/
   db_sync/blockfrost references removed. Installed shellcheck 0.11.0 (was missing) to validate.
+- 2026-06-30T15:46:00+08:00 p2-1: full local validation — make test (all server packages),
+  pnpm test (web: 2 files / 10 tests), shellcheck deploy/install.sh — all green. All plan items
+  p1-1..p1-5 + p2-1 complete; awaiting user verification before closure (do not close).
 
 ## 6. Validation Evidence (append-only)
 - TC-3 | stack: go | command: go test ./cmd/issuer/ | result: pass | note: buildServices wires injected MockSource (mock+cache); full+degraded paths green via seam
@@ -171,5 +174,8 @@ Pass/fail: TC-1..TC-5 pass; eligibility behavior unchanged (no membership semant
 - TC-1 | stack: make | command: make -n dev | grep CHAIN_KIND | result: pass | note: dev target no longer injects OUROPASS_CHAIN_KIND=mock (empty grep); public koios used
 - TC-1 | stack: shell | command: shellcheck deploy/install.sh deploy/init.sh | result: pass | note: clean; no CHAIN_KIND prompt/set_env; only OUROPASS_CHAIN_API_KEY chain env remains in .env.example
 - TC-1 | stack: docs | command: grep CHAIN_KIND/KOIOS_BASE_URL deploy .env.example docs/deployment.md | result: pass | note: only intentional "removed and ignored" mentions remain; no live knobs
+- TC-5 | stack: go | command: make test | result: pass | note: all server packages green (cmd/issuer, config, chain, membership, e2e, httpapi, workers, …)
+- TC-5 | stack: node | command: pnpm test (web) | result: pass | note: vitest 2 files / 10 tests pass (wallet adapter, app guards)
+- TC-5 | stack: shell | command: shellcheck deploy/install.sh | result: pass | note: installer clean
 
 ## 7. Change Requests (append-only)
