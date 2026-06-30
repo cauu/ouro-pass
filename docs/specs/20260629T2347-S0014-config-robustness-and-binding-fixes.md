@@ -176,7 +176,7 @@ config time too, so admin stores a canonical value. Exact-match semantics preser
 - [x] p4-1 Pool-ID normalization: single canonical helper applied at `DeriveState` entry to
       both sides + validate/normalize attestor `pool_id` at config time; clear not-eligible
       diagnostic (configured vs on-chain pool). Unit tests for bech32/hex.
-- [ ] p5-1 Full validation: `make test` + `pnpm test` + `shellcheck deploy/install.sh` +
+- [x] p5-1 Full validation: `make test` + `pnpm test` + `shellcheck deploy/install.sh` +
       on-server end-to-end mainnet bind.
 - [x] p4-1-fix1 (review P1) Guard `DeriveState` against a poolID that canonicalizes to ""
       (e.g. whitespace), which would false-match empty on-chain pool fields → loosening
@@ -267,5 +267,7 @@ mainnet bind) mandatory; TC-8 must keep `StateNone` for non-delegators (no loose
 - p4-1-fix1 | stack: go | command: go test ./internal/core/membership/ ./internal/httpapi/ | result: pass | note: DeriveState now returns StateNone when poolID canonicalizes to "" (whitespace/empty) even with empty on-chain pools (regression test TestDeriveState_BlankPoolIDNeverMatches); validateAttestorInput rejects whitespace pool_id. Closes review P1 (loosening) — re-verified the pre-fix path returned "active".
 - p3-1-fix1 | stack: go | command: go test ./internal/worker/telegram/ | result: pass | note: transport returns typed APIStatusError{Method,Status} (same Error() text); isConflict uses errors.As (Status==409) with the substring as fallback; tests cover typed 409/500 + string fallback. Closes review P2 (409 fragility).
 - p2-2-fix1 | stack: other | command: shellcheck + sanitize harness | result: pass | note: sed-based DOMAIN sanitize now trims surrounding whitespace and strips any-case scheme (HTTP://, HTTPS://) + path; port preserved. Closes review P2 (uppercase/whitespace). shellcheck clean.
+
+- p5-1 / TC-9 | stack: go+ui | command: (server) go vet ./... + go test ./... ; shellcheck deploy/install.sh ; (web) pnpm typecheck + test + lint | result: pass | note: server 0 FAIL, vet clean; shellcheck clean; web typecheck clean, 10 tests pass, lint 0 errors (2 pre-existing react-refresh warnings). TC-10 / TC-11 (real on-server mainnet bind + old-`.env` upgrade path) are environment-blocked here — to be exercised by the operator on the target host before sign-off.
 
 ## 7. Change Requests (append-only)
