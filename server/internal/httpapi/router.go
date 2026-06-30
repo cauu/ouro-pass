@@ -33,7 +33,8 @@ type Deps struct {
 	OAuth         *oauth.Server
 	Admin         *admin.Service
 	Store         *store.Store        // admin resource handlers use repos directly
-	Chain         chain.Source        // optional admin delegator roster (S0004 §2.7)
+	Chain         chain.Source        // fallback chain source (admin delegator roster)
+	SrcFor        func(network string) (chain.Source, error) // per-network source (S0014 p1-3)
 	Cipher        *crypto.FieldCipher // field cipher for channel secrets (telegram bot token)
 	PoolID        string
 	TelegramBot   string // bot username for activation deep links

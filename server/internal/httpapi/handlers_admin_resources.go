@@ -148,8 +148,24 @@ func (h *apiHandlers) adminSetTierRules(w http.ResponseWriter, r *http.Request) 
 // is a cold, read-only roster query served directly from the chain source (no
 // cache), and degrades to 501 when the configured source cannot enumerate.
 func (h *apiHandlers) adminDelegators(w http.ResponseWriter, r *http.Request) {
-	lister, ok := h.d.Chain.(chain.DelegatorLister)
-	if h.d.Chain == nil || !ok {
+	// S0006: the served pool is configured as a pool_stake attestor, not an env var.
+	// Resolve the deployment's primary pool + its network for the roster (multi-pool
+	// selection by query param is future admin work).
+	poolID, network := h.primaryPool(r.Context())
+	if poolID == "" {
+		respond.Error(w, http.StatusNotFound, "no_pool", "no active pool_stake attestor configured")
+		return
+	}
+	// Query the roster from THAT pool's network source (S0014 p1-3), falling back to the
+	// default-network source if per-network resolution is unavailable.
+	src := h.d.Chain
+	if h.d.SrcFor != nil {
+		if s, err := h.d.SrcFor(network); err == nil && s != nil {
+			src = s
+		}
+	}
+	lister, ok := src.(chain.DelegatorLister)
+	if src == nil || !ok {
 		notImplemented(w, r)
 		return
 	}
@@ -158,14 +174,6 @@ func (h *apiHandlers) adminDelegators(w http.ResponseWriter, r *http.Request) {
 		if n, err := strconv.Atoi(p); err == nil && n > 0 {
 			page = n
 		}
-	}
-	// S0006: the served pool is configured as a pool_stake attestor, not an env var.
-	// Resolve the deployment's primary pool for the roster (multi-pool selection by
-	// query param is future admin work).
-	poolID := h.primaryPoolID(r.Context())
-	if poolID == "" {
-		respond.Error(w, http.StatusNotFound, "no_pool", "no active pool_stake attestor configured")
-		return
 	}
 	hashes, err := lister.Delegators(r.Context(), poolID, page)
 	if err != nil {
@@ -182,9 +190,17 @@ func (h *apiHandlers) adminDelegators(w http.ResponseWriter, r *http.Request) {
 // first active pool_stake attestor — for cold roster queries (delegators). Returns
 // "" when no pool_stake attestor is configured.
 func (h *apiHandlers) primaryPoolID(ctx context.Context) string {
+	id, _ := h.primaryPool(ctx)
+	return id
+}
+
+// primaryPool resolves the deployment's primary pool_stake attestor's pool id AND its
+// network (S0014 p1-3), so chain queries hit the right network. Empty network defaults to
+// "mainnet". Returns ("","") when no active pool_stake attestor exists.
+func (h *apiHandlers) primaryPool(ctx context.Context) (poolID, network string) {
 	cfgs, err := h.d.Store.Attestors().ListActive(ctx)
 	if err != nil {
-		return ""
+		return "", ""
 	}
 	for _, c := range cfgs {
 		if c.Kind != attestor.KindPoolStake {
@@ -192,10 +208,14 @@ func (h *apiHandlers) primaryPoolID(ctx context.Context) string {
 		}
 		var p attestor.PoolStakeParams
 		if json.Unmarshal(c.Params, &p) == nil && p.PoolID != "" {
-			return p.PoolID
+			net := p.Network
+			if net == "" {
+				net = "mainnet"
+			}
+			return p.PoolID, net
 		}
 	}
-	return ""
+	return "", ""
 }
 
 // adminRevokeMember blacklists a member by stake credential hash and immediately

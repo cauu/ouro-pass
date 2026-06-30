@@ -23,18 +23,29 @@ type StateEvaluator interface {
 	Membership(ctx context.Context, stakeCredentialHash string) (membership.State, error)
 }
 
+// SourceFor resolves a read-only chain source for a network. Networks resolves the set of
+// networks currently in use by active attestors (S0014 p1-3): the reconciler triggers when
+// ANY of those networks' epoch advances, since epoch is per-network.
+type (
+	SourceFor func(network string) (chain.Source, error)
+	Networks  func(ctx context.Context) ([]string, error)
+)
+
 // Reconciler maintains subscription sessions against current membership state.
 type Reconciler struct {
-	poolID string
-	subs   *store.SubscriptionRepo
-	elig   StateEvaluator
-	source chain.Source
-	now    func() time.Time
+	poolID   string
+	subs     *store.SubscriptionRepo
+	elig     StateEvaluator
+	srcFor   SourceFor
+	networks Networks
+	now      func() time.Time
 }
 
-// New builds a reconciler.
-func New(st *store.Store, elig StateEvaluator, source chain.Source, poolID string) *Reconciler {
-	return &Reconciler{poolID: poolID, subs: st.Subscriptions(), elig: elig, source: source, now: time.Now}
+// New builds a reconciler. Reconcile is network-agnostic (it re-derives via elig, which
+// evaluates each attestor on its own network); srcFor+networks are used only to watch
+// per-network epoch advances as the trigger (S0014 p1-3).
+func New(st *store.Store, elig StateEvaluator, srcFor SourceFor, networks Networks, poolID string) *Reconciler {
+	return &Reconciler{poolID: poolID, subs: st.Subscriptions(), elig: elig, srcFor: srcFor, networks: networks, now: time.Now}
 }
 
 // Result summarizes a reconciliation pass.
@@ -87,27 +98,53 @@ func (r *Reconciler) Reconcile(ctx context.Context) (Result, error) {
 	return res, nil
 }
 
-// Run triggers Reconcile whenever the chain epoch advances, until ctx is done.
+// Run triggers Reconcile whenever ANY in-use network's chain epoch advances, until ctx is
+// done. Epoch is per-network (S0014 p1-3): with a mainnet and a preprod attestor, a new
+// epoch on either network re-runs the (network-agnostic) reconcile pass.
 func (r *Reconciler) Run(ctx context.Context, pollInterval time.Duration) {
-	lastEpoch := uint64(0)
+	lastEpoch := map[string]uint64{}
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
 		}
-		epoch, err := r.source.Epoch(ctx)
+		nets, err := r.networks(ctx)
 		if err != nil {
-			slog.Warn("reconciliation: epoch query failed", "err", err)
-		} else if epoch > lastEpoch {
+			slog.Warn("reconciliation: network set query failed", "err", err)
+			if !sleep(ctx, pollInterval) {
+				return
+			}
+			continue
+		}
+		// Probe each in-use network's epoch; remember the new values but only commit them
+		// to the cursor after a successful reconcile (so a failed pass retries next poll).
+		current := map[string]uint64{}
+		advanced := false
+		for _, net := range nets {
+			src, err := r.srcFor(net)
+			if err != nil {
+				slog.Warn("reconciliation: source for network failed", "network", net, "err", err)
+				continue
+			}
+			epoch, err := src.Epoch(ctx)
+			if err != nil {
+				slog.Warn("reconciliation: epoch query failed", "network", net, "err", err)
+				continue
+			}
+			current[net] = epoch
+			if epoch > lastEpoch[net] {
+				advanced = true
+			}
+		}
+		if advanced {
 			if res, err := r.Reconcile(ctx); err != nil {
-				// Whole-pass failure (couldn't list sessions): do not advance the
-				// cursor, retry next poll. Per-session failures are isolated inside
-				// Reconcile and do NOT block the epoch advancing.
-				slog.Warn("reconciliation failed", "err", err)
+				slog.Warn("reconciliation failed", "err", err) // keep cursor; retry next poll
 			} else {
-				lastEpoch = epoch
-				slog.Info("reconciliation complete", "epoch", epoch,
+				for net, e := range current {
+					lastEpoch[net] = e
+				}
+				slog.Info("reconciliation complete", "epochs", current,
 					"checked", res.Checked, "expired", res.Expired,
 					"unchanged", res.Unchanged, "failed", res.Failed)
 			}

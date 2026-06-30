@@ -157,7 +157,7 @@ config time too, so admin stores a canonical value. Exact-match semantics preser
 - [ ] p1-2 Remove global `OUROPASS_NETWORK` everywhere per the residual-cleanup table
       (config + test, router Deps.Network, main log/wiring, admin `/pool`, validateAttestorInput
       now requires network); deprecation-warn if an old `.env` still sets it.
-- [ ] p1-3 Reconciler + admin delegators per network (approach B: `map[network]epochCursor`,
+- [x] p1-3 Reconciler + admin delegators per network (approach B: `map[network]epochCursor`,
       network set derived from active attestors; delegators route by attestor `params.network`,
       error on unresolved). Multi-network unit tests.
 - [x] p1-4 Drop BOTH wallet guards: authpage JS + `data-network` + `*Data.Network`
@@ -255,6 +255,7 @@ mainnet bind) mandatory; TC-8 must keep `StateNone` for non-delegators (no loose
 ## 6. Validation Evidence (append-only)
 
 - TC-1 (p1-1) | stack: go | command: go test ./internal/utils/chain/ ./internal/config/ | result: pass | note: DefaultKoiosBaseURL maps mainnet/preprod/preview→their hosts (empty/unknown→mainnet); config reads OUROPASS_KOIOS_BASE_URL_<NET> into KoiosBaseURLByNetwork; legacy single OUROPASS_KOIOS_BASE_URL logs a deprecation warning; srcFor(network) now resolves per-network URL (override→default). go build clean.
+- TC-3 (p1-3) | stack: go | command: go test ./internal/worker/reconciliation/ ./internal/core/attestor/ ; go test ./... (0 FAIL) | result: pass | note: reconciler now takes srcFor+networks and watches a map[network]epoch — Run triggers when ANY in-use network's epoch advances (TestRun_TriggersOnSecondNetworkEpoch: preprod advance triggers even when mainnet epoch is flat); attestor.DistinctNetworks extracts per-attestor networks (empty→mainnet); admin delegators routes via deps.SrcFor(primaryPool network) with deps.Chain fallback; buildServices no longer returns a global chainSrc. Reconcile stays network-agnostic (delegates to elig). Approach B (single worker, per-network cursor).
 - TC-4 (p1-4) | stack: go+ui | command: go build ./... + go test ./internal/httpapi/... ; pnpm typecheck + test + lint | result: pass | note: removed BOTH wallet network guards — authpage JS guard + `data-network` (bind/connect.html) + `authpage.{Bind,Connect}Data.Network` + `handlers_oauth` no longer pass Network; SPA `adapter.ts` drops the `expectedNetwork` guard, `config.ts`/`.env.example` drop `VITE_ISSUER_NETWORK`, callers (AuthContext/useStepUp) updated; adapter.test now asserts network-agnostic connect. web 10 tests pass, typecheck clean, lint 0 errors. (router Deps.Network field still set, removed with /pool in p1-2.)
 
 - TC-5 | stack: node/go | command: go test ./internal/utils/chain/ -run TrimsBaseURL | result: pass | note: trailing slash(es) + whitespace trimmed (`…/api/v1/`→`…/api/v1`); empty→mainnet default. go build ./... clean.

@@ -36,7 +36,7 @@ func TestBuildServices_FullVsDegraded(t *testing.T) {
 		FieldKeyHex: hex.EncodeToString(make([]byte, 32)), ServerSaltHex: hex.EncodeToString([]byte("salt")),
 		TrustedProxy: true, TLS: false,
 	}
-	deps, src, err := buildServices(full, st)
+	deps, err := buildServices(full, st)
 	if err != nil {
 		t.Fatalf("full: %v", err)
 	}
@@ -46,15 +46,15 @@ func TestBuildServices_FullVsDegraded(t *testing.T) {
 	if !deps.TrustedProxy || deps.SecureCookies {
 		t.Errorf("edge flags not propagated: TrustedProxy=%v SecureCookies=%v", deps.TrustedProxy, deps.SecureCookies)
 	}
-	// p5-1: the per-network source is wrapped with the (generalized) active-membership cache.
-	if src == nil || src.Name() != "mock+cache" {
-		t.Errorf("chain source = %v (want mock+cache)", src)
+	// p5-1: the per-network fallback source is wrapped with the active-membership cache.
+	if deps.Chain == nil || deps.Chain.Name() != "mock+cache" {
+		t.Errorf("chain source = %v (want mock+cache)", deps.Chain)
 	}
 
 	// Degraded: no field key → OAuth/Keys nil (routes degrade to 501) but the
 	// server still builds with wallet + admin present.
 	degraded := &config.Config{Network: "preview", DBDriver: "sqlite", ChainKind: "mock", Issuer: "ouropass:p", Scope: "p", TLS: true}
-	d2, _, err := buildServices(degraded, st)
+	d2, err := buildServices(degraded, st)
 	if err != nil {
 		t.Fatalf("degraded: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestBuildServices_FullVsDegraded(t *testing.T) {
 	// db_sync fails fast at construction (p12-10).
 	dbsync := *full
 	dbsync.ChainKind = "db_sync"
-	if _, _, err := buildServices(&dbsync, st); err == nil {
+	if _, err := buildServices(&dbsync, st); err == nil {
 		t.Error("db_sync must fail fast in the default build")
 	}
 }

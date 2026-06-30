@@ -509,7 +509,10 @@ func TestE2E_ReconciliationExpiresIneligible(t *testing.T) {
 	// Member moves delegation away → no longer eligible.
 	e.chain.Put(&chain.Snapshot{StakeCredentialHash: w.sch, Epoch: 481, DelegatedPoolID: "pool1other", ActiveStakeLovelace: "5000000"})
 
-	rec := reconciliation.New(e.st, e.oauth, e.chain, testPool)
+	rec := reconciliation.New(e.st, e.oauth,
+		func(string) (chain.Source, error) { return e.chain, nil },
+		func(context.Context) ([]string, error) { return []string{"mainnet"}, nil },
+		testPool)
 	res, err := rec.Reconcile(ctx)
 	if err != nil {
 		t.Fatal(err)

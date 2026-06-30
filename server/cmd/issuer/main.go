@@ -105,7 +105,7 @@ func run() error {
 	}
 	slog.Info("database ready", "driver", cfg.DBDriver)
 
-	deps, chainSrc, err := buildServices(cfg, st)
+	deps, err := buildServices(cfg, st)
 	if err != nil {
 		return err
 	}
@@ -199,7 +199,16 @@ func run() error {
 		pushWorker := push.NewWorker(st, defaultSender, pushPollInterval, push.Options{Route: pushRoute})
 		startWorker("push", func() { pushWorker.Run(sigCtx) })
 
-		recon := reconciliation.New(st, deps.OAuth, chainSrc, cfg.Scope)
+		// Watch each in-use network's epoch (S0014 p1-3): epoch is per-network, so the
+		// reconcile trigger must follow whichever networks the active attestors use.
+		networksFor := func(ctx context.Context) ([]string, error) {
+			cfgs, err := st.Attestors().ListActive(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return attestor.DistinctNetworks(cfgs), nil
+		}
+		recon := reconciliation.New(st, deps.OAuth, deps.SrcFor, networksFor, cfg.Scope)
 		startWorker("reconciliation", func() { recon.Run(sigCtx, epochPollInterval) })
 	}
 
@@ -242,13 +251,13 @@ func run() error {
 // config against an open store. Services degrade gracefully: without a field key
 // the signing-key/JWKS routes are disabled; without field key + server salt the
 // OAuth issuance routes are disabled. Extracted from run() so wiring is testable.
-func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, chain.Source, error) {
+func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, error) {
 	walletSvc := walletauth.New(st, nonceTTL)
 	var serverSalt []byte
 	if cfg.ServerSaltHex != "" {
 		var err error
 		if serverSalt, err = hex.DecodeString(cfg.ServerSaltHex); err != nil {
-			return httpapi.Deps{}, nil, fmt.Errorf("OUROPASS_SERVER_SALT: %w", err)
+			return httpapi.Deps{}, fmt.Errorf("OUROPASS_SERVER_SALT: %w", err)
 		}
 	}
 	deps := httpapi.Deps{
@@ -266,7 +275,7 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, chain.Sou
 	if cfg.FieldKeyHex != "" {
 		cipher, err := crypto.NewFieldCipherHex(cfg.FieldKeyHex)
 		if err != nil {
-			return httpapi.Deps{}, nil, err
+			return httpapi.Deps{}, err
 		}
 		deps.Keys = keys.New(st, cipher)
 		deps.Cipher = cipher // for channel-secret encryption (telegram bot token)
@@ -306,11 +315,12 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, chain.Sou
 		srcCache[network] = s
 		return s, nil
 	}
-	chainSrc, err := srcFor(cfg.Network) // default-network source: reconciler epoch tick + admin delegator roster
+	chainSrc, err := srcFor(cfg.Network) // fallback default-network source for admin delegator roster
 	if err != nil {
-		return httpapi.Deps{}, nil, err
+		return httpapi.Deps{}, err
 	}
 	deps.Chain = chainSrc
+	deps.SrcFor = srcFor // per-network source resolution (S0014 p1-3)
 	// S0006: resolve the attestor set (one pool_stake per AttestorConfig) from the
 	// store per call so admin config changes take effect immediately.
 	reg := attestor.DefaultRegistry()
@@ -330,7 +340,7 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, chain.Sou
 	} else {
 		slog.Warn("OAuth issuance disabled (need OUROPASS_FIELD_KEY + OUROPASS_SERVER_SALT)")
 	}
-	return deps, chainSrc, nil
+	return deps, nil
 }
 
 // instanceToken resolves the plaintext bot token for one telegram instance: the

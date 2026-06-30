@@ -12,6 +12,13 @@ import (
 	"ouro-pass/server/internal/utils/chain"
 )
 
+// srcOnce adapts a single source to the per-network SourceFor/Networks the reconciler now
+// takes (S0014 p1-3): one network ("mainnet") always backed by src.
+func srcOnce(src chain.Source) (SourceFor, Networks) {
+	return func(string) (chain.Source, error) { return src, nil },
+		func(context.Context) ([]string, error) { return []string{"mainnet"}, nil }
+}
+
 // programmableState returns a per-credential membership state set by the test.
 // An absent credential defaults to `none` (no longer a member → expire).
 type programmableState struct {
@@ -82,7 +89,8 @@ func TestReconcile_ExpireKeep(t *testing.T) {
 		"sch-pending": membership.StatePending,
 		// sch-gone absent → none
 	}}
-	rec := New(st, elig, chain.NewMockSource(481), "pool1")
+	sf, nf := srcOnce(chain.NewMockSource(481))
+	rec := New(st, elig, sf, nf, "pool1")
 
 	res, err := rec.Reconcile(ctx)
 	if err != nil {
@@ -118,7 +126,8 @@ func TestReconcile_FaultIsolation(t *testing.T) {
 		states:  map[string]membership.State{"sch-keep": membership.StateActive},
 		failFor: map[string]bool{"sch-bad": true},
 	}
-	rec := New(st, elig, chain.NewMockSource(481), "pool1")
+	sf, nf := srcOnce(chain.NewMockSource(481))
+	rec := New(st, elig, sf, nf, "pool1")
 
 	res, err := rec.Reconcile(ctx)
 	if err != nil {
@@ -140,7 +149,8 @@ func TestReconcile_FaultIsolation(t *testing.T) {
 
 func TestReconcile_EmptyIsNoop(t *testing.T) {
 	st := newStore(t)
-	rec := New(st, programmableState{states: map[string]membership.State{}}, chain.NewMockSource(1), "pool1")
+	sf, nf := srcOnce(chain.NewMockSource(1))
+	rec := New(st, programmableState{states: map[string]membership.State{}}, sf, nf, "pool1")
 	res, err := rec.Reconcile(context.Background())
 	if err != nil || res.Checked != 0 {
 		t.Fatalf("empty reconcile: %v %+v", err, res)
@@ -153,8 +163,8 @@ func TestRun_TriggersOnEpochAdvance(t *testing.T) {
 	st := newStore(t)
 	seed(t, st, "gone", "sch-gone", "gold")
 	elig := programmableState{states: map[string]membership.State{}} // all none
-	src := chain.NewMockSource(490)
-	rec := New(st, elig, src, "pool1")
+	sf, nf := srcOnce(chain.NewMockSource(490))
+	rec := New(st, elig, sf, nf, "pool1")
 
 	// Run in this goroutine until the timeout; it should reconcile once on the
 	// first epoch read (490 > 0) and expire the session.
@@ -164,5 +174,31 @@ func TestRun_TriggersOnEpochAdvance(t *testing.T) {
 	gone, _ := st.Subscriptions().GetByChannelUser(context.Background(), "pool1", "telegram", "u-gone")
 	if gone.Status != domain.SubExpired {
 		t.Fatalf("session not reconciled by Run: status=%s", gone.Status)
+	}
+}
+
+// TestRun_TriggersOnSecondNetworkEpoch covers S0014 p1-3 / TC-3: with two networks in use,
+// an epoch advance on the NON-primary network triggers the reconcile pass (per-network
+// epoch watching, not a single global source).
+func TestRun_TriggersOnSecondNetworkEpoch(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	st := newStore(t)
+	seed(t, st, "gone", "sch-gone", "gold")
+	elig := programmableState{states: map[string]membership.State{}} // all none → expire
+	sources := map[string]chain.Source{
+		"mainnet": chain.NewMockSource(0),   // epoch 0 — never advances past the initial cursor
+		"preprod": chain.NewMockSource(500), // advances → must trigger reconcile
+	}
+	sf := func(net string) (chain.Source, error) { return sources[net], nil }
+	nf := func(context.Context) ([]string, error) { return []string{"mainnet", "preprod"}, nil }
+	rec := New(st, elig, sf, nf, "pool1")
+
+	go rec.Run(ctx, time.Millisecond)
+	<-ctx.Done()
+
+	gone, _ := st.Subscriptions().GetByChannelUser(context.Background(), "pool1", "telegram", "u-gone")
+	if gone.Status != domain.SubExpired {
+		t.Fatalf("preprod epoch advance did not trigger reconcile: status=%s", gone.Status)
 	}
 }
