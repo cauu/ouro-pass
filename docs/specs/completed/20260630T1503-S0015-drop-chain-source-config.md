@@ -1,12 +1,12 @@
 # Drop chain-source config — Koios is the single origin
 
 Spec-ID: S0015
-Status: active
+Status: completed
 Created Time: 2026-06-30T14:32:11+08:00
 Start Time: 2026-06-30T15:03:58+08:00
-Completion Time:
+Completion Time: 2026-06-30T19:37:14+08:00
 Previous Spec-ID: S0014
-Closure Reason:
+Closure Reason: delivered
 
 ## 1. Requirement Details
 
@@ -184,6 +184,10 @@ Pass/fail: TC-1..TC-5 pass; eligibility behavior unchanged (no membership semant
   make test (all server packages) green, pnpm test (web 10/10) green, shellcheck install.sh+
   init.sh clean. All plan items p1-1..p3-2 complete & verified; spec left active pending user
   closure.
+- 2026-06-30T19:37:14+08:00 closed (Closure Reason: delivered) after user verification. Note: a
+  separate Telegram bind deep-link bug surfaced during verification (deep link uses the env-
+  default bot, leaving Member/Subscription pages empty) — this is outside S0015's chain-source
+  scope and is tracked in the new spec S0016, not appended here. File moved to docs/specs/completed/.
 
 ## 6. Validation Evidence (append-only)
 - TC-3 | stack: go | command: go test ./cmd/issuer/ | result: pass | note: buildServices wires injected MockSource (mock+cache); full+degraded paths green via seam
