@@ -89,15 +89,8 @@
     setStatus("Connecting to wallet…");
     var api = await window.cardano[key].enable();
 
-    // Network guard: only enforced when the issuer declares its network.
-    if (cfg.network) {
-      var netId = await api.getNetworkId();
-      var want = cfg.network === "mainnet" ? 1 : 0;
-      if (netId !== want) {
-        throw new Error("Wallet is on the wrong network for this issuer.");
-      }
-    }
-
+    // Network-agnostic (S0014 p1-4): the issuer has no single network; eligibility is decided
+    // per-attestor against on-chain data, so the wallet's self-reported network is irrelevant.
     var rewards = await api.getRewardAddresses();
     if (!rewards || rewards.length === 0) {
       throw new Error("Wallet has no stake (reward) address; register a stake key first.");

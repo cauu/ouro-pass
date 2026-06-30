@@ -39,21 +39,15 @@ export interface WalletSession {
 }
 
 /**
- * connectWallet enables the named wallet, enforces the issuer network (when given),
- * and resolves the reward (stake) address used for both challenge and signData.
+ * connectWallet enables the named wallet and resolves the reward (stake) address used for
+ * both challenge and signData. Network-agnostic (S0014 p1-4): the issuer has no single
+ * network; eligibility is decided per-attestor against on-chain data, so the wallet's
+ * self-reported network is not checked here.
  */
-export async function connectWallet(key: string, expectedNetwork?: string): Promise<WalletSession> {
+export async function connectWallet(key: string): Promise<WalletSession> {
   const w = window.cardano?.[key];
   if (!isWallet(w)) throw new Error(`wallet "${key}" not found`);
   const api: Cip30Api = await w.enable();
-
-  if (expectedNetwork) {
-    const want = expectedNetwork === "mainnet" ? 1 : 0;
-    const got = await api.getNetworkId();
-    if (got !== want) {
-      throw new Error(`wallet is on the wrong network (issuer needs ${expectedNetwork})`);
-    }
-  }
 
   const addrs = await api.getRewardAddresses();
   if (!addrs || addrs.length === 0) {

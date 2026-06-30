@@ -160,7 +160,7 @@ config time too, so admin stores a canonical value. Exact-match semantics preser
 - [ ] p1-3 Reconciler + admin delegators per network (approach B: `map[network]epochCursor`,
       network set derived from active attestors; delegators route by attestor `params.network`,
       error on unresolved). Multi-network unit tests.
-- [ ] p1-4 Drop BOTH wallet guards: authpage JS + `data-network` + `*Data.Network`
+- [x] p1-4 Drop BOTH wallet guards: authpage JS + `data-network` + `*Data.Network`
       (server-fed) and SPA `adapter.ts` + `VITE_ISSUER_NETWORK` (build-fed); owner login +
       bind/connect become network-agnostic; show a clear not-eligible message instead.
 - [ ] p1-5 Installer/dev cleanup: remove NETWORK + koios-URL prompts from `install.sh`
@@ -255,6 +255,7 @@ mainnet bind) mandatory; TC-8 must keep `StateNone` for non-delegators (no loose
 ## 6. Validation Evidence (append-only)
 
 - TC-1 (p1-1) | stack: go | command: go test ./internal/utils/chain/ ./internal/config/ | result: pass | note: DefaultKoiosBaseURL maps mainnet/preprod/preview→their hosts (empty/unknown→mainnet); config reads OUROPASS_KOIOS_BASE_URL_<NET> into KoiosBaseURLByNetwork; legacy single OUROPASS_KOIOS_BASE_URL logs a deprecation warning; srcFor(network) now resolves per-network URL (override→default). go build clean.
+- TC-4 (p1-4) | stack: go+ui | command: go build ./... + go test ./internal/httpapi/... ; pnpm typecheck + test + lint | result: pass | note: removed BOTH wallet network guards — authpage JS guard + `data-network` (bind/connect.html) + `authpage.{Bind,Connect}Data.Network` + `handlers_oauth` no longer pass Network; SPA `adapter.ts` drops the `expectedNetwork` guard, `config.ts`/`.env.example` drop `VITE_ISSUER_NETWORK`, callers (AuthContext/useStepUp) updated; adapter.test now asserts network-agnostic connect. web 10 tests pass, typecheck clean, lint 0 errors. (router Deps.Network field still set, removed with /pool in p1-2.)
 
 - TC-5 | stack: node/go | command: go test ./internal/utils/chain/ -run TrimsBaseURL | result: pass | note: trailing slash(es) + whitespace trimmed (`…/api/v1/`→`…/api/v1`); empty→mainnet default. go build ./... clean.
 - TC-6 | stack: other | command: shellcheck + sanitize harness | result: pass | note: `https://host/`→`host`, `http://host`→`host`, `host/admin/`→`host`, `host:8443` preserved. shellcheck clean.

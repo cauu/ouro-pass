@@ -60,16 +60,10 @@ describe("connectWallet", () => {
     expect(out).toEqual({ coseKeyHex: "a4010103272006215820aa", signatureHex: "84a1deadbeef" });
   });
 
-  it("rejects a wallet on the wrong network", async () => {
-    const { wallet } = fakeWallet({ networkId: 0 });
+  it("is network-agnostic: connects regardless of the wallet's network (S0014 p1-4)", async () => {
+    const { wallet } = fakeWallet({ networkId: 0 }); // testnet wallet, no guard
     window.cardano = { mocky: wallet };
-    await expect(connectWallet("mocky", "mainnet")).rejects.toThrow(/wrong network/);
-  });
-
-  it("accepts a matching network", async () => {
-    const { wallet } = fakeWallet({ networkId: 1 });
-    window.cardano = { mocky: wallet };
-    await expect(connectWallet("mocky", "mainnet")).resolves.toMatchObject({ key: "mocky" });
+    await expect(connectWallet("mocky")).resolves.toMatchObject({ key: "mocky" });
   });
 
   it("rejects when the wallet has no reward address", async () => {

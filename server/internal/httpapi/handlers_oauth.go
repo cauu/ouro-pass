@@ -35,7 +35,7 @@ func (h *apiHandlers) connect(w http.ResponseWriter, r *http.Request) {
 	if err := authpage.RenderConnect(w, authpage.ConnectData{
 		ClientID: q.Get("client_id"), RedirectURI: q.Get("redirect_uri"), State: q.Get("state"),
 		Aud: q.Get("aud"), Scope: q.Get("scope"), CodeChallenge: q.Get("code_challenge"),
-		DevicePubkey: q.Get("device_pubkey"), Network: h.d.Network,
+		DevicePubkey: q.Get("device_pubkey"),
 	}); err != nil {
 		serverError(w, r, err)
 	}
@@ -55,7 +55,7 @@ func (h *apiHandlers) bind(w http.ResponseWriter, r *http.Request) {
 	if ct == "" {
 		ct = "telegram"
 	}
-	if err := authpage.RenderBind(w, authpage.BindData{ChannelType: ct, Network: h.d.Network}); err != nil {
+	if err := authpage.RenderBind(w, authpage.BindData{ChannelType: ct}); err != nil {
 		serverError(w, r, err)
 	}
 }

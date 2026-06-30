@@ -2,7 +2,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, type ReactNode } from "react";
 import { adminChallenge, adminLogout, adminMe, adminVerify } from "@/api/admin";
 import { ApiError } from "@/api/client";
-import { config } from "@/lib/config";
 import type { Me, Role } from "@/lib/types";
 import { connectWallet } from "@/wallet/adapter";
 
@@ -36,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // login: connect wallet -> challenge(reward address) -> signData -> verify
   // (the issuer recovers the owner vkey from the COSE_Key and sets the cookie).
   async function login(walletKey: string) {
-    const session = await connectWallet(walletKey, config.issuerNetwork);
+    const session = await connectWallet(walletKey);
     const { nonce } = await adminChallenge(session.rewardAddress);
     const { coseKeyHex, signatureHex } = await session.signNonce(nonce);
     await adminVerify({ nonce, cose_key: coseKeyHex, signature: signatureHex });

@@ -28,12 +28,12 @@ const csp = "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; "
 
 // ConnectData parameterizes the Authorization Page.
 type ConnectData struct {
-	ClientID, RedirectURI, State, Aud, Scope, CodeChallenge, DevicePubkey, Network string
+	ClientID, RedirectURI, State, Aud, Scope, CodeChallenge, DevicePubkey string
 }
 
 // BindData parameterizes the channel binding page.
 type BindData struct {
-	ChannelType, Network string
+	ChannelType string
 }
 
 func writeHeader(w http.ResponseWriter) {
