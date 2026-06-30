@@ -193,10 +193,11 @@ func validateAttestorInput(kind string, params json.RawMessage) error {
 		if strings.TrimSpace(p.PoolID) == "" {
 			return errors.New("pool_id is required")
 		}
+		// Network is required per attestor now (S0014 p1-2: no global default).
 		switch p.Network {
-		case "", "mainnet", "preprod", "preview":
+		case "mainnet", "preprod", "preview":
 		default:
-			return fmt.Errorf("invalid network %q (want mainnet|preprod|preview)", p.Network)
+			return fmt.Errorf("network is required (mainnet|preprod|preview), got %q", p.Network)
 		}
 		return nil
 	default:

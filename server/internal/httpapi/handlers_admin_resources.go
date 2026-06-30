@@ -112,8 +112,10 @@ func (h *apiHandlers) adminGetPool(w http.ResponseWriter, r *http.Request) {
 		serverError(w, r, err)
 		return
 	}
+	// Network is per-attestor now (S0014 p1-2); report the primary pool's network.
+	_, network := h.primaryPool(r.Context())
 	respond.JSON(w, http.StatusOK, map[string]any{
-		"pool_id": h.d.PoolID, "network": h.d.Network, "tier_rules": tr,
+		"pool_id": h.d.PoolID, "network": network, "tier_rules": tr,
 	})
 }
 

@@ -126,7 +126,7 @@ func run(dsn, network string) error {
 	adm := admin.New(admin.Config{Wallet: wallet, Store: st, PoolID: scope})
 	deps := httpapi.Deps{
 		Wallet: wallet, Keys: ks, OAuth: oas, Admin: adm, Store: st, Chain: mock, Cipher: cipher,
-		PoolID: scope, TelegramBot: "DevFlowBot", Network: network, SecureCookies: false,
+		PoolID: scope, TelegramBot: "DevFlowBot", SecureCookies: false,
 	}
 	srv := httptest.NewServer(httpapi.NewRouter(deps))
 	defer srv.Close()

@@ -53,8 +53,12 @@ func TestAdminAttestors_CRUD(t *testing.T) {
 	}
 
 	// Duplicate (kind,label) → 409.
-	if c := postCode(t, client, base, `{"kind":"pool_stake","label":"second","params":{"pool_id":"poolX"}}`); c != http.StatusConflict {
+	if c := postCode(t, client, base, `{"kind":"pool_stake","label":"second","params":{"pool_id":"poolX","network":"mainnet"}}`); c != http.StatusConflict {
 		t.Fatalf("duplicate label = %d, want 409", c)
+	}
+	// Missing network → 400 (S0014 p1-2: network required per attestor).
+	if c := postCode(t, client, base, `{"kind":"pool_stake","label":"nonet","params":{"pool_id":"poolNoNet"}}`); c != http.StatusBadRequest {
+		t.Fatalf("missing network = %d, want 400", c)
 	}
 	// Unsupported kind → 400.
 	if c := postCode(t, client, base, `{"kind":"nft","label":"n","params":{"policy_id":"p"}}`); c != http.StatusBadRequest {

@@ -20,10 +20,9 @@ type Config struct {
 	Addr            string        // listen address, e.g. ":8080"
 	ShutdownTimeout time.Duration // graceful-shutdown grace period
 
-	// Identity / network
-	Network string // default network for NEW attestors (mainnet | preprod | preview); per-attestor network lives in AttestorConfig (S0006 D4)
-	Issuer  string // token `iss` + issuer deployment identity (S0006 D3): a public base URL, e.g. https://pass.example.com
-	Scope   string // first-party subscription/channel/admin namespace; derived from Issuer (S0006: replaces the pool-scoped OUROPASS_POOL_ID)
+	// Identity (network is purely an attestor property — S0014 p1-2; no global network)
+	Issuer string // token `iss` + issuer deployment identity (S0006 D3): a public base URL, e.g. https://pass.example.com
+	Scope  string // first-party subscription/channel/admin namespace; derived from Issuer (S0006: replaces the pool-scoped OUROPASS_POOL_ID)
 
 	// Persistence
 	DBDriver string // "sqlite" | "postgres"
@@ -59,7 +58,6 @@ type Config struct {
 const (
 	defaultAddr            = ":8080"
 	defaultShutdownTimeout = 15 * time.Second
-	defaultNetwork         = "preview"
 	defaultDBDriver        = "sqlite"
 	defaultDBDSN           = "file:ouropass.db?_pragma=busy_timeout(5000)&_pragma=foreign_keys(1)"
 )
@@ -71,7 +69,6 @@ func Load() (*Config, error) {
 	c := &Config{
 		Addr:            env("OUROPASS_ADDR", defaultAddr),
 		ShutdownTimeout: defaultShutdownTimeout,
-		Network:         env("OUROPASS_NETWORK", defaultNetwork),
 		DBDriver:        env("OUROPASS_DB_DRIVER", defaultDBDriver),
 		DBDSN:           env("OUROPASS_DB_DSN", defaultDBDSN),
 		FieldKeyHex:     env("OUROPASS_FIELD_KEY", ""),
@@ -101,6 +98,9 @@ func Load() (*Config, error) {
 	if c.KoiosBaseURL != "" {
 		slog.Warn("OUROPASS_KOIOS_BASE_URL is deprecated and ignored: koios endpoints are now resolved per network (built-in defaults; override via OUROPASS_KOIOS_BASE_URL_MAINNET|_PREPROD|_PREVIEW)")
 	}
+	if _, ok := os.LookupEnv("OUROPASS_NETWORK"); ok {
+		slog.Warn("OUROPASS_NETWORK is deprecated and ignored: network is now a per-attestor property set in the admin console (defaults to mainnet)")
+	}
 
 	if d := env("OUROPASS_SHUTDOWN_TIMEOUT", ""); d != "" {
 		v, err := time.ParseDuration(d)
@@ -117,11 +117,6 @@ func Load() (*Config, error) {
 }
 
 func (c *Config) validate() error {
-	switch c.Network {
-	case "mainnet", "preprod", "preview":
-	default:
-		return fmt.Errorf("invalid OUROPASS_NETWORK %q (want mainnet|preprod|preview)", c.Network)
-	}
 	switch c.DBDriver {
 	case "sqlite", "postgres":
 	default:

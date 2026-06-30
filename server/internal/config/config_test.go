@@ -19,7 +19,7 @@ func TestLoad_DefaultsAndRequired(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load: %v", err)
 	}
-	if c.Addr != defaultAddr || c.Network != defaultNetwork || c.DBDriver != defaultDBDriver {
+	if c.Addr != defaultAddr || c.DBDriver != defaultDBDriver {
 		t.Errorf("defaults not applied: %+v", c)
 	}
 	if c.Issuer != "https://pass.example.com" || c.Scope != "https://pass.example.com" {
@@ -40,11 +40,10 @@ func TestLoad_Validation(t *testing.T) {
 		ok   bool
 	}{
 		{"missing issuer", map[string]string{}, false},
-		{"bad network", map[string]string{"OUROPASS_ISSUER": "iss", "OUROPASS_NETWORK": "moon"}, false},
 		{"bad driver", map[string]string{"OUROPASS_ISSUER": "iss", "OUROPASS_DB_DRIVER": "mysql"}, false},
 		{"empty dsn", map[string]string{"OUROPASS_ISSUER": "iss", "OUROPASS_DB_DSN": "   "}, false},
 		{"bad shutdown duration", map[string]string{"OUROPASS_ISSUER": "iss", "OUROPASS_SHUTDOWN_TIMEOUT": "nope"}, false},
-		{"valid mainnet pg", map[string]string{"OUROPASS_ISSUER": "iss", "OUROPASS_NETWORK": "mainnet", "OUROPASS_DB_DRIVER": "postgres", "OUROPASS_DB_DSN": "postgres://x"}, true},
+		{"valid pg", map[string]string{"OUROPASS_ISSUER": "iss", "OUROPASS_DB_DRIVER": "postgres", "OUROPASS_DB_DSN": "postgres://x"}, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

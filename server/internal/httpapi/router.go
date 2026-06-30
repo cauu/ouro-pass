@@ -38,7 +38,6 @@ type Deps struct {
 	Cipher        *crypto.FieldCipher // field cipher for channel secrets (telegram bot token)
 	PoolID        string
 	TelegramBot   string // bot username for activation deep links
-	Network       string // "mainnet"|"testnet"; when set, the auth page enforces a wallet network guard
 	TrustedProxy  bool   // trust X-Forwarded-For for client IP (only behind a known proxy, D15)
 	SecureCookies bool   // set Secure on admin session cookies (off for local HTTP, D17)
 }

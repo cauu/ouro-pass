@@ -214,7 +214,7 @@ func run() error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		slog.Info("issuer listening", "addr", cfg.Addr, "network", cfg.Network)
+		slog.Info("issuer listening", "addr", cfg.Addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			errCh <- err
 		}
@@ -265,7 +265,6 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, error) {
 		Store:         st,
 		PoolID:        cfg.Scope,
 		TelegramBot:   cfg.TelegramBot,
-		Network:       cfg.Network,
 		TrustedProxy:  cfg.TrustedProxy,
 		SecureCookies: cfg.TLS,
 		Admin: admin.New(admin.Config{
@@ -291,7 +290,7 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, error) {
 	var srcMu sync.Mutex
 	srcFor := func(network string) (chain.Source, error) {
 		if network == "" {
-			network = cfg.Network // default for attestors that omit it
+			network = "mainnet" // default for attestors that omit it (S0014 p1-2)
 		}
 		srcMu.Lock()
 		defer srcMu.Unlock()
@@ -315,7 +314,7 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, error) {
 		srcCache[network] = s
 		return s, nil
 	}
-	chainSrc, err := srcFor(cfg.Network) // fallback default-network source for admin delegator roster
+	chainSrc, err := srcFor("mainnet") // fallback default-network source for admin delegator roster
 	if err != nil {
 		return httpapi.Deps{}, err
 	}

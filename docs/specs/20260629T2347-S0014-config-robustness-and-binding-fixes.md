@@ -154,7 +154,7 @@ config time too, so admin stores a canonical value. Exact-match semantics preser
 - [x] p1-1 Per-network koios endpoint: `srcFor(network)`/`chain.NewSource` resolve the
       endpoint per network (public defaults + `OUROPASS_KOIOS_BASE_URL_<NET>` overrides);
       deprecation-warn on the legacy single var. node_lsq/db_sync/mock untouched. Unit tests.
-- [ ] p1-2 Remove global `OUROPASS_NETWORK` everywhere per the residual-cleanup table
+- [x] p1-2 Remove global `OUROPASS_NETWORK` everywhere per the residual-cleanup table
       (config + test, router Deps.Network, main log/wiring, admin `/pool`, validateAttestorInput
       now requires network); deprecation-warn if an old `.env` still sets it.
 - [x] p1-3 Reconciler + admin delegators per network (approach B: `map[network]epochCursor`,
@@ -255,6 +255,7 @@ mainnet bind) mandatory; TC-8 must keep `StateNone` for non-delegators (no loose
 ## 6. Validation Evidence (append-only)
 
 - TC-1 (p1-1) | stack: go | command: go test ./internal/utils/chain/ ./internal/config/ | result: pass | note: DefaultKoiosBaseURL maps mainnet/preprod/preview→their hosts (empty/unknown→mainnet); config reads OUROPASS_KOIOS_BASE_URL_<NET> into KoiosBaseURLByNetwork; legacy single OUROPASS_KOIOS_BASE_URL logs a deprecation warning; srcFor(network) now resolves per-network URL (override→default). go build clean.
+- TC-2 (p1-2) | stack: go | command: go vet ./... ; go test ./... (0 FAIL) | result: pass | note: removed cfg.Network (field/env/default/validation) + deprecation warning if OUROPASS_NETWORK present; main startup log + deps.Network + srcFor fallback(→mainnet) + chainSrc fallback(srcFor("mainnet")) cleaned; router Deps.Network removed; admin /pool reports the primary pool's network (not a global); validateAttestorInput now REQUIRES a valid network; devflow + config_test + main_test + attestor CRUD test updated (added a "missing network → 400" case).
 - TC-3 (p1-3) | stack: go | command: go test ./internal/worker/reconciliation/ ./internal/core/attestor/ ; go test ./... (0 FAIL) | result: pass | note: reconciler now takes srcFor+networks and watches a map[network]epoch — Run triggers when ANY in-use network's epoch advances (TestRun_TriggersOnSecondNetworkEpoch: preprod advance triggers even when mainnet epoch is flat); attestor.DistinctNetworks extracts per-attestor networks (empty→mainnet); admin delegators routes via deps.SrcFor(primaryPool network) with deps.Chain fallback; buildServices no longer returns a global chainSrc. Reconcile stays network-agnostic (delegates to elig). Approach B (single worker, per-network cursor).
 - TC-4 (p1-4) | stack: go+ui | command: go build ./... + go test ./internal/httpapi/... ; pnpm typecheck + test + lint | result: pass | note: removed BOTH wallet network guards — authpage JS guard + `data-network` (bind/connect.html) + `authpage.{Bind,Connect}Data.Network` + `handlers_oauth` no longer pass Network; SPA `adapter.ts` drops the `expectedNetwork` guard, `config.ts`/`.env.example` drop `VITE_ISSUER_NETWORK`, callers (AuthContext/useStepUp) updated; adapter.test now asserts network-agnostic connect. web 10 tests pass, typecheck clean, lint 0 errors. (router Deps.Network field still set, removed with /pool in p1-2.)
 

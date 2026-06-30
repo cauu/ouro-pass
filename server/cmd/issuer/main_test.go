@@ -32,7 +32,7 @@ func TestBuildServices_FullVsDegraded(t *testing.T) {
 	// Full config: field key + server salt present → OAuth + Keys wired, edge
 	// flags propagated, mock chain selected.
 	full := &config.Config{
-		Network: "preview", DBDriver: "sqlite", ChainKind: "mock", Issuer: "ouropass:p", Scope: "p",
+		DBDriver: "sqlite", ChainKind: "mock", Issuer: "ouropass:p", Scope: "p",
 		FieldKeyHex: hex.EncodeToString(make([]byte, 32)), ServerSaltHex: hex.EncodeToString([]byte("salt")),
 		TrustedProxy: true, TLS: false,
 	}
@@ -53,7 +53,7 @@ func TestBuildServices_FullVsDegraded(t *testing.T) {
 
 	// Degraded: no field key → OAuth/Keys nil (routes degrade to 501) but the
 	// server still builds with wallet + admin present.
-	degraded := &config.Config{Network: "preview", DBDriver: "sqlite", ChainKind: "mock", Issuer: "ouropass:p", Scope: "p", TLS: true}
+	degraded := &config.Config{DBDriver: "sqlite", ChainKind: "mock", Issuer: "ouropass:p", Scope: "p", TLS: true}
 	d2, err := buildServices(degraded, st)
 	if err != nil {
 		t.Fatalf("degraded: %v", err)
