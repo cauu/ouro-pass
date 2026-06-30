@@ -42,7 +42,7 @@ So there is no separate frontend container. The compose stack is three services:
 ### Install script (recommended)
 
 One command checks prerequisites, downloads the compose stack, generates secrets,
-prompts for the essentials (domain, owner wallet, chain source) and starts it:
+prompts for the essentials (domain, owner wallet) and starts it:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/cauu/ouro-pass/main/deploy/install.sh | sh
@@ -51,9 +51,8 @@ curl -fsSL https://raw.githubusercontent.com/cauu/ouro-pass/main/deploy/install.
 - **Inspect first:** `curl -fsSLO .../deploy/install.sh && less install.sh && sh install.sh`
 - **Pin a release:** `... /v0.2.0/deploy/install.sh | OURO_REF=v0.2.0 sh`
 - **Non-interactive (CI):** pipe with `--non-interactive` and `OURO_*` env vars
-  (`OURO_DOMAIN`, `OURO_OWNER_ADDR` or `OURO_OWNER_KEYS`, `OURO_NETWORK`,
-  `OURO_CHAIN_KIND`, `OURO_KOIOS_BASE_URL`, `OURO_TELEGRAM_*`, `OUROPASS_TAG`,
-  `OURO_START`). Run `install.sh --help` for the full list.
+  (`OURO_DOMAIN`, `OURO_OWNER_ADDR` or `OURO_OWNER_KEYS`, `OURO_TELEGRAM_*`,
+  `OUROPASS_TAG`, `OURO_START`). Run `install.sh --help` for the full list.
 
 The installer never overwrites existing secrets and is safe to re-run.
 
@@ -97,7 +96,7 @@ Then:
 # 2) edit .env — set at minimum:
 #      DOMAIN=pass.example.com
 #      OUROPASS_OWNER_KEYS=<your owner stake-key hash>     (see below)
-#    review OUROPASS_TAG (pin a version) and OUROPASS_CHAIN_KIND (network is per-attestor, set in /admin)
+#    review OUROPASS_TAG (pin a version); chain source is Koios-only, network is per-attestor (set in /admin)
 $EDITOR .env
 
 # 3) pull + start everything
@@ -135,13 +134,15 @@ All knobs live in `.env` (see `.env.example` for the annotated list). Highlights
 | `ACME_EMAIL` | Optional Let's Encrypt contact for expiry notices. |
 | `OUROPASS_FIELD_KEY` | **Secret.** AES-256 master key for 🔒 fields (`openssl rand -hex 32`). |
 | `OUROPASS_SERVER_SALT` | **Secret.** HMAC salt for the pseudonymous `sub` (`openssl rand -hex 16`). |
-| `OUROPASS_CHAIN_KIND` | Chain data source: `koios` (default) / `blockfrost` / `node_lsq` / `db_sync` / `mock`. |
-| `OUROPASS_KOIOS_BASE_URL_<NET>` | Optional self-hosted koios endpoint per network (`_MAINNET`/`_PREPROD`/`_PREVIEW`); public defaults otherwise. |
-| `OUROPASS_CHAIN_API_KEY` | Optional API key (koios tier / blockfrost project id). |
+| `OUROPASS_CHAIN_API_KEY` | Optional Koios API key (paid tiers); blank = unauthenticated public access. |
 
+> **Chain source is Koios-only (S0015):** the issuer always reads stake from the public
+> Koios API with built-in per-network endpoints. There is no chain-source setting — the
+> legacy `OUROPASS_CHAIN_KIND`, `OUROPASS_KOIOS_BASE_URL[_<NET>]`, `OUROPASS_NODE_SOCKET`
+> and `OUROPASS_CARDANO_CLI` vars are removed and ignored if still present.
+>
 > **Network is per-attestor (S0014):** it is chosen in the admin UI per pool (defaults to
-> `mainnet`), not set globally. `OUROPASS_NETWORK` and the single `OUROPASS_KOIOS_BASE_URL`
-> are deprecated and ignored; koios endpoints resolve per network with built-in defaults.
+> `mainnet`), not set globally. `OUROPASS_NETWORK` is deprecated and ignored.
 | `OUROPASS_OWNER_KEYS` | Owner stake-key hashes for `/admin`. |
 | `OUROPASS_TELEGRAM_BOT` / `_TOKEN` | Optional Telegram delivery. |
 | `POSTGRES_USER` / `_PASSWORD` / `_DB` | Bundled Postgres credentials. |
@@ -154,21 +155,21 @@ All knobs live in `.env` (see `.env.example` for the annotated list). Highlights
 > `OUROPASS_FIELD_KEY` after data exists makes previously-encrypted 🔒 fields
 > unreadable.
 
-## Chain data source (decentralization knob)
+## Chain data source
 
-`OUROPASS_CHAIN_KIND` chooses how the issuer reads on-chain stake facts — a
-trade-off between convenience and sovereignty:
+The issuer reads on-chain stake facts from **Koios** — a federated, open API — and
+this is the single chain origin (S0015). Public per-network endpoints
+(`api`/`preprod`/`preview.koios.rest`) are built in and resolved automatically from
+each attestor's network; there is nothing to configure. The eligibility path is a
+read-through cache over this origin, so Koios is queried only on cache misses.
 
-- **`koios` (default)** — a federated, open API. Public per-network endpoints are built in;
-  point `OUROPASS_KOIOS_BASE_URL_<NET>` at your own self-hosted Koios to override. No SaaS lock-in.
-- **`blockfrost`** — a hosted SaaS. Easiest to start, but centralized and needs a
-  project id in `OUROPASS_CHAIN_API_KEY`.
-- **`node_lsq` / `db_sync` (sovereign)** — read from your **own** `cardano-node`
-  (Local State Query) or `cardano-db-sync`. Fully self-reliant, but a full node is
-  hundreds of GB and takes days to sync. Run the node yourself and set
-  `OUROPASS_CHAIN_KIND=node_lsq` + `OUROPASS_NODE_SOCKET`, then mount the node
-  socket into the issuer container (add a `volumes:` entry for the socket path).
-  Bundling a full node is out of scope for this compose file by design.
+- `OUROPASS_CHAIN_API_KEY` is optional — set it for a paid Koios tier; blank uses
+  unauthenticated public access.
+- **Sovereignty (self-hosted Koios):** running your own Koios instead of trusting the
+  public endpoint is planned as a future **admin-UI** setting, not a deploy-time env
+  (per the installer-scope boundary: operational/admin config does not belong in
+  deploy-time env). Direct `cardano-node` (Local State Query) and `cardano-db-sync`
+  adapters were removed.
 
 ## Data & backups
 
@@ -301,9 +302,9 @@ mock chain), then open `http://localhost:8080`.
 - **issuer keeps restarting / unhealthy** — `docker compose logs issuer`. Common
   causes: empty `OUROPASS_FIELD_KEY`/`OUROPASS_SERVER_SALT`, or Postgres not ready
   (it should gate via healthcheck).
-- **No members / chain errors** — verify `OUROPASS_CHAIN_KIND`, that each attestor's
-  **network** (set in `/admin`) matches the wallet/pool you expect, and that the koios
-  instance for that network is reachable (public default, or your `_<NET>` override).
+- **No members / chain errors** — verify that each attestor's **network** (set in
+  `/admin`) matches the wallet/pool you expect, and that the public Koios endpoint for
+  that network (`api`/`preprod`/`preview.koios.rest`) is reachable from the issuer.
 - **"Unfinished install detected" / a previous run was interrupted** — the installer
   writes `.env` before the questions, so quitting mid-setup leaves a placeholder `.env`.
   On the next run it detects this (no `.ouro-configured` marker yet) and offers to

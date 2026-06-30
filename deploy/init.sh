@@ -63,7 +63,7 @@ Done. Next steps:
        DOMAIN              your public domain (must resolve to this host)
        OUROPASS_OWNER_KEYS your owner stake-key hash(es) to sign in to /admin
                            (cd server && make stake-hash ADDR=stake1...)
-     Review OUROPASS_CHAIN_KIND (network is per-attestor, set in /admin).
+     Chain source is Koios-only; network is per-attestor (set in /admin).
   2) Start the stack:
        docker compose up -d
   3) Open https://<DOMAIN>/admin and sign in with your owner wallet.

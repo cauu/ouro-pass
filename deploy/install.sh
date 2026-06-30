@@ -57,11 +57,12 @@ Options:
   --dir DIR               install directory (default: ${OURO_DIR})
   -h, --help              show this help
 
-Non-interactive env vars: OURO_DOMAIN, OURO_ACME_EMAIL, OURO_CHAIN_KIND,
+Non-interactive env vars: OURO_DOMAIN, OURO_ACME_EMAIL,
   OURO_OWNER_ADDR (or OURO_OWNER_KEYS), OUROPASS_TAG, OURO_START (yes|no)
 
-Network is a per-attestor property configured in /admin after deploy (not here);
-koios endpoints resolve per network automatically.
+Chain data source: Koios is the single origin, with built-in public endpoints
+resolved per network — there is no chain-source setting to choose. Network is a
+per-attestor property configured in /admin after deploy (not here).
 
 Reverse-proxy env vars: OURO_PROXY_MODE (caddy|external), and for external mode
   OURO_HTTP_PORT (default ${OURO_HTTP_PORT}), OURO_BIND_ADDR (default ${OURO_BIND_ADDR}).
@@ -239,10 +240,10 @@ else
   else
     ACME_EMAIL=""   # external proxy terminates TLS; bundled Caddy/ACME is unused
   fi
-  # Network is a per-attestor property set in /admin (S0014 p1-2), so the installer no
-  # longer asks for it; koios endpoints resolve per-network with built-in defaults (override
-  # only for self-hosted koios via OUROPASS_KOIOS_BASE_URL_<NET> in .env).
-  ask CHAIN_KIND "Chain data source (koios|blockfrost|node_lsq|db_sync|mock)" "${OURO_CHAIN_KIND:-koios}"
+  # Chain data source: Koios is the single origin (S0015) with built-in public
+  # per-network endpoints, so there is no chain-source prompt. Network is a
+  # per-attestor property set in /admin (S0014 p1-2). Self-hosting koios is a
+  # future admin-UI setting, not a deploy-time knob.
   ask TAG "Image tag (e.g. 0.1.0, no leading v; or latest)" "${OUROPASS_TAG:-latest}"
   case "$TAG" in v[0-9]*) TAG="${TAG#v}" ;; esac   # image tags have no leading 'v'
   ask OWNER_ADDR "Owner stake address (stake1...) to admit as admin owner" "${OURO_OWNER_ADDR:-}"
@@ -261,7 +262,6 @@ else
   set_env DOMAIN "$DOMAIN"
   set_env ACME_EMAIL "$ACME_EMAIL"
   set_env OUROPASS_TAG "$TAG"
-  set_env OUROPASS_CHAIN_KIND "$CHAIN_KIND"
   set_env OUROPASS_OWNER_KEYS "$OWNER_KEYS"
 
   # Caddy errors on an empty `email` directive, so only enable it when provided.

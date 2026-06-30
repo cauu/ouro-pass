@@ -103,7 +103,7 @@ deploy-time env). Direct `node_lsq`/`db_sync`/`blockfrost` adapters are **delete
 - [x] p1-3 Delete `node_lsq` + `db_sync` (+ blockfrost dispatch) adapters and their wiring;
       keep `KoiosSource`/`MockSource`/`DefaultKoiosBaseURL`/`CanonicalPoolID`.
 - [x] p1-4 `make dev`: drop the mock injection → public koios; update the dev docs/comment.
-- [ ] p1-5 Installer/docs cleanup: remove the `CHAIN_KIND` prompt + chain-source/koios knobs
+- [x] p1-5 Installer/docs cleanup: remove the `CHAIN_KIND` prompt + chain-source/koios knobs
       from `install.sh`, `.env.example`, `docs/deployment.md`; document Koios-only + future
       self-host-in-UI.
 - [ ] p2-1 Full validation: `make test` + `pnpm test` + `shellcheck deploy/install.sh`.
@@ -153,6 +153,13 @@ Pass/fail: TC-1..TC-5 pass; eligibility behavior unchanged (no membership semant
 - 2026-06-30T15:31:00+08:00 p1-4: Makefile `dev` target drops OUROPASS_CHAIN_KIND=mock → dev now
   uses public koios per-network defaults; dev comment rewritten (no chain-source env; eligibility
   depends on configured attestors).
+- 2026-06-30T15:42:00+08:00 p1-5: installer/docs cleanup. install.sh: dropped the CHAIN_KIND
+  prompt + its set_env + the OURO_CHAIN_KIND help/non-interactive entries; help now states
+  Koios is the single origin. init.sh: refreshed the "next steps" chain note. .env.example:
+  replaced the chain-source block with a Koios-only note (only OUROPASS_CHAIN_API_KEY remains).
+  docs/deployment.md: env table + quick-start + "Chain data source" section + troubleshooting
+  rewritten to Koios-only; self-hosted koios documented as a future admin-UI option; node_lsq/
+  db_sync/blockfrost references removed. Installed shellcheck 0.11.0 (was missing) to validate.
 
 ## 6. Validation Evidence (append-only)
 - TC-3 | stack: go | command: go test ./cmd/issuer/ | result: pass | note: buildServices wires injected MockSource (mock+cache); full+degraded paths green via seam
@@ -162,5 +169,7 @@ Pass/fail: TC-1..TC-5 pass; eligibility behavior unchanged (no membership semant
 - TC-4 | stack: go | command: grep -rn 'node_lsq|db_sync|NewSource' --include='*.go' server | result: pass | note: only doc strings remained; node_lsq.go/db_sync.go deleted, chain.NewSource/Config gone
 - TC-5 | stack: go | command: go test ./... | result: pass | note: full server suite green after adapter deletion (no eligibility/membership drift)
 - TC-1 | stack: make | command: make -n dev | grep CHAIN_KIND | result: pass | note: dev target no longer injects OUROPASS_CHAIN_KIND=mock (empty grep); public koios used
+- TC-1 | stack: shell | command: shellcheck deploy/install.sh deploy/init.sh | result: pass | note: clean; no CHAIN_KIND prompt/set_env; only OUROPASS_CHAIN_API_KEY chain env remains in .env.example
+- TC-1 | stack: docs | command: grep CHAIN_KIND/KOIOS_BASE_URL deploy .env.example docs/deployment.md | result: pass | note: only intentional "removed and ignored" mentions remain; no live knobs
 
 ## 7. Change Requests (append-only)
