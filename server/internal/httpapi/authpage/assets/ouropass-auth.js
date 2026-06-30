@@ -181,6 +181,62 @@
     return (data && (data.error_description || data.error)) || fallback;
   }
 
+  // Channel directory (S0018): when no channel_id is set, the activate page lists
+  // the channels a holder can subscribe to and links each to /bind?channel_id=<id>
+  // (the per-channel wallet/sign flow). 0 → message, 1 → auto-advance, 2+ → list.
+  async function initDirectory() {
+    setStatus("Loading channels…");
+    var resp;
+    try {
+      resp = await fetch(cfg.channelsUrl || "/api/channels");
+    } catch (e) {
+      setStatus("Could not load channels. Please reload.", true);
+      return;
+    }
+    var data = {};
+    try { data = await resp.json(); } catch (e) { /* non-JSON */ }
+    var channels = (data && data.channels) || [];
+    if (channels.length === 0) {
+      setStatus("No channels are available to subscribe to yet. Please contact the operator.", true);
+      return;
+    }
+    if (channels.length === 1) {
+      location.replace("/bind?channel_id=" + encodeURIComponent(channels[0].channel_id));
+      return;
+    }
+    setStatus("Choose a channel to subscribe to:");
+    var box = document.getElementById("op-channels");
+    if (!box) return;
+    box.innerHTML = "";
+    channels.forEach(function (c) {
+      var a = document.createElement("a");
+      a.className = "channel";
+      a.href = "/bind?channel_id=" + encodeURIComponent(c.channel_id);
+      a.appendChild(document.createTextNode(c.name || c.bot_username || c.channel_id));
+      if (c.bot_username) {
+        var sub = document.createElement("span");
+        sub.className = "sub";
+        sub.textContent = "@" + c.bot_username;
+        a.appendChild(sub);
+      }
+      box.appendChild(a);
+    });
+  }
+
+  // showSelected renders a "Subscribing to <name> (@bot) · change channel" line on
+  // the per-channel page so the holder can confirm or go back to the directory.
+  function showSelected() {
+    var box = document.getElementById("op-selected");
+    if (!box || !cfg.channelName) return;
+    box.innerHTML = "";
+    var label = cfg.channelName + (cfg.channelBot ? " (@" + cfg.channelBot + ")" : "");
+    box.appendChild(document.createTextNode("Subscribing to " + label + " · "));
+    var a = document.createElement("a");
+    a.href = "/bind";
+    a.textContent = "change channel";
+    box.appendChild(a);
+  }
+
   // Wallets inject at different (sometimes late) times, so discovery is not a
   // one-shot: poll briefly and re-render as wallets appear, and also react to
   // the load event and the cardano#initialized signal some wallets dispatch.
@@ -210,8 +266,16 @@
     }, 250);
   }
 
-  window.addEventListener("load", refresh);
-  window.addEventListener("cardano#initialized", refresh);
-  init();
+  // Activate page with no channel chosen → show the directory; do not run wallet
+  // detection. Otherwise (authorize, or activate bound to a channel) run the wallet
+  // flow; the per-channel activate page also shows which channel was selected.
+  if (cfg.mode === "activate" && !cfg.channelId) {
+    initDirectory();
+  } else {
+    if (cfg.mode === "activate") showSelected();
+    window.addEventListener("load", refresh);
+    window.addEventListener("cardano#initialized", refresh);
+    init();
+  }
 })();
 

@@ -9,10 +9,12 @@
   body { font-family: system-ui, -apple-system, sans-serif; max-width: 28rem; margin: 4rem auto; padding: 0 1rem; line-height: 1.5; }
   h1 { font-size: 1.4rem; margin-bottom: .25rem; }
   .muted { color: #6b7280; font-size: .9rem; }
-  #op-wallets { display: flex; flex-direction: column; gap: .5rem; margin: 1.5rem 0; }
-  button.wallet { display: flex; align-items: center; gap: .6rem; padding: .7rem 1rem; font-size: 1rem; border: 1px solid #d1d5db; border-radius: .6rem; background: transparent; color: inherit; cursor: pointer; }
-  button.wallet:hover:not([disabled]) { border-color: #6366f1; }
+  #op-wallets, #op-channels { display: flex; flex-direction: column; gap: .5rem; margin: 1.5rem 0; }
+  button.wallet, a.channel { display: flex; align-items: center; gap: .6rem; padding: .7rem 1rem; font-size: 1rem; border: 1px solid #d1d5db; border-radius: .6rem; background: transparent; color: inherit; cursor: pointer; text-decoration: none; }
+  button.wallet:hover:not([disabled]), a.channel:hover { border-color: #6366f1; }
   button.wallet[disabled] { opacity: .5; cursor: default; }
+  a.channel .sub { color: #6b7280; font-size: .85rem; }
+  #op-selected { margin-top: 1rem; font-size: .9rem; }
   #op-status { min-height: 1.4rem; margin-top: 1rem; }
   #op-status.err { color: #dc2626; }
   #op-result a { word-break: break-all; }
@@ -26,8 +28,13 @@
   data-purpose="activation"
   data-channel-type="{{.ChannelType}}"
   data-channel-id="{{.ChannelID}}"
+  data-channel-name="{{.ChannelName}}"
+  data-channel-bot="{{.BotUsername}}"
+  data-channels-url="/api/channels"
   data-challenge-url="/api/auth/challenge"
   data-submit-url="/api/activation/create"></div>
+<div id="op-selected"></div>
+<div id="op-channels"></div>
 <div id="op-wallets"></div>
 <div id="op-status"></div>
 <div id="op-result" style="display:none; margin-top:1rem;">

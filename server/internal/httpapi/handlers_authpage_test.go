@@ -101,7 +101,10 @@ func TestAuthAsset_ServesJS(t *testing.T) {
 		t.Fatalf("content-type = %q", ct)
 	}
 	body, _ := io.ReadAll(resp.Body)
-	for _, want := range []string{"signData", "getRewardAddresses", "stake_address", "cose_key"} {
+	for _, want := range []string{
+		"signData", "getRewardAddresses", "stake_address", "cose_key",
+		"/api/channels", "/bind?channel_id=", // S0018 directory branch
+	} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf("asset missing %q", want)
 		}

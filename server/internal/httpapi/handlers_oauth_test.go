@@ -151,9 +151,10 @@ func TestBind_ChannelID(t *testing.T) {
 		return resp.StatusCode, string(b)
 	}
 
-	// TC-1: valid active telegram id → 200 with data-channel-id set.
-	if code, body := get("/bind?channel_id=tg-active"); code != 200 || !strings.Contains(body, `data-channel-id="tg-active"`) {
-		t.Errorf("valid channel_id: code=%d, has-attr=%v", code, strings.Contains(body, `data-channel-id="tg-active"`))
+	// TC-1: valid active telegram id → 200 with data-channel-id + name passed through.
+	if code, body := get("/bind?channel_id=tg-active"); code != 200 ||
+		!strings.Contains(body, `data-channel-id="tg-active"`) || !strings.Contains(body, `data-channel-name="Main"`) {
+		t.Errorf("valid channel_id: code=%d body=%q", code, body)
 	}
 	// TC-2: no channel_id → 200 with empty data-channel-id (unchanged behavior).
 	if code, body := get("/bind"); code != 200 || !strings.Contains(body, `data-channel-id=""`) {

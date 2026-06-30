@@ -10,6 +10,7 @@ import (
 	"ouro-pass/server/internal/core/oauth"
 	"ouro-pass/server/internal/httpapi/authpage"
 	"ouro-pass/server/internal/httpapi/respond"
+	"ouro-pass/server/internal/worker/telegram"
 )
 
 // connect serves the issuer-rendered Authorization Page (detailed §9.4, S0003).
@@ -47,10 +48,11 @@ func (h *apiHandlers) connect(w http.ResponseWriter, r *http.Request) {
 //
 //	GET /bind?channel_type=telegram[&channel_id=<id>]
 //
-// channel_id (S0016), when present, binds the page to one channel instance so the
-// activation deep link uses that instance's own bot. It is validated here (active
-// telegram instance) so a stale link fails fast instead of silently falling back
-// to the env-default bot after the user has signed.
+// With no channel_id the page is a channel directory (S0018): it fetches
+// /api/channels and lets the holder pick one. channel_id (S0016), when present,
+// binds the page to one instance so the deep link uses that instance's bot; it is
+// validated here (active telegram) so a stale link fails fast, and the instance
+// name + bot username are passed through for the page to display.
 func (h *apiHandlers) bind(w http.ResponseWriter, r *http.Request) {
 	if h.d.OAuth == nil {
 		notImplemented(w, r)
@@ -60,15 +62,18 @@ func (h *apiHandlers) bind(w http.ResponseWriter, r *http.Request) {
 	if ct == "" {
 		ct = "telegram"
 	}
-	cid := r.URL.Query().Get("channel_id")
-	if cid != "" {
+	data := authpage.BindData{ChannelType: ct}
+	if cid := r.URL.Query().Get("channel_id"); cid != "" {
 		inst, err := h.d.Store.Channels().Get(r.Context(), cid)
 		if err != nil || inst.Status != "active" || inst.ChannelType != "telegram" {
 			respond.Error(w, http.StatusBadRequest, "invalid_request", "unknown or inactive channel instance")
 			return
 		}
+		data.ChannelID = cid
+		data.ChannelName = inst.Name
+		data.BotUsername = telegram.DecodeUsername(inst.Config)
 	}
-	if err := authpage.RenderBind(w, authpage.BindData{ChannelType: ct, ChannelID: cid}); err != nil {
+	if err := authpage.RenderBind(w, data); err != nil {
 		serverError(w, r, err)
 	}
 }

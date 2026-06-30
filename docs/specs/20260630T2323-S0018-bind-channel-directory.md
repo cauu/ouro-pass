@@ -101,7 +101,7 @@ a directory entry page that links to the existing per-channel bind page).
 - [x] p1-1 Public channel directory endpoint: `GET /api/channels` (active telegram
       instances with a bot username; public fields only). Handler + router + unit test
       (active-with-username listed; inactive / no-username / token excluded).
-- [ ] p1-2 Bind directory UX: `/bind` (no `channel_id`) fetches `/api/channels` and
+- [x] p1-2 Bind directory UX: `/bind` (no `channel_id`) fetches `/api/channels` and
       renders a picker (0 → message, 1 → auto-advance, 2+ → links to
       `/bind?channel_id=<id>`); per-channel page shows the selected channel
       (`name`/`@bot`) + a back-to-directory link (`BindData` gains name/bot). Update
@@ -139,8 +139,17 @@ Pass/fail: TC-1..TC-4 pass; no change to eligibility/activation/deep-link semant
   "telegram"), dropping instances with no decodable bot_username; only public fields, no token.
   New handlers_channels.go + route in router.go. TestPublicChannels asserts active+username
   listed; disabled / no-username excluded; no token leak.
+- 2026-06-30T23:33:00+08:00 p1-2: bind UX. BindData gains ChannelName/BotUsername; the bind
+  handler passes the instance name + decoded username through when channel_id is set. bind.html
+  adds #op-channels (directory) + #op-selected containers, data-channel-name/-bot/-channels-url,
+  and a.channel styling. ouropass-auth.js: when activate mode has no channel_id → initDirectory()
+  fetches /api/channels (0→message, 1→location.replace, 2+→links to /bind?channel_id=<id>);
+  otherwise runs the wallet flow and showSelected() renders "Subscribing to <name> (@bot) ·
+  change channel". Tests: TestBind_ChannelID asserts data-channel-name passthrough;
+  TestAuthAsset_ServesJS asserts the directory branch (/api/channels + /bind?channel_id=).
 
 ## 6. Validation Evidence (append-only)
 - TC-1 | stack: go | command: go test ./internal/httpapi/ -run TestPublicChannels | result: pass | note: /api/channels lists active telegram w/ username; disabled & username-less excluded; no bot_token_enc/token_hint in payload
+- TC-2/TC-3 | stack: go | command: go test ./internal/httpapi/ -run 'TestAuthAsset_ServesJS|TestBind_ChannelID' | result: pass | note: asset carries the directory branch (/api/channels + /bind?channel_id=); per-channel page renders data-channel-name passthrough (selected-channel display)
 
 ## 7. Change Requests (append-only)

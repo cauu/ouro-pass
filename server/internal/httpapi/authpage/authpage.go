@@ -32,11 +32,14 @@ type ConnectData struct {
 }
 
 // BindData parameterizes the channel binding page. ChannelID, when set, targets a
-// specific channel instance (S0016) so the activation deep link uses that
-// instance's own bot; empty falls back to the deployment-wide default bot.
+// specific channel instance (S0016); empty makes the page a channel directory
+// (S0018). ChannelName/BotUsername are shown on the per-channel page so the holder
+// can confirm which channel they're subscribing to.
 type BindData struct {
 	ChannelType string
 	ChannelID   string
+	ChannelName string
+	BotUsername string
 }
 
 func writeHeader(w http.ResponseWriter) {
