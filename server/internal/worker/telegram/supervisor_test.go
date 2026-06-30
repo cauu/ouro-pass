@@ -113,7 +113,7 @@ func TestSupervisor_Lifecycle(t *testing.T) {
 	fleet := newFleet()
 	mkInstance(t, st, "c1", "members")
 
-	sup := NewSupervisor(st, fleet.factory, "pool1", 10*time.Millisecond, nil)
+	sup := NewSupervisor(st, fleet.factory, "pool1", 10*time.Millisecond)
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { sup.Run(ctx); close(done) }()
@@ -167,7 +167,7 @@ func TestSupervisor_RestartOnTokenChange(t *testing.T) {
 	fleet := newFleet()
 	mkInstance(t, st, "c1", "members")
 
-	sup := NewSupervisor(st, fleet.factory, "pool1", 10*time.Millisecond, nil)
+	sup := NewSupervisor(st, fleet.factory, "pool1", 10*time.Millisecond)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go sup.Run(ctx)
@@ -185,23 +185,24 @@ func TestSupervisor_RestartOnTokenChange(t *testing.T) {
 	waitFor(t, "c1 running after rebuild", func() bool { return fleet.isRunning("c1") })
 }
 
-// TestSupervisor_EnvFallback proves the env-token implicit "default" instance
-// runs only while no DB instance exists (D6/C1).
-func TestSupervisor_EnvFallback(t *testing.T) {
+// TestSupervisor_NoInstancesNoWorkers proves S0017: with no DB telegram instance,
+// the supervisor starts no worker (there is no env-token fallback instance).
+func TestSupervisor_NoInstancesNoWorkers(t *testing.T) {
 	st := newSupStore(t)
 	fleet := newFleet()
-	env := &domain.ChannelConfig{ChannelID: "env-default", PoolID: "pool1", ChannelType: "telegram", Name: "default", Status: "active"}
 
-	sup := NewSupervisor(st, fleet.factory, "pool1", 10*time.Millisecond, env)
+	sup := NewSupervisor(st, fleet.factory, "pool1", 10*time.Millisecond)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	go sup.Run(ctx)
 
-	// With no DB instance, the env fallback runs.
-	waitFor(t, "env-default start", func() bool { return fleet.isRunning("env-default") })
+	// Several reconcile ticks pass (interval is 10ms); nothing should start.
+	time.Sleep(50 * time.Millisecond)
+	if n := fleet.liveCount(); n != 0 {
+		t.Fatalf("%d workers running with no DB instance, want 0 (no env fallback)", n)
+	}
 
-	// Adding a DB instance supplants the env fallback (env stops, DB starts).
+	// Adding a DB instance starts exactly that one.
 	mkInstance(t, st, "c1", "members")
 	waitFor(t, "c1 start", func() bool { return fleet.isRunning("c1") })
-	waitFor(t, "env-default stop once DB instance exists", func() bool { return !fleet.isRunning("env-default") })
 }

@@ -43,10 +43,6 @@ const pushPollInterval = 15 * time.Second
 // telegram workers against the active channel-instance set (S0005 p2-1).
 const telegramReconcileInterval = 5 * time.Second
 
-// envInstanceID is the synthetic instance id for the OUROPASS_TELEGRAM_TOKEN
-// fallback "default" instance (D6).
-const envInstanceID = "env-default"
-
 const (
 	nonceTTL        = 5 * time.Minute
 	nonceGCInterval = 10 * time.Minute // independent of epoch; nonces are minute-scale
@@ -139,11 +135,10 @@ func run() error {
 		// S0005 p2-1: a supervisor runs one telegram worker per active DB instance,
 		// each bound to its own decrypted token, processor (instance-scoped), and
 		// long-poll offset. It reconciles every tick, so adding/removing/disabling
-		// or re-tokening an instance takes effect with no restart (D3/C4). The env
-		// token OUROPASS_TELEGRAM_TOKEN remains an implicit "default" instance that
-		// runs only while no DB instance exists (D6/C1).
+		// or re-tokening an instance takes effect with no restart (D3/C4). All bots
+		// are configured in admin (S0017): there is no env-token fallback instance.
 		factory := func(inst domain.ChannelConfig) (telegram.Runner, error) {
-			token, err := instanceToken(cfg, deps.Cipher, inst)
+			token, err := instanceToken(deps.Cipher, inst)
 			if err != nil {
 				return nil, err
 			}
@@ -152,22 +147,13 @@ func run() error {
 			proc := telegram.NewInstanceProcessor(st, deps.OAuth, cfg.Scope, inst.ChannelID)
 			return telegram.NewWorker(proc, transport), nil
 		}
-		var envInstance *domain.ChannelConfig
-		if cfg.TelegramToken != "" {
-			envInstance = &domain.ChannelConfig{
-				ChannelID: envInstanceID, PoolID: cfg.Scope, ChannelType: "telegram", Name: "default", Status: "active",
-			}
-		}
-		supervisor := telegram.NewSupervisor(st, factory, cfg.Scope, telegramReconcileInterval, envInstance)
+		supervisor := telegram.NewSupervisor(st, factory, cfg.Scope, telegramReconcileInterval)
 		startWorker("telegram-supervisor", func() { supervisor.Run(sigCtx) })
 
 		// The push worker delivers admin-created PushJobs. A channel-scoped job is
 		// routed through its target instance's transport; an unscoped (legacy) job
-		// uses a token resolved live (env first, else the default DB instance).
+		// uses the default DB telegram instance's token, resolved live.
 		pushDefaultTokenFn := func() string {
-			if cfg.TelegramToken != "" {
-				return cfg.TelegramToken
-			}
 			if deps.Cipher == nil {
 				return ""
 			}
@@ -190,7 +176,7 @@ func run() error {
 			if err != nil {
 				return nil, err
 			}
-			tok, err := instanceToken(cfg, deps.Cipher, *inst)
+			tok, err := instanceToken(deps.Cipher, *inst)
 			if err != nil {
 				return nil, err
 			}
@@ -343,17 +329,11 @@ func buildServices(cfg *config.Config, st *store.Store, chainOverride chain.Sour
 	return deps, nil
 }
 
-// instanceToken resolves the plaintext bot token for one telegram instance: the
-// env token for the synthetic "default" instance (D6), else the instance's own
-// field-encrypted token from its stored config. An empty token is an error so
-// the supervisor skips the instance and retries once it is configured.
-func instanceToken(cfg *config.Config, cipher *crypto.FieldCipher, inst domain.ChannelConfig) (string, error) {
-	if inst.ChannelID == envInstanceID {
-		if cfg.TelegramToken == "" {
-			return "", fmt.Errorf("env telegram token empty")
-		}
-		return cfg.TelegramToken, nil
-	}
+// instanceToken resolves the plaintext bot token for one telegram instance from
+// its field-encrypted token in the stored config (S0017: all bots are admin DB
+// instances; there is no env-token fallback). An empty token is an error so the
+// supervisor skips the instance and retries once it is configured.
+func instanceToken(cipher *crypto.FieldCipher, inst domain.ChannelConfig) (string, error) {
 	if cipher == nil {
 		return "", fmt.Errorf("field cipher unavailable; cannot decrypt instance token")
 	}

@@ -114,10 +114,12 @@ per-channel stored username, with **no env fallback**.
 
 - [ ] p1-1 Config: remove `TelegramBot` + `TelegramToken` fields + env reads; legacy
       values logged-and-ignored. Update `config_test`.
-- [ ] p1-2 Issuer wiring: delete the `env-default` instance, drop the supervisor
+- [x] p1-2 Issuer wiring: delete the `env-default` instance, drop the supervisor
       `envInstance` param + `desired()` fallback, simplify `instanceToken`, make
       `pushDefaultTokenFn` resolve the default token from the DB telegram instance only,
       remove `Deps.TelegramBot`. Update `supervisor_test` + `cmd/devflow`.
+      (`Deps.TelegramBot` + `cmd/devflow` are removed together with the activation
+      deep-link rewrite in p1-3 — they're entangled with the `h.d.TelegramBot` fallback.)
 - [ ] p1-3 Activation/bind deep link: resolve username only from the channel instance;
       require `channel_id` + a stored username, else 400 (no env fallback). Update
       `handlers_activation` + handler tests (no-id/no-username → 400, not env default).
@@ -152,7 +154,15 @@ Pass/fail: TC-1..TC-6 pass; admin (DB) Telegram path behavior unchanged.
 - 2026-06-30T20:58:08+08:00 promoted to active (Start Time set; file moved to docs/specs/).
   Execution order: p1-2/p1-3 (stop referencing cfg.TelegramBot/Token + Deps.TelegramBot)
   run before p1-1 (remove the config fields) so every commit stays buildable.
+- 2026-06-30T21:06:00+08:00 p1-2: removed the synthetic env-default instance (envInstanceID
+  const, envInstance construction); NewSupervisor drops the envInstance param and desired()'s
+  len==0 fallback; instanceToken simplified to decrypt the instance's own stored token (no env
+  branch, cfg param dropped); pushDefaultTokenFn resolves the default token from the DB telegram
+  instance only. supervisor_test: replaced TestSupervisor_EnvFallback with
+  TestSupervisor_NoInstancesNoWorkers. Deps.TelegramBot + cmd/devflow deferred to p1-3 (entangled
+  with the activation fallback). go build ./... + go vet ./... clean; worker + issuer tests green.
 
 ## 6. Validation Evidence (append-only)
+- TC-2 | stack: go | command: go test ./internal/worker/telegram/ | result: pass | note: no DB instance → no worker (TestSupervisor_NoInstancesNoWorkers); adding one runs exactly it; no env fallback
 
 ## 7. Change Requests (append-only)

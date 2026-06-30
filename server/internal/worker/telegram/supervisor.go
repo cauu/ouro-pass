@@ -30,9 +30,6 @@ type Supervisor struct {
 	poolID   string
 	factory  Factory
 	interval time.Duration
-	// envInstance, when non-nil, is the implicit "default" instance backed by
-	// OUROPASS_TELEGRAM_TOKEN; it runs only while no DB instance exists (D6/C1).
-	envInstance *domain.ChannelConfig
 }
 
 type runningWorker struct {
@@ -41,12 +38,13 @@ type runningWorker struct {
 }
 
 // NewSupervisor builds a supervisor reconciling poolID's telegram instances
-// every interval through factory. envInstance is the optional env-token fallback.
-func NewSupervisor(st *store.Store, factory Factory, poolID string, interval time.Duration, envInstance *domain.ChannelConfig) *Supervisor {
+// every interval through factory. All instances come from the admin DB (S0017:
+// no env-token fallback instance).
+func NewSupervisor(st *store.Store, factory Factory, poolID string, interval time.Duration) *Supervisor {
 	if interval <= 0 {
 		interval = time.Second
 	}
-	return &Supervisor{channels: st.Channels(), poolID: poolID, factory: factory, interval: interval, envInstance: envInstance}
+	return &Supervisor{channels: st.Channels(), poolID: poolID, factory: factory, interval: interval}
 }
 
 // Run reconciles on every tick until ctx is cancelled, then cancels and joins
@@ -79,10 +77,6 @@ func (s *Supervisor) desired(ctx context.Context) map[string]domain.ChannelConfi
 	out := make(map[string]domain.ChannelConfig, len(active))
 	for _, inst := range active {
 		out[inst.ChannelID] = inst
-	}
-	// Env-token fallback is the implicit default only while no DB instance exists.
-	if len(out) == 0 && s.envInstance != nil {
-		out[s.envInstance.ChannelID] = *s.envInstance
 	}
 	return out
 }
