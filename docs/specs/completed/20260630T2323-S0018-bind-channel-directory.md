@@ -1,12 +1,12 @@
 # Bind page: public channel directory + in-page channel selection
 
 Spec-ID: S0018
-Status: active
+Status: completed
 Created Time: 2026-06-30T23:10:16+08:00
 Start Time: 2026-06-30T23:23:05+08:00
-Completion Time:
+Completion Time: 2026-07-01T00:21:23+08:00
 Previous Spec-ID: S0017
-Closure Reason:
+Closure Reason: delivered
 
 ## 1. Requirement Details
 
@@ -170,6 +170,12 @@ Pass/fail: TC-1..TC-5 pass; no change to eligibility/activation/deep-link semant
   → empty tier; pending is also never cached → empty cache. Fixed the struct tag to
   `pool_id_bech32` and corrected the unit-test mock (it had used `pool_id`, masking the bug).
   go vet ./... clean; make test green.
+- 2026-07-01T00:21:23+08:00 closed (Closure Reason: delivered) per user. User verified both the
+  bind channel directory (`/bind` picker → per-channel flow) and the p2-1 tier fix (delegator now
+  resolves to its tier). Confirmed no deployment-script changes are required — S0018 adds no env/
+  port/service/route-config (the new `/api/channels` is same-origin behind the existing Caddy
+  reverse proxy); shipping is just a new image tag via deploy/update.sh. File moved to
+  docs/specs/completed/.
 
 ## 6. Validation Evidence (append-only)
 - TC-1 | stack: go | command: go test ./internal/httpapi/ -run TestPublicChannels | result: pass | note: /api/channels lists active telegram w/ username; disabled & username-less excluded; no bot_token_enc/token_hint in payload
