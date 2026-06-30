@@ -1,12 +1,12 @@
 # Per-attestor network model + config robustness + binding fixes
 
 Spec-ID: S0014
-Status: active
+Status: completed
 Created Time: 2026-06-29T23:01:36+08:00
 Start Time: 2026-06-29T23:47:17+08:00
-Completion Time:
+Completion Time: 2026-06-30T14:32:11+08:00
 Previous Spec-ID: S0013
-Closure Reason:
+Closure Reason: delivered
 
 ## 1. Requirement Details
 
@@ -271,3 +271,15 @@ mainnet bind) mandatory; TC-8 must keep `StateNone` for non-delegators (no loose
 - p5-1 / TC-9 | stack: go+ui | command: (server) go vet ./... + go test ./... ; shellcheck deploy/install.sh ; (web) pnpm typecheck + test + lint | result: pass | note: server 0 FAIL, vet clean; shellcheck clean; web typecheck clean, 10 tests pass, lint 0 errors (2 pre-existing react-refresh warnings). TC-10 / TC-11 (real on-server mainnet bind + old-`.env` upgrade path) are environment-blocked here — to be exercised by the operator on the target host before sign-off.
 
 ## 7. Change Requests (append-only)
+
+- 2026-06-30T14:32:11+08:00 Spec closed by operator (delivered). All 13 items [x];
+  server `go test ./...` 0 FAIL + vet clean, web typecheck/test/lint clean, shellcheck clean;
+  multi-agent review run with all confirmed findings fixed (p4-1-fix1 P1 + two P2 fixes).
+  Eligibility chain verified against LIVE koios mainnet during debugging: the operator's
+  real staker (cred c98bd3…, delegating to pool1jh5p562…) resolves to `StatePending`
+  (eligible) — confirming p1-1/p1-2 (per-attestor network → mainnet koios) and p4-1 (hex↔bech32
+  pool-id normalization) work on real data; the local 403 was traced to `make dev` using the
+  mock chain, not a defect. TC-10/TC-11 (full real on-server bind + old-`.env` upgrade) remain
+  the operator's to exercise post-deploy. Follow-up opened as S0015: drop chain-source config
+  (OUROPASS_CHAIN_KIND + OUROPASS_KOIOS_BASE_URL*) — Koios becomes the single origin, mock a
+  test-only type, node_lsq/db_sync/blockfrost removed.
