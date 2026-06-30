@@ -28,8 +28,23 @@ func TestLoad_DefaultsAndRequired(t *testing.T) {
 	if c.TrustedProxy || !c.TLS { // TrustedProxy defaults false, TLS defaults true
 		t.Errorf("edge defaults: TrustedProxy=%v TLS=%v", c.TrustedProxy, c.TLS)
 	}
-	if c.ChainKind != "mock" {
-		t.Errorf("chain kind default = %q", c.ChainKind)
+	if c.ChainAPIKey != "" {
+		t.Errorf("chain API key default = %q (want empty)", c.ChainAPIKey)
+	}
+}
+
+// TestLoad_LegacyChainEnvIgnored covers S0015 TC-4: chain-source env was removed,
+// so a stale OUROPASS_CHAIN_KIND (or koios-URL) on a deployment is silently ignored
+// and Load still succeeds — never a "mock" footgun or a load error.
+func TestLoad_LegacyChainEnvIgnored(t *testing.T) {
+	withEnv(t, map[string]string{
+		"OUROPASS_ISSUER":                 "https://pass.example.com",
+		"OUROPASS_CHAIN_KIND":             "mock",
+		"OUROPASS_KOIOS_BASE_URL":         "https://legacy.example/api",
+		"OUROPASS_KOIOS_BASE_URL_PREPROD": "https://legacy.preprod/api",
+	})
+	if _, err := Load(); err != nil {
+		t.Fatalf("legacy chain env must be ignored, not fail load: %v", err)
 	}
 }
 

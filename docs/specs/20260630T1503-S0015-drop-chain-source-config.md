@@ -95,7 +95,7 @@ deploy-time env). Direct `node_lsq`/`db_sync`/`blockfrost` adapters are **delete
 
 ## 3. Execution Plan
 
-- [ ] p1-1 Remove chain-source env from config: delete `ChainKind`, `KoiosBaseURL`,
+- [x] p1-1 Remove chain-source env from config: delete `ChainKind`, `KoiosBaseURL`,
       `KoiosBaseURLByNetwork` + their reads/deprecation; keep `ChainAPIKey`. Update config_test.
 - [x] p1-2 `srcFor`/origin always Koios: build `KoiosSource(DefaultKoiosBaseURL(network), …)`
       directly; remove `chain.NewSource` kind switch. Add a `buildServices` source-injection
@@ -138,9 +138,17 @@ Pass/fail: TC-1..TC-5 pass; eligibility behavior unchanged (no membership semant
   (nil → koios); run() passes nil. main_test migrated to inject chain.NewMockSource(0) via the
   seam (no ChainKind); db_sync fail-fast subtest removed. e2e_test already injects MockSource
   directly — unchanged. chain.NewSource/Config still exist (removed in p1-3).
+- 2026-06-30T15:18:00+08:00 p1-1: config.go drops ChainKind, KoiosBaseURL, KoiosBaseURLByNetwork,
+  NodeSocket, CardanoCLI fields + their env reads and the per-network override loop. ChainAPIKey
+  kept (only optional chain env). Legacy chain-source vars (CHAIN_KIND/KOIOS_BASE_URL[_<NET>]/
+  NODE_SOCKET/CARDANO_CLI) now emit a one-line deprecation warning and are otherwise ignored
+  (no more mock default footgun). OUROPASS_NETWORK deprecation note (S0014) retained. config_test
+  ChainKind assertion replaced with a ChainAPIKey-default check + a LegacyChainEnvIgnored test.
 
 ## 6. Validation Evidence (append-only)
 - TC-3 | stack: go | command: go test ./cmd/issuer/ | result: pass | note: buildServices wires injected MockSource (mock+cache); full+degraded paths green via seam
 - TC-2 | stack: go | command: go build ./... | result: pass | note: srcFor builds Koios per-network directly; no kind selection
+- TC-1 | stack: go | command: go test ./internal/config/ | result: pass | note: config has no ChainKind/KoiosBaseURL*; ChainAPIKey kept (defaults empty)
+- TC-4 | stack: go | command: go test ./internal/config/ -run LegacyChainEnvIgnored | result: pass | note: stale OUROPASS_CHAIN_KIND/KOIOS_BASE_URL[_NET] ignored, Load succeeds (deprecation log emitted)
 
 ## 7. Change Requests (append-only)

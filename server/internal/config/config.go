@@ -32,15 +32,12 @@ type Config struct {
 	FieldKeyHex   string // 32-byte AES-256-GCM master key for 🔒 fields
 	ServerSaltHex string // HMAC salt for deriving the pseudonymous `sub`
 
-	// Staking Index Adapter
-	ChainKind    string // mock | node_lsq | db_sync | koios | blockfrost
-	KoiosBaseURL string // DEPRECATED (S0014): use per-network overrides; ignored if set, warned at load
-	// KoiosBaseURLByNetwork holds optional per-network koios endpoint overrides
-	// (OUROPASS_KOIOS_BASE_URL_MAINNET|_PREPROD|_PREVIEW); empty → public default per network.
-	KoiosBaseURLByNetwork map[string]string
-	ChainAPIKey           string
-	NodeSocket            string
-	CardanoCLI            string
+	// Staking Index Adapter. Koios is the single chain origin (S0015): the issuer
+	// always builds CachedSource(KoiosSource(public per-network default)); there is
+	// no source-selector env. ChainAPIKey is the only optional chain env (a koios-tier
+	// credential, not a source selector). Self-hosting koios is a future admin-UI
+	// setting, not deploy-time env (see [[installer-scope-boundary]]).
+	ChainAPIKey string
 
 	// Telegram
 	TelegramBot   string // bot username (for deep links)
@@ -73,11 +70,7 @@ func Load() (*Config, error) {
 		DBDSN:           env("OUROPASS_DB_DSN", defaultDBDSN),
 		FieldKeyHex:     env("OUROPASS_FIELD_KEY", ""),
 		ServerSaltHex:   env("OUROPASS_SERVER_SALT", ""),
-		ChainKind:       env("OUROPASS_CHAIN_KIND", "mock"),
-		KoiosBaseURL:    env("OUROPASS_KOIOS_BASE_URL", ""),
 		ChainAPIKey:     env("OUROPASS_CHAIN_API_KEY", ""),
-		NodeSocket:      env("OUROPASS_NODE_SOCKET", ""),
-		CardanoCLI:      env("OUROPASS_CARDANO_CLI", ""),
 		TelegramBot:     env("OUROPASS_TELEGRAM_BOT", ""),
 		TelegramToken:   env("OUROPASS_TELEGRAM_TOKEN", ""),
 		OwnerKeyHashes:  splitCSV(env("OUROPASS_OWNER_KEYS", "")),
@@ -87,16 +80,18 @@ func Load() (*Config, error) {
 	c.Issuer = env("OUROPASS_ISSUER", "")
 	c.Scope = c.Issuer // one first-party namespace per deployment, keyed by issuer identity
 
-	// Per-network koios endpoint overrides (S0014 p1-1). koios endpoints are per-network;
-	// a single global URL is wrong for multi-network and caused false "not eligible".
-	c.KoiosBaseURLByNetwork = map[string]string{}
-	for _, n := range []string{"mainnet", "preprod", "preview"} {
-		if v := env("OUROPASS_KOIOS_BASE_URL_"+strings.ToUpper(n), ""); v != "" {
-			c.KoiosBaseURLByNetwork[n] = v
+	// Chain-source env was removed (S0015): Koios is the single origin (public
+	// per-network defaults), so OUROPASS_CHAIN_KIND / OUROPASS_KOIOS_BASE_URL[_<NET>] /
+	// OUROPASS_NODE_SOCKET / OUROPASS_CARDANO_CLI no longer exist and any legacy value
+	// is silently ignored. A one-line deprecation note helps operators with stale .env.
+	for _, k := range []string{
+		"OUROPASS_CHAIN_KIND", "OUROPASS_KOIOS_BASE_URL",
+		"OUROPASS_KOIOS_BASE_URL_MAINNET", "OUROPASS_KOIOS_BASE_URL_PREPROD", "OUROPASS_KOIOS_BASE_URL_PREVIEW",
+		"OUROPASS_NODE_SOCKET", "OUROPASS_CARDANO_CLI",
+	} {
+		if _, ok := os.LookupEnv(k); ok {
+			slog.Warn("chain-source env is deprecated and ignored (S0015): Koios is the single origin with built-in per-network endpoints", "var", k)
 		}
-	}
-	if c.KoiosBaseURL != "" {
-		slog.Warn("OUROPASS_KOIOS_BASE_URL is deprecated and ignored: koios endpoints are now resolved per network (built-in defaults; override via OUROPASS_KOIOS_BASE_URL_MAINNET|_PREPROD|_PREVIEW)")
 	}
 	if _, ok := os.LookupEnv("OUROPASS_NETWORK"); ok {
 		slog.Warn("OUROPASS_NETWORK is deprecated and ignored: network is now a per-attestor property set in the admin console (defaults to mainnet)")
