@@ -14,7 +14,14 @@ func TestIsConflictAndBackoff(t *testing.T) {
 	other := errors.New("telegram getUpdates: status 500")
 
 	if !isConflict(conflict) {
-		t.Fatal("status 409 should be a conflict")
+		t.Fatal("status 409 string should be a conflict (fallback path)")
+	}
+	// typed error (the real transport path, S0014 p3-1-fix1)
+	if !isConflict(&APIStatusError{Method: "getUpdates", Status: 409}) {
+		t.Fatal("typed APIStatusError{409} should be a conflict")
+	}
+	if isConflict(&APIStatusError{Method: "getUpdates", Status: 500}) {
+		t.Fatal("typed APIStatusError{500} is not a conflict")
 	}
 	if isConflict(other) || isConflict(nil) {
 		t.Fatal("only 409 is a conflict")

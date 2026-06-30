@@ -191,8 +191,13 @@ const (
 )
 
 // isConflict reports whether a getUpdates error is a Telegram 409 Conflict (a second
-// poller or a webhook owns the update stream).
+// poller or a webhook owns the update stream). Prefers the typed APIStatusError; falls back
+// to a substring so a wrapped/foreign error still degrades safely (S0014 p3-1-fix1).
 func isConflict(err error) bool {
+	var apiErr *APIStatusError
+	if errors.As(err, &apiErr) {
+		return apiErr.Status == 409
+	}
 	return err != nil && strings.Contains(err.Error(), "status 409")
 }
 

@@ -100,7 +100,19 @@ func (b *BotAPITransport) call(ctx context.Context, method string, q url.Values,
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("telegram %s: status %d", method, resp.StatusCode)
+		return &APIStatusError{Method: method, Status: resp.StatusCode}
 	}
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// APIStatusError is a non-200 response from the Telegram Bot API. It carries the status
+// code so callers can react to specific codes (e.g. 409 Conflict) via errors.As instead of
+// matching the message string (S0014 p3-1-fix1). Its Error() text is unchanged for logs.
+type APIStatusError struct {
+	Method string
+	Status int
+}
+
+func (e *APIStatusError) Error() string {
+	return fmt.Sprintf("telegram %s: status %d", e.Method, e.Status)
 }
