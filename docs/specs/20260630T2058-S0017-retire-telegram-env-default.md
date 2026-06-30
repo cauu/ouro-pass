@@ -112,7 +112,7 @@ per-channel stored username, with **no env fallback**.
 
 ## 3. Execution Plan
 
-- [ ] p1-1 Config: remove `TelegramBot` + `TelegramToken` fields + env reads; legacy
+- [x] p1-1 Config: remove `TelegramBot` + `TelegramToken` fields + env reads; legacy
       values logged-and-ignored. Update `config_test`.
 - [x] p1-2 Issuer wiring: delete the `env-default` instance, drop the supervisor
       `envInstance` param + `desired()` fallback, simplify `instanceToken`, make
@@ -169,10 +169,15 @@ Pass/fail: TC-1..TC-6 pass; admin (DB) Telegram path behavior unchanged.
   setters (main.go, cmd/devflow, e2e_test, oauthDeps). /bind kept permissive (activation is the
   single gate). Updated TestActivationCreate_UsesInstanceBot (no-id → 400) and e2e Flow D (seed
   instance + channel_id). go vet ./... clean; httpapi + e2e + issuer tests green.
+- 2026-06-30T21:20:00+08:00 p1-1: removed TelegramBot + TelegramToken fields and their env
+  reads from config; added a deprecation-warning loop for OUROPASS_TELEGRAM_BOT/_TOKEN (logged
+  and ignored). config tests green; go vet clean. (Executed after p1-2/p1-3 so the tree
+  stayed buildable, per the activation log header.)
 
 ## 6. Validation Evidence (append-only)
 - TC-2 | stack: go | command: go test ./internal/worker/telegram/ | result: pass | note: no DB instance → no worker (TestSupervisor_NoInstancesNoWorkers); adding one runs exactly it; no env fallback
 - TC-3 | stack: go | command: go test ./internal/httpapi/ -run TestActivationCreate_UsesInstanceBot | result: pass | note: channel_id → t.me/my_real_bot; missing channel_id → 400 (no env-default fallback)
 - TC-3 | stack: go | command: go test ./internal/e2e/ | result: pass | note: Flow D now seeds a telegram instance + passes channel_id; deep link uses t.me/ouro_e2e_bot, /start creates the subscription
+- TC-1 | stack: go | command: go test ./internal/config/ | result: pass | note: config has no TelegramBot/TelegramToken; legacy OUROPASS_TELEGRAM_BOT/_TOKEN logged-and-ignored
 
 ## 7. Change Requests (append-only)

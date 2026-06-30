@@ -39,9 +39,9 @@ type Config struct {
 	// setting, not deploy-time env (see [[installer-scope-boundary]]).
 	ChainAPIKey string
 
-	// Telegram
-	TelegramBot   string // bot username (for deep links)
-	TelegramToken string // bot API token (🔒, env only)
+	// Telegram bots are configured in the admin console (S0017): each instance stores
+	// its own token + public username. There is no telegram env (OUROPASS_TELEGRAM_BOT
+	// / OUROPASS_TELEGRAM_TOKEN are removed and ignored if still set).
 
 	// Admin
 	OwnerKeyHashes []string // on-chain pool owner stake key hashes (D9)
@@ -71,8 +71,6 @@ func Load() (*Config, error) {
 		FieldKeyHex:     env("OUROPASS_FIELD_KEY", ""),
 		ServerSaltHex:   env("OUROPASS_SERVER_SALT", ""),
 		ChainAPIKey:     env("OUROPASS_CHAIN_API_KEY", ""),
-		TelegramBot:     env("OUROPASS_TELEGRAM_BOT", ""),
-		TelegramToken:   env("OUROPASS_TELEGRAM_TOKEN", ""),
 		OwnerKeyHashes:  splitCSV(env("OUROPASS_OWNER_KEYS", "")),
 		TrustedProxy:    envBool("OUROPASS_TRUSTED_PROXY", false),
 		TLS:             envBool("OUROPASS_TLS", true),
@@ -91,6 +89,13 @@ func Load() (*Config, error) {
 	} {
 		if _, ok := os.LookupEnv(k); ok {
 			slog.Warn("chain-source env is deprecated and ignored (S0015): Koios is the single origin with built-in per-network endpoints", "var", k)
+		}
+	}
+	// Telegram env was removed (S0017): bots are configured in the admin console
+	// (token + username per instance), so these are ignored if still set.
+	for _, k := range []string{"OUROPASS_TELEGRAM_BOT", "OUROPASS_TELEGRAM_TOKEN"} {
+		if _, ok := os.LookupEnv(k); ok {
+			slog.Warn("telegram env is deprecated and ignored (S0017): configure Telegram bots in the admin console (/admin → Channels)", "var", k)
 		}
 	}
 	if _, ok := os.LookupEnv("OUROPASS_NETWORK"); ok {
