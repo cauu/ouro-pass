@@ -109,7 +109,7 @@ only, no server-side auto-selection of a "single" instance):
       400; no id → unchanged).
 - [x] p1-2 Admin web: per-Telegram-instance "Copy bind link"
       (`<origin>/bind?channel_id=<id>`) in `ChannelsPage`.
-- [ ] p1-3 Validation: `make test` + `pnpm test` (+ a focused activation test asserting the
+- [x] p1-3 Validation: `make test` + `pnpm test` (+ a focused activation test asserting the
       instance `bot_username` lands in the deep link when `channel_id` is passed).
 
 ## 4. Test and Acceptance Criteria
@@ -150,9 +150,18 @@ Pass/fail: TC-1..TC-6 pass; no change to eligibility/activation semantics.
 - 2026-06-30T19:50:00+08:00 p1-2: ChannelsPage adds a per-Telegram-instance "Copy bind link"
   action that copies `${window.location.origin}/bind?channel_id=<id>` to the clipboard (toast
   feedback). UI-only; covered by typecheck + lint + build (and pnpm test in p1-3).
+- 2026-06-30T19:52:00+08:00 p1-3: added TestActivationCreate_UsesInstanceBot (channel_id →
+  deep link uses instance bot `my_real_bot`; no id → `ouro_default_bot` fallback). Full
+  validation: go vet clean, make test green, pnpm test (web 10/10) green, typecheck clean.
+  All plan items p1-1..p1-3 complete & verified; spec left active pending user verification
+  (do not close).
 
 ## 6. Validation Evidence (append-only)
 - TC-1/TC-2/TC-3 | stack: go | command: go test ./internal/httpapi/ -run TestBind_ChannelID | result: pass | note: /bind?channel_id=<active tg> renders data-channel-id; no id → empty attr (env-default fallback); unknown/disabled → 400
 - TC-4 | stack: ui | command: npm run typecheck && npx eslint ChannelsPage.tsx | result: pass | note: per-telegram "Copy bind link" → <origin>/bind?channel_id=<id>; typecheck + lint clean
+- TC-1/TC-2 | stack: go | command: go test ./internal/httpapi/ -run TestActivationCreate_UsesInstanceBot | result: pass | note: channel_id → deep link t.me/my_real_bot; no id → t.me/ouro_default_bot (env-default fallback)
+- TC-5 | stack: go | command: go vet ./... && make test | result: pass | note: vet clean; full server suite green
+- TC-5 | stack: node | command: pnpm test (web) + npm run typecheck | result: pass | note: vitest 10/10; tsc clean
+- TC-6 | stack: manual | command: open /bind?channel_id=<configured tg> → /start <code> | result: pending | note: end-to-end (subscription appears in Member page) is the user's manual verification step
 
 ## 7. Change Requests (append-only)
