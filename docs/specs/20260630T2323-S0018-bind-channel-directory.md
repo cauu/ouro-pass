@@ -108,6 +108,11 @@ a directory entry page that links to the existing per-channel bind page).
       `bind.html`, `ouropass-auth.js`, `bind` handler.
 - [x] p1-3 Validation: `make test` + `pnpm test` + `shellcheck deploy/install.sh`
       (+ handler test for the endpoint and an asset check for the directory branch).
+- [x] p2-1 (bug fix, appended per user) Koios stake-history pool field: the live
+      `/account_stake_history` returns `pool_id_bech32` (no `pool_id`), so reading the
+      wrong key left `ActiveStakePoolID` empty → every active delegator mis-derived as
+      `pending` → no tier + no active cache. Fix the struct tag to `pool_id_bech32` and
+      correct the unit-test mock (which used the wrong field, hiding the bug).
 
 ## 4. Test and Acceptance Criteria
 
@@ -121,8 +126,13 @@ a directory entry page that links to the existing per-channel bind page).
   (`name` + `@bot_username`) and a back link to `/bind`; connect → sign → activation →
   deep link is unchanged (S0016).
 - TC-4 Regression: `make test` + `pnpm test` green; `shellcheck deploy/install.sh` clean.
+- TC-5 (p2-1) Koios active stake: a `/account_stake_history` payload using the live
+  `pool_id_bech32` field yields a non-empty `ActiveStakePoolID` → `DeriveState` returns
+  `active` for the matching pool, the per-pool `active_stake_lovelace` fact is emitted, and
+  `total_active_stake` drives the tier (a delegated, long-active credential resolves to its
+  tier instead of empty).
 
-Pass/fail: TC-1..TC-4 pass; no change to eligibility/activation/deep-link semantics.
+Pass/fail: TC-1..TC-5 pass; no change to eligibility/activation/deep-link semantics.
 
 ## 5. Execution Log (append-only)
 
@@ -151,6 +161,15 @@ Pass/fail: TC-1..TC-4 pass; no change to eligibility/activation/deep-link semant
   packages) green, pnpm test (web 10/10) + tsc clean, shellcheck install.sh+init.sh clean. All
   plan items p1-1..p1-3 complete & verified; spec left active pending user verification (do not
   close).
+- 2026-07-01T00:00:00+08:00 p2-1 (bug fix): diagnosed live via the dev DB + Koios. A long-active
+  mainnet delegator subscribed but got an empty tier and an empty StakeSnapshotCache. Root cause:
+  koios.go `koiosStakeHistory.PoolID` read `json:"pool_id"`, but the live Koios
+  /account_stake_history returns `pool_id_bech32` (verified by curl: rows carry pool_id_bech32 +
+  active_stake, no pool_id). So ActiveStakePoolID parsed as "" → DeriveState fell through to
+  `pending` → poolstake omits active_stake_lovelace → total_active_stake=0 → gold rule unmatched
+  → empty tier; pending is also never cached → empty cache. Fixed the struct tag to
+  `pool_id_bech32` and corrected the unit-test mock (it had used `pool_id`, masking the bug).
+  go vet ./... clean; make test green.
 
 ## 6. Validation Evidence (append-only)
 - TC-1 | stack: go | command: go test ./internal/httpapi/ -run TestPublicChannels | result: pass | note: /api/channels lists active telegram w/ username; disabled & username-less excluded; no bot_token_enc/token_hint in payload
@@ -158,5 +177,12 @@ Pass/fail: TC-1..TC-4 pass; no change to eligibility/activation/deep-link semant
 - TC-4 | stack: go | command: go vet ./... && make test | result: pass | note: vet clean; full server suite green
 - TC-4 | stack: node | command: pnpm test (web) + npm run typecheck | result: pass | note: vitest 10/10; tsc clean
 - TC-4 | stack: shell | command: shellcheck deploy/install.sh deploy/init.sh | result: pass | note: installer scripts clean
+- TC-5 | stack: go | command: go test ./internal/utils/chain/ -run TestKoios | result: pass | note: stake-history mock now uses pool_id_bech32; ActiveStakePoolID/EpochsDelegated parse correctly (active, not pending)
+- TC-5 | stack: go | command: go vet ./... && make test | result: pass | note: full server suite green after the koios field fix
+- TC-5 | stack: koios | command: curl /account_stake_history (live) for the affected stake addr | result: pass | note: live rows carry pool_id_bech32 + active_stake (no pool_id) — confirms the field name
 
 ## 7. Change Requests (append-only)
+- 2026-07-01T00:00:00+08:00 Scope addition by user direction: the Koios stake-history parsing bug
+  (chain module, outside this spec's bind-directory requirement) is fixed here as p2-1 rather than
+  in a new spec, at the user's explicit request ("修复bug，不需要新开spec，在当前spec后追加即可").
+  Recorded for traceability; the bind-directory requirement/design sections are unchanged.

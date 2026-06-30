@@ -34,8 +34,9 @@ func TestKoiosSource_ParsesAccountInfoAndTip(t *testing.T) {
 			_, _ = w.Write([]byte(`[{"stake_address":"stake1xyz","status":"registered","delegated_pool":"pool1abc","rewards_available":"123"}]`))
 		case "/account_stake_history":
 			// Active stake comes from history now, not total_balance: 3 consecutive
-			// epochs with pool1abc, latest = 479 = exact active stake (C4).
-			_, _ = w.Write([]byte(`[{"pool_id":"pool1abc","epoch_no":477,"active_stake":"44000000000000000"},{"pool_id":"pool1abc","epoch_no":478,"active_stake":"44500000000000000"},{"pool_id":"pool1abc","epoch_no":479,"active_stake":"45000000000000000"}]`))
+			// epochs with pool1abc, latest = 479 = exact active stake (C4). Koios keys
+			// the pool as `pool_id_bech32` (matches the live API — S0018 p2-1).
+			_, _ = w.Write([]byte(`[{"pool_id_bech32":"pool1abc","epoch_no":477,"active_stake":"44000000000000000"},{"pool_id_bech32":"pool1abc","epoch_no":478,"active_stake":"44500000000000000"},{"pool_id_bech32":"pool1abc","epoch_no":479,"active_stake":"45000000000000000"}]`))
 		default:
 			http.NotFound(w, r)
 		}

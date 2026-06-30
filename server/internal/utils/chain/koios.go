@@ -51,7 +51,10 @@ type koiosAccountInfo struct {
 // and carries the ~2-epoch leaving tail. Endpoint name per S0004 §2.4 (replaces
 // the deprecated /account_history) — confirm shape against live Koios (R1).
 type koiosStakeHistory struct {
-	PoolID      string `json:"pool_id"`
+	// Koios /account_stake_history returns the pool as `pool_id_bech32` (there is no
+	// `pool_id` field). Reading the wrong key left ActiveStakePoolID empty, so every
+	// active delegator was mis-derived as `pending` → no tier, no active cache (S0018 p2-1).
+	PoolID      string `json:"pool_id_bech32"`
 	Epoch       uint64 `json:"epoch_no"`
 	ActiveStake string `json:"active_stake"`
 }
