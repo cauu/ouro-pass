@@ -11,9 +11,9 @@ import (
 	"time"
 )
 
-// KoiosSource queries the Koios REST API (a third-party convenience source with
-// the same capability as db-sync). Blockfrost is structurally identical and can
-// reuse this shape.
+// KoiosSource queries the Koios REST API. It is the single chain origin (S0015):
+// the issuer builds one per network from its public default endpoint. Sovereignty
+// (self-hosted Koios) is a future admin-UI setting, not a deploy-time knob.
 type KoiosSource struct {
 	baseURL string
 	apiKey  string

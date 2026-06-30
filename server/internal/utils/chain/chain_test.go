@@ -2,7 +2,6 @@ package chain
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -102,58 +101,5 @@ func TestKoiosToSnapshot_Vectors(t *testing.T) {
 	s := koiosToSnapshot("h", 500, koiosAccountInfo{Status: "registered", DelegatedPool: "poolUS"}, switched)
 	if s.ActiveStakePoolID != "poolUS" || s.EpochsDelegated != 2 {
 		t.Fatalf("switched: %+v", s)
-	}
-}
-
-func TestNodeLSQ_ParseStakeAddressInfoAndTip(t *testing.T) {
-	snap, err := parseStakeAddressInfo("h1", 480, []byte(
-		`[{"address":"stake1xyz","stakeDelegation":"pool1abc","rewardAccountBalance":98765}]`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if snap.DelegatedPoolID != "pool1abc" || snap.RewardsLovelace != "98765" || snap.Source != "node_lsq" {
-		t.Fatalf("snapshot: %+v", snap)
-	}
-	// Empty array (undelegated) → no pool, no error.
-	snap, err = parseStakeAddressInfo("h1", 480, []byte(`[]`))
-	if err != nil || snap.DelegatedPoolID != "" {
-		t.Fatalf("empty: %v %+v", err, snap)
-	}
-	ep, err := parseTip([]byte(`{"epoch":482,"slot":1}`))
-	if err != nil || ep != 482 {
-		t.Fatalf("tip: %v %d", err, ep)
-	}
-}
-
-func TestNodeLSQ_InjectableRunner(t *testing.T) {
-	n := NewNodeLSQSource("cardano-cli", "/tmp/socket", "preview")
-	n.run = func(ctx context.Context, args ...string) ([]byte, error) {
-		if args[1] == "tip" {
-			return []byte(`{"epoch":490}`), nil
-		}
-		return []byte(`[{"stakeDelegation":"pool1z","rewardAccountBalance":5}]`), nil
-	}
-	s, err := n.Snapshot(context.Background(), "00112233445566778899aabbccddeeff00112233445566778899aabb")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if s.Epoch != 490 || s.DelegatedPoolID != "pool1z" || s.AccountStatus != "registered" {
-		t.Fatalf("snapshot via injected runner: %+v", s)
-	}
-}
-
-func TestNewSource_Factory(t *testing.T) {
-	for _, kind := range []string{"mock", "koios", "node_lsq"} {
-		s, err := NewSource(Config{Kind: kind})
-		if err != nil || s == nil {
-			t.Fatalf("kind %s: %v", kind, err)
-		}
-	}
-	if _, err := NewSource(Config{Kind: "bogus"}); err == nil {
-		t.Error("unknown kind should error")
-	}
-	// db_sync fails fast at construction in the default build (p12-10).
-	if _, err := NewSource(Config{Kind: "db_sync"}); !errors.Is(err, ErrNotImplemented) {
-		t.Errorf("db_sync should fail fast with ErrNotImplemented, got %v", err)
 	}
 }

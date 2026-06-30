@@ -100,7 +100,7 @@ deploy-time env). Direct `node_lsq`/`db_sync`/`blockfrost` adapters are **delete
 - [x] p1-2 `srcFor`/origin always Koios: build `KoiosSource(DefaultKoiosBaseURL(network), …)`
       directly; remove `chain.NewSource` kind switch. Add a `buildServices` source-injection
       seam; migrate `main_test`/`e2e` and other tests to inject `MockSource`.
-- [ ] p1-3 Delete `node_lsq` + `db_sync` (+ blockfrost dispatch) adapters and their wiring;
+- [x] p1-3 Delete `node_lsq` + `db_sync` (+ blockfrost dispatch) adapters and their wiring;
       keep `KoiosSource`/`MockSource`/`DefaultKoiosBaseURL`/`CanonicalPoolID`.
 - [ ] p1-4 `make dev`: drop the mock injection → public koios; update the dev docs/comment.
 - [ ] p1-5 Installer/docs cleanup: remove the `CHAIN_KIND` prompt + chain-source/koios knobs
@@ -144,11 +144,17 @@ Pass/fail: TC-1..TC-5 pass; eligibility behavior unchanged (no membership semant
   NODE_SOCKET/CARDANO_CLI) now emit a one-line deprecation warning and are otherwise ignored
   (no more mock default footgun). OUROPASS_NETWORK deprecation note (S0014) retained. config_test
   ChainKind assertion replaced with a ChainAPIKey-default check + a LegacyChainEnvIgnored test.
-
-## 6. Validation Evidence (append-only)
+- 2026-06-30T15:26:00+08:00 p1-3: deleted node_lsq.go + db_sync.go; removed chain.Config and
+  chain.NewSource (the kind switch). Kept KoiosSource, MockSource, DefaultKoiosBaseURL,
+  CanonicalPoolID, stakeAddressFromCredential (shared with koios). ErrNotImplemented RETAINED —
+  it is still used by membership.CachedSource.Delegators for sources lacking DelegatorLister
+  (reworded accordingly, not a build-status marker). Removed the node_lsq/NewSource tests from
+  chain_test.go. Updated stale doc comments (package chain, KoiosSource, StakeSnapshotCache.Source).
 - TC-3 | stack: go | command: go test ./cmd/issuer/ | result: pass | note: buildServices wires injected MockSource (mock+cache); full+degraded paths green via seam
 - TC-2 | stack: go | command: go build ./... | result: pass | note: srcFor builds Koios per-network directly; no kind selection
 - TC-1 | stack: go | command: go test ./internal/config/ | result: pass | note: config has no ChainKind/KoiosBaseURL*; ChainAPIKey kept (defaults empty)
 - TC-4 | stack: go | command: go test ./internal/config/ -run LegacyChainEnvIgnored | result: pass | note: stale OUROPASS_CHAIN_KIND/KOIOS_BASE_URL[_NET] ignored, Load succeeds (deprecation log emitted)
+- TC-4 | stack: go | command: grep -rn 'node_lsq|db_sync|NewSource' --include='*.go' server | result: pass | note: only doc strings remained; node_lsq.go/db_sync.go deleted, chain.NewSource/Config gone
+- TC-5 | stack: go | command: go test ./... | result: pass | note: full server suite green after adapter deletion (no eligibility/membership drift)
 
 ## 7. Change Requests (append-only)

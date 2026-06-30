@@ -1,20 +1,20 @@
 // Package chain is the Staking Index Adapter: a pluggable, read-only view of
-// on-chain stake used by the rule engine (detailed §3.3). Implementations
-// (node_lsq, db_sync, koios/blockfrost) are interchangeable behind Source; the
-// service prefers self-hosted sources and never touches private keys. Real
-// node/db-sync/HTTP integration is exercised under the `integration` build tag
-// (decision D5); the parsing and selection logic here is unit-tested directly.
+// on-chain stake used by the rule engine (detailed §3.3). Koios is the single
+// chain origin (S0015): KoiosSource fetches per-network from the public Koios API
+// and never touches private keys. MockSource is an in-memory test double injected
+// directly (never selected via env). Real HTTP integration is exercised under the
+// `integration` build tag (decision D5); the parsing logic here is unit-tested.
 package chain
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 )
 
-// ErrNotImplemented marks a source whose real backend is not wired in this build.
-var ErrNotImplemented = errors.New("chain: source not implemented")
+// ErrNotImplemented marks an optional capability a source does not provide
+// (e.g. delegator enumeration via DelegatorLister).
+var ErrNotImplemented = errors.New("chain: capability not implemented")
 
 // Snapshot is the raw on-chain stake view for one credential (raw facts, not an
 // eligibility/membership conclusion — that is derived against the pool by
@@ -45,7 +45,7 @@ type Source interface {
 	Snapshot(ctx context.Context, stakeCredentialHash string) (*Snapshot, error)
 	// Epoch returns the current Cardano epoch.
 	Epoch(ctx context.Context) (uint64, error)
-	// Name identifies the source (node_lsq | db_sync | koios | blockfrost | mock).
+	// Name identifies the source (koios | mock).
 	Name() string
 }
 
@@ -98,31 +98,5 @@ func (m *MockSource) Delegators(_ context.Context, poolID string, page int) ([]s
 	return m.DelegatorsByPool[poolID], nil
 }
 
-// Config selects and configures a Source.
-type Config struct {
-	Kind         string // node_lsq | db_sync | koios | blockfrost | mock
-	KoiosBaseURL string
-	APIKey       string
-	NodeSocket   string
-	CardanoCLI   string
-	Network      string
-}
-
-// NewSource builds a Source from config. Unknown/unimplemented backends return
-// a typed error so the caller can fail fast at startup.
-func NewSource(cfg Config) (Source, error) {
-	switch cfg.Kind {
-	case "mock":
-		return NewMockSource(0), nil
-	case "koios":
-		return NewKoiosSource(cfg.KoiosBaseURL, cfg.APIKey, cfg.Network), nil
-	case "node_lsq":
-		return NewNodeLSQSource(cfg.CardanoCLI, cfg.NodeSocket, cfg.Network), nil
-	case "db_sync":
-		// Selectable but not wired in the default build: fail fast at startup
-		// rather than passing health checks then erroring on every query (p12-10).
-		return nil, fmt.Errorf("chain: db_sync requires the integration build: %w", ErrNotImplemented)
-	default:
-		return nil, errors.New("chain: unknown source kind " + cfg.Kind)
-	}
-}
+// Source construction is direct (S0015): the issuer builds NewKoiosSource per
+// network; tests inject NewMockSource. There is no kind-dispatch factory.

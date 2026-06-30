@@ -16,6 +16,6 @@ type StakeSnapshotCache struct {
 	ActiveStakeLovelace *string // numeric(20) carried as decimal string (C4)
 	RewardsLovelace     *string
 	EpochsActive        int64  // trailing consecutive active epochs at SnapshotEpoch
-	Source              string // node_lsq | db_sync | koios | blockfrost
+	Source              string // koios (single origin) | mock (tests)
 	FetchedAt           time.Time
 }
