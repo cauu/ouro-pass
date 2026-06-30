@@ -8,6 +8,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"strings"
 	"time"
@@ -34,10 +35,13 @@ type Config struct {
 
 	// Staking Index Adapter
 	ChainKind    string // mock | node_lsq | db_sync | koios | blockfrost
-	KoiosBaseURL string
-	ChainAPIKey  string
-	NodeSocket   string
-	CardanoCLI   string
+	KoiosBaseURL string // DEPRECATED (S0014): use per-network overrides; ignored if set, warned at load
+	// KoiosBaseURLByNetwork holds optional per-network koios endpoint overrides
+	// (OUROPASS_KOIOS_BASE_URL_MAINNET|_PREPROD|_PREVIEW); empty → public default per network.
+	KoiosBaseURLByNetwork map[string]string
+	ChainAPIKey           string
+	NodeSocket            string
+	CardanoCLI            string
 
 	// Telegram
 	TelegramBot   string // bot username (for deep links)
@@ -85,6 +89,18 @@ func Load() (*Config, error) {
 	}
 	c.Issuer = env("OUROPASS_ISSUER", "")
 	c.Scope = c.Issuer // one first-party namespace per deployment, keyed by issuer identity
+
+	// Per-network koios endpoint overrides (S0014 p1-1). koios endpoints are per-network;
+	// a single global URL is wrong for multi-network and caused false "not eligible".
+	c.KoiosBaseURLByNetwork = map[string]string{}
+	for _, n := range []string{"mainnet", "preprod", "preview"} {
+		if v := env("OUROPASS_KOIOS_BASE_URL_"+strings.ToUpper(n), ""); v != "" {
+			c.KoiosBaseURLByNetwork[n] = v
+		}
+	}
+	if c.KoiosBaseURL != "" {
+		slog.Warn("OUROPASS_KOIOS_BASE_URL is deprecated and ignored: koios endpoints are now resolved per network (built-in defaults; override via OUROPASS_KOIOS_BASE_URL_MAINNET|_PREPROD|_PREVIEW)")
+	}
 
 	if d := env("OUROPASS_SHUTDOWN_TIMEOUT", ""); d != "" {
 		v, err := time.ParseDuration(d)

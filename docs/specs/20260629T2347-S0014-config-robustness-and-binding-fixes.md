@@ -151,7 +151,7 @@ config time too, so admin stores a canonical value. Exact-match semantics preser
 
 ## 3. Execution Plan
 
-- [ ] p1-1 Per-network koios endpoint: `srcFor(network)`/`chain.NewSource` resolve the
+- [x] p1-1 Per-network koios endpoint: `srcFor(network)`/`chain.NewSource` resolve the
       endpoint per network (public defaults + `OUROPASS_KOIOS_BASE_URL_<NET>` overrides);
       deprecation-warn on the legacy single var. node_lsq/db_sync/mock untouched. Unit tests.
 - [ ] p1-2 Remove global `OUROPASS_NETWORK` everywhere per the residual-cleanup table
@@ -253,6 +253,8 @@ mainnet bind) mandatory; TC-8 must keep `StateNone` for non-delegators (no loose
   shared failures counter, re-run DOMAIN not re-sanitized, non-pool bech32 only lower-cased.
 
 ## 6. Validation Evidence (append-only)
+
+- TC-1 (p1-1) | stack: go | command: go test ./internal/utils/chain/ ./internal/config/ | result: pass | note: DefaultKoiosBaseURL maps mainnet/preprod/preview→their hosts (empty/unknown→mainnet); config reads OUROPASS_KOIOS_BASE_URL_<NET> into KoiosBaseURLByNetwork; legacy single OUROPASS_KOIOS_BASE_URL logs a deprecation warning; srcFor(network) now resolves per-network URL (override→default). go build clean.
 
 - TC-5 | stack: node/go | command: go test ./internal/utils/chain/ -run TrimsBaseURL | result: pass | note: trailing slash(es) + whitespace trimmed (`…/api/v1/`→`…/api/v1`); empty→mainnet default. go build ./... clean.
 - TC-6 | stack: other | command: shellcheck + sanitize harness | result: pass | note: `https://host/`→`host`, `http://host`→`host`, `host/admin/`→`host`, `host:8443` preserved. shellcheck clean.

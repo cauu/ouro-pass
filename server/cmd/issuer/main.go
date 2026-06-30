@@ -289,8 +289,14 @@ func buildServices(cfg *config.Config, st *store.Store) (httpapi.Deps, chain.Sou
 		if s, ok := srcCache[network]; ok {
 			return s, nil
 		}
+		// Resolve the koios endpoint for THIS network (S0014 p1-1): per-network override,
+		// else the public default. A single global URL would query the wrong network.
+		koiosURL := cfg.KoiosBaseURLByNetwork[network]
+		if koiosURL == "" {
+			koiosURL = chain.DefaultKoiosBaseURL(network)
+		}
 		raw, err := chain.NewSource(chain.Config{
-			Kind: cfg.ChainKind, KoiosBaseURL: cfg.KoiosBaseURL, APIKey: cfg.ChainAPIKey,
+			Kind: cfg.ChainKind, KoiosBaseURL: koiosURL, APIKey: cfg.ChainAPIKey,
 			NodeSocket: cfg.NodeSocket, CardanoCLI: cfg.CardanoCLI, Network: network,
 		})
 		if err != nil {
