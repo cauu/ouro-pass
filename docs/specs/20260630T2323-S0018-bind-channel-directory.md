@@ -1,9 +1,9 @@
 # Bind page: public channel directory + in-page channel selection
 
 Spec-ID: S0018
-Status: draft
+Status: active
 Created Time: 2026-06-30T23:10:16+08:00
-Start Time:
+Start Time: 2026-06-30T23:23:05+08:00
 Completion Time:
 Previous Spec-ID: S0017
 Closure Reason:
@@ -132,6 +132,8 @@ Pass/fail: TC-1..TC-4 pass; no change to eligibility/activation/deep-link semant
   telegram instances (no listed/unlisted flag — future), auto-advance on a single
   channel, telegram-only rendering. Blocked on promotion until S0017 is closed (one
   active spec at a time).
+- 2026-06-30T23:23:05+08:00 S0017 closed (delivered); promoted S0018 to active (Start Time set;
+  file moved to docs/specs/). Beginning execution of p1-1.
 
 ## 6. Validation Evidence (append-only)
 
