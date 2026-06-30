@@ -129,7 +129,7 @@ per-channel stored username, with **no env fallback**.
       `docs/deployment.md` (incl. the stale `OURO_TELEGRAM_*` line); document admin-only
       Telegram config + the breaking migration note. (Also refreshed
       `docs/multi-channel-instances.md`, which still described the env fallback.)
-- [ ] p1-5 Validation: `make test` + `pnpm test` + `shellcheck deploy/install.sh`.
+- [x] p1-5 Validation: `make test` + `pnpm test` + `shellcheck deploy/install.sh`.
 
 ## 4. Test and Acceptance Criteria
 
@@ -179,6 +179,10 @@ Pass/fail: TC-1..TC-6 pass; admin (DB) Telegram path behavior unchanged.
   OURO_TELEGRAM_* non-interactive line; added an admin-only + BREAKING migration note.
   docs/multi-channel-instances.md: replaced the "env fallback (D6/C1)" descriptions with the
   S0017 admin-only model. Repo sweep: no stale telegram-env refs remain outside specs.
+- 2026-06-30T21:28:00+08:00 p1-5: full validation — go vet ./... clean, make test (all server
+  packages) green, pnpm test (web 10/10) + tsc clean, shellcheck install.sh+init.sh clean. All
+  plan items p1-1..p1-5 complete & verified; spec left active pending user verification (do not
+  close).
 
 ## 6. Validation Evidence (append-only)
 - TC-2 | stack: go | command: go test ./internal/worker/telegram/ | result: pass | note: no DB instance → no worker (TestSupervisor_NoInstancesNoWorkers); adding one runs exactly it; no env fallback
@@ -186,5 +190,9 @@ Pass/fail: TC-1..TC-6 pass; admin (DB) Telegram path behavior unchanged.
 - TC-3 | stack: go | command: go test ./internal/e2e/ | result: pass | note: Flow D now seeds a telegram instance + passes channel_id; deep link uses t.me/ouro_e2e_bot, /start creates the subscription
 - TC-1 | stack: go | command: go test ./internal/config/ | result: pass | note: config has no TelegramBot/TelegramToken; legacy OUROPASS_TELEGRAM_BOT/_TOKEN logged-and-ignored
 - TC-5 | stack: docs | command: grep OUROPASS_TELEGRAM/OURO_TELEGRAM/env-default in docs/.env/web | result: pass | note: only intentional "removed and ignored" + migration notes remain; .env.example/deployment.md/multi-channel-instances.md admin-only
+- TC-4 | stack: go | command: make test (push + telegram worker packages) | result: pass | note: unscoped push resolves the DB default telegram instance token (no env token); worker suite green
+- TC-6 | stack: go | command: go vet ./... && make test | result: pass | note: vet clean; full server suite green
+- TC-6 | stack: node | command: pnpm test (web) + npm run typecheck | result: pass | note: vitest 10/10; tsc clean
+- TC-6 | stack: shell | command: shellcheck deploy/install.sh deploy/init.sh | result: pass | note: installer scripts clean
 
 ## 7. Change Requests (append-only)
