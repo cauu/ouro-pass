@@ -12,7 +12,6 @@ export OUROPASS_TEST_PG_DSN
 # persistent .dev/ouro.db keeps working across runs. Never use them in production.
 DEV_ADDR         ?= :8080
 DEV_ISSUER       ?= http://localhost:8080   # token iss / issuer identity (S0006; OUROPASS_POOL_ID removed — configure pools as attestors in the admin UI)
-DEV_NETWORK      ?= preview       # default network for NEW attestors created via the admin UI
 DEV_FIELD_KEY    ?= 0000000000000000000000000000000000000000000000000000000000000001
 DEV_SERVER_SALT  ?= 00000000000000000000000000000007
 DEV_TELEGRAM_BOT ?= ouro_dev_bot
@@ -66,13 +65,12 @@ test-all: test test-integration
 ## dev: run the issuer locally for manual/browser-wallet testing (OAuth on, mock chain).
 ## Open http://localhost:8080/bind in a browser with a Cardano wallet — a real
 ## wallet signature returns not_eligible (403), which proves the S0003 signature
-## path. Override e.g.: make dev DEV_NETWORK=preprod DEV_ADDR=:9000
+## path. Override e.g.: make dev DEV_ADDR=:9000
 dev:
 	@mkdir -p .dev
 	$(GO) build -o .dev/issuer ./cmd/issuer
 	@OUROPASS_ADDR=$(DEV_ADDR) \
 	OUROPASS_ISSUER=$(DEV_ISSUER) \
-	OUROPASS_NETWORK=$(DEV_NETWORK) \
 	OUROPASS_CHAIN_KIND=mock \
 	OUROPASS_FIELD_KEY=$(DEV_FIELD_KEY) \
 	OUROPASS_SERVER_SALT=$(DEV_SERVER_SALT) \

@@ -97,7 +97,7 @@ Then:
 # 2) edit .env — set at minimum:
 #      DOMAIN=pass.example.com
 #      OUROPASS_OWNER_KEYS=<your owner stake-key hash>     (see below)
-#    review OUROPASS_TAG (pin a version), OUROPASS_NETWORK / CHAIN_KIND / KOIOS_BASE_URL
+#    review OUROPASS_TAG (pin a version) and OUROPASS_CHAIN_KIND (network is per-attestor, set in /admin)
 $EDITOR .env
 
 # 3) pull + start everything
@@ -135,10 +135,13 @@ All knobs live in `.env` (see `.env.example` for the annotated list). Highlights
 | `ACME_EMAIL` | Optional Let's Encrypt contact for expiry notices. |
 | `OUROPASS_FIELD_KEY` | **Secret.** AES-256 master key for 🔒 fields (`openssl rand -hex 32`). |
 | `OUROPASS_SERVER_SALT` | **Secret.** HMAC salt for the pseudonymous `sub` (`openssl rand -hex 16`). |
-| `OUROPASS_NETWORK` | Default network for new attestors: `mainnet`/`preprod`/`preview`. |
 | `OUROPASS_CHAIN_KIND` | Chain data source: `koios` (default) / `blockfrost` / `node_lsq` / `db_sync` / `mock`. |
-| `OUROPASS_KOIOS_BASE_URL` | Koios endpoint for your network. |
+| `OUROPASS_KOIOS_BASE_URL_<NET>` | Optional self-hosted koios endpoint per network (`_MAINNET`/`_PREPROD`/`_PREVIEW`); public defaults otherwise. |
 | `OUROPASS_CHAIN_API_KEY` | Optional API key (koios tier / blockfrost project id). |
+
+> **Network is per-attestor (S0014):** it is chosen in the admin UI per pool (defaults to
+> `mainnet`), not set globally. `OUROPASS_NETWORK` and the single `OUROPASS_KOIOS_BASE_URL`
+> are deprecated and ignored; koios endpoints resolve per network with built-in defaults.
 | `OUROPASS_OWNER_KEYS` | Owner stake-key hashes for `/admin`. |
 | `OUROPASS_TELEGRAM_BOT` / `_TOKEN` | Optional Telegram delivery. |
 | `POSTGRES_USER` / `_PASSWORD` / `_DB` | Bundled Postgres credentials. |
@@ -156,8 +159,8 @@ All knobs live in `.env` (see `.env.example` for the annotated list). Highlights
 `OUROPASS_CHAIN_KIND` chooses how the issuer reads on-chain stake facts — a
 trade-off between convenience and sovereignty:
 
-- **`koios` (default)** — a federated, open API. Point `OUROPASS_KOIOS_BASE_URL`
-  at a public instance or your own self-hosted Koios. No SaaS lock-in.
+- **`koios` (default)** — a federated, open API. Public per-network endpoints are built in;
+  point `OUROPASS_KOIOS_BASE_URL_<NET>` at your own self-hosted Koios to override. No SaaS lock-in.
 - **`blockfrost`** — a hosted SaaS. Easiest to start, but centralized and needs a
   project id in `OUROPASS_CHAIN_API_KEY`.
 - **`node_lsq` / `db_sync` (sovereign)** — read from your **own** `cardano-node`
@@ -298,9 +301,9 @@ mock chain), then open `http://localhost:8080`.
 - **issuer keeps restarting / unhealthy** — `docker compose logs issuer`. Common
   causes: empty `OUROPASS_FIELD_KEY`/`OUROPASS_SERVER_SALT`, or Postgres not ready
   (it should gate via healthcheck).
-- **No members / chain errors** — verify `OUROPASS_CHAIN_KIND`,
-  `OUROPASS_KOIOS_BASE_URL` matches `OUROPASS_NETWORK`, and the koios instance is
-  reachable.
+- **No members / chain errors** — verify `OUROPASS_CHAIN_KIND`, that each attestor's
+  **network** (set in `/admin`) matches the wallet/pool you expect, and that the koios
+  instance for that network is reachable (public default, or your `_<NET>` override).
 - **"Unfinished install detected" / a previous run was interrupted** — the installer
   writes `.env` before the questions, so quitting mid-setup leaves a placeholder `.env`.
   On the next run it detects this (no `.ouro-configured` marker yet) and offers to
