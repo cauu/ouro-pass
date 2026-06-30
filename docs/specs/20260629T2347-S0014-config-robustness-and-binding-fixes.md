@@ -178,6 +178,14 @@ config time too, so admin stores a canonical value. Exact-match semantics preser
       diagnostic (configured vs on-chain pool). Unit tests for bech32/hex.
 - [ ] p5-1 Full validation: `make test` + `pnpm test` + `shellcheck deploy/install.sh` +
       on-server end-to-end mainnet bind.
+- [x] p4-1-fix1 (review P1) Guard `DeriveState` against a poolID that canonicalizes to ""
+      (e.g. whitespace), which would false-match empty on-chain pool fields → loosening
+      regression introduced by p4-1. Add `if want == "" { return StateNone }` + a regression
+      test; also reject whitespace `pool_id` in `validateAttestorInput`.
+- [ ] p3-1-fix1 (review P2) Replace substring 409 detection with a typed transport error
+      carrying the HTTP status; `isConflict` uses `errors.As`/status==409 (keep string fallback).
+- [ ] p2-2-fix1 (review P2) DOMAIN sanitize: also strip surrounding whitespace and an
+      uppercase/any-case scheme (not just lowercase `http(s)://`).
 
 ## 4. Test and Acceptance Criteria
 
@@ -233,11 +241,23 @@ mainnet bind) mandatory; TC-8 must keep `StateNone` for non-delegators (no loose
 - 2026-06-30T00:10:00+08:00 p4-1 completed: added `chain.CanonicalPoolID` (hex 28-byte → bech32 `pool1…` via the existing BIP-173-vector-tested encoder; bech32 lower-cased/kept) and applied it at the `DeriveState` entry to both the configured poolID and the snapshot pools. Hex-configured pools now match koios's bech32. Tests: poolid_test.go + state_poolid_test.go; existing TestDeriveState (placeholder ids) still green. Note: config-time normalization is unnecessary for correctness once comparison is format-agnostic; the per-attestor not-eligible diagnostic log is deferred (can add a slog.Debug in the attestor Attest path if needed).
 - 2026-06-30T00:05:00+08:00 p3-1 completed: telegram worker detects getUpdates 409 (isConflict), backs off 30s (vs 1s transient), and throttles the log (conflict: once + ~5min heartbeat; transient: ~1/30s) with a clear "another poller/webhook owns this token" message. Added backoff_test.go. Deferred (optional in spec): deleteWebhook-on-start — the common cause is a dual poller, not a webhook; can add later if needed.
 
+## 7-pre. Change Requests (review) (append-only)
+
+- 2026-06-30T00:30:00+08:00 Multi-agent review (Claude + Cursor; Codex skipped — usage
+  limit) of the committed p2-1/p2-2/p3-1/p4-1 changes. Artifacts under
+  `code_review/S0014-config-robustness-and-binding-fixes/`. Confirmed findings folded back as
+  fix items: P1 whitespace-poolID loosening (Cursor; re-verified by running DeriveState →
+  "active") → p4-1-fix1; P2 409 substring fragility (both) → p3-1-fix1; P2 DOMAIN
+  uppercase/whitespace (both) → p2-2-fix1. Accepted-as-is P3s (noted, not fixed this round):
+  no real pool1 test vector, TC-7 throttle not asserted, triple CanonicalPoolID per call,
+  shared failures counter, re-run DOMAIN not re-sanitized, non-pool bech32 only lower-cased.
+
 ## 6. Validation Evidence (append-only)
 
 - TC-5 | stack: node/go | command: go test ./internal/utils/chain/ -run TrimsBaseURL | result: pass | note: trailing slash(es) + whitespace trimmed (`…/api/v1/`→`…/api/v1`); empty→mainnet default. go build ./... clean.
 - TC-6 | stack: other | command: shellcheck + sanitize harness | result: pass | note: `https://host/`→`host`, `http://host`→`host`, `host/admin/`→`host`, `host:8443` preserved. shellcheck clean.
 - TC-7 | stack: go | command: go test ./internal/worker/telegram/ -run 'Conflict|Backoff' | result: pass | note: isConflict detects 409; conflict→30s backoff, transient→1s; Run on a persistent 409 doesn't busy-loop (≤5 polls) and returns promptly on ctx cancel; clear conflict message logged once (failures==1, then throttled).
 - TC-8 | stack: go | command: go test ./internal/utils/chain/ ./internal/core/membership/ | result: pass | note: CanonicalPoolID hex↔bech32 equal + shape (pool1…, len 56, BIP-173 encoder); DeriveState eligible for hex-vs-bech32 (active+pending), StateNone for a different pool (no loosening); existing DeriveState test still green.
+- p4-1-fix1 | stack: go | command: go test ./internal/core/membership/ ./internal/httpapi/ | result: pass | note: DeriveState now returns StateNone when poolID canonicalizes to "" (whitespace/empty) even with empty on-chain pools (regression test TestDeriveState_BlankPoolIDNeverMatches); validateAttestorInput rejects whitespace pool_id. Closes review P1 (loosening) — re-verified the pre-fix path returned "active".
 
 ## 7. Change Requests (append-only)

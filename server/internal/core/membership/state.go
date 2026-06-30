@@ -43,6 +43,11 @@ func DeriveState(snap *chain.Snapshot, poolID string) State {
 	// Normalize all pool ids to canonical bech32 so a hex-configured pool compares equal
 	// to the bech32 form Koios returns (S0014 p4-1); without this a hex pool never matched.
 	want := chain.CanonicalPoolID(poolID)
+	// A poolID that canonicalizes to "" (e.g. whitespace) must never match empty on-chain
+	// pool fields, which would falsely grant membership — guard it (S0014 p4-1-fix1).
+	if want == "" {
+		return StateNone
+	}
 	// `active`: the effective active-stake snapshot credits our pool. This is the
 	// authoritative membership signal and naturally carries the leaving tail.
 	if chain.CanonicalPoolID(snap.ActiveStakePoolID) == want {

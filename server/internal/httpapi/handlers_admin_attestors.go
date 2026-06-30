@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -189,7 +190,7 @@ func validateAttestorInput(kind string, params json.RawMessage) error {
 		if err := json.Unmarshal(params, &p); err != nil {
 			return fmt.Errorf("invalid params: %w", err)
 		}
-		if p.PoolID == "" {
+		if strings.TrimSpace(p.PoolID) == "" {
 			return errors.New("pool_id is required")
 		}
 		switch p.Network {

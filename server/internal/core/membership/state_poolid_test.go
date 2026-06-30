@@ -28,3 +28,13 @@ func TestDeriveState_PoolIDFormatAgnostic(t *testing.T) {
 		t.Errorf("non-delegator = %q, want none", got)
 	}
 }
+
+// TestDeriveState_BlankPoolIDNeverMatches covers S0014 p4-1-fix1 (review P1): a poolID that
+// canonicalizes to "" (whitespace) must not false-match empty on-chain pool fields.
+func TestDeriveState_BlankPoolIDNeverMatches(t *testing.T) {
+	for _, pid := range []string{"   ", "\t", ""} {
+		if got := DeriveState(&chain.Snapshot{AccountStatus: "registered", ActiveStakePoolID: "", DelegatedPoolID: ""}, pid); got != StateNone {
+			t.Errorf("DeriveState(empty pools, %q) = %q, want none (no loosening)", pid, got)
+		}
+	}
+}
