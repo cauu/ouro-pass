@@ -184,7 +184,7 @@ config time too, so admin stores a canonical value. Exact-match semantics preser
       test; also reject whitespace `pool_id` in `validateAttestorInput`.
 - [x] p3-1-fix1 (review P2) Replace substring 409 detection with a typed transport error
       carrying the HTTP status; `isConflict` uses `errors.As`/status==409 (keep string fallback).
-- [ ] p2-2-fix1 (review P2) DOMAIN sanitize: also strip surrounding whitespace and an
+- [x] p2-2-fix1 (review P2) DOMAIN sanitize: also strip surrounding whitespace and an
       uppercase/any-case scheme (not just lowercase `http(s)://`).
 
 ## 4. Test and Acceptance Criteria
@@ -260,5 +260,6 @@ mainnet bind) mandatory; TC-8 must keep `StateNone` for non-delegators (no loose
 - TC-8 | stack: go | command: go test ./internal/utils/chain/ ./internal/core/membership/ | result: pass | note: CanonicalPoolID hex↔bech32 equal + shape (pool1…, len 56, BIP-173 encoder); DeriveState eligible for hex-vs-bech32 (active+pending), StateNone for a different pool (no loosening); existing DeriveState test still green.
 - p4-1-fix1 | stack: go | command: go test ./internal/core/membership/ ./internal/httpapi/ | result: pass | note: DeriveState now returns StateNone when poolID canonicalizes to "" (whitespace/empty) even with empty on-chain pools (regression test TestDeriveState_BlankPoolIDNeverMatches); validateAttestorInput rejects whitespace pool_id. Closes review P1 (loosening) — re-verified the pre-fix path returned "active".
 - p3-1-fix1 | stack: go | command: go test ./internal/worker/telegram/ | result: pass | note: transport returns typed APIStatusError{Method,Status} (same Error() text); isConflict uses errors.As (Status==409) with the substring as fallback; tests cover typed 409/500 + string fallback. Closes review P2 (409 fragility).
+- p2-2-fix1 | stack: other | command: shellcheck + sanitize harness | result: pass | note: sed-based DOMAIN sanitize now trims surrounding whitespace and strips any-case scheme (HTTP://, HTTPS://) + path; port preserved. Closes review P2 (uppercase/whitespace). shellcheck clean.
 
 ## 7. Change Requests (append-only)
