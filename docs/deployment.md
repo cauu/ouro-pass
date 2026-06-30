@@ -51,8 +51,8 @@ curl -fsSL https://raw.githubusercontent.com/cauu/ouro-pass/main/deploy/install.
 - **Inspect first:** `curl -fsSLO .../deploy/install.sh && less install.sh && sh install.sh`
 - **Pin a release:** `... /v0.2.0/deploy/install.sh | OURO_REF=v0.2.0 sh`
 - **Non-interactive (CI):** pipe with `--non-interactive` and `OURO_*` env vars
-  (`OURO_DOMAIN`, `OURO_OWNER_ADDR` or `OURO_OWNER_KEYS`, `OURO_TELEGRAM_*`,
-  `OUROPASS_TAG`, `OURO_START`). Run `install.sh --help` for the full list.
+  (`OURO_DOMAIN`, `OURO_OWNER_ADDR` or `OURO_OWNER_KEYS`, `OUROPASS_TAG`,
+  `OURO_START`). Run `install.sh --help` for the full list.
 
 The installer never overwrites existing secrets and is safe to re-run.
 
@@ -144,8 +144,13 @@ All knobs live in `.env` (see `.env.example` for the annotated list). Highlights
 > **Network is per-attestor (S0014):** it is chosen in the admin UI per pool (defaults to
 > `mainnet`), not set globally. `OUROPASS_NETWORK` is deprecated and ignored.
 | `OUROPASS_OWNER_KEYS` | Owner stake-key hashes for `/admin`. |
-| `OUROPASS_TELEGRAM_BOT` / `_TOKEN` | Optional Telegram delivery. |
 | `POSTGRES_USER` / `_PASSWORD` / `_DB` | Bundled Postgres credentials. |
+
+> **Telegram is configured in admin (S0017):** add bots in `/admin → Channels` (each
+> instance stores its own token + username and supplies its activation deep link).
+> There is no Telegram env — `OUROPASS_TELEGRAM_BOT`/`_TOKEN` are removed and ignored.
+> **Migration:** a deploy that previously set `OUROPASS_TELEGRAM_TOKEN`/`_BOT` must
+> re-add that bot as a Channel in `/admin` after upgrading (the env bot no longer runs).
 
 > Derived automatically in `docker-compose.yml` (do not set in `.env`):
 > `OUROPASS_ADDR`, `OUROPASS_ISSUER`, `OUROPASS_TRUSTED_PROXY`, `OUROPASS_TLS`,

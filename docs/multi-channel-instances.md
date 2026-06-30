@@ -38,7 +38,7 @@ bot + an announcements bot, or per-tier bots). Each instance has:
 
 Migration `0014_channel_instances` backfills existing single-telegram data to a
 `default` instance; `0015_pushjob_channel` adds the nullable push target.
-`OUROPASS_TELEGRAM_TOKEN` remains an implicit "default" instance (see §6).
+All Telegram bots are configured in admin (S0017): there is no env-default instance.
 
 ## 3. Worker supervisor (`internal/worker/telegram/supervisor.go`)
 
@@ -84,9 +84,9 @@ job rather than misdelivering. An unscoped job keeps the legacy type-level fan-o
   (operator role, audited). Tokens are encrypted at rest; `bot_username` is public.
 - **Delete cascade (D7):** deleting (or you may instead disable) an instance cancels
   its active subscriptions (`CancelByChannelID`).
-- **Env fallback (D6/C1):** when `OUROPASS_TELEGRAM_TOKEN` is set and **no** DB
-  instance exists, the supervisor runs an implicit `default` instance; it stops as soon
-  as a DB instance is configured.
+- **No env fallback (S0017):** all instances come from the admin DB. The legacy
+  `OUROPASS_TELEGRAM_TOKEN`/`_BOT` env (and the synthetic `default` instance) were
+  removed; configure every bot in `/admin → Channels`.
 - **Out of scope:** cross-instance member dedup (the same stake subscribing on two bots
   is two independent subscriptions); per-instance RBAC (operator role gates all
   instances).

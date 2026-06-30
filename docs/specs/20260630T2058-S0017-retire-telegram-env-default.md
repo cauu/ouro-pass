@@ -125,9 +125,10 @@ per-channel stored username, with **no env fallback**.
       `handlers_activation` + handler tests (no-id/no-username → 400, not env default).
       (Also removes `Deps.TelegramBot` + `cmd/devflow` usage. `/bind` kept permissive —
       activation is the single gate, so no misleading link is ever produced.)
-- [ ] p1-4 Docs/env: drop `OUROPASS_TELEGRAM_BOT`/`_TOKEN` from `.env.example` and
+- [x] p1-4 Docs/env: drop `OUROPASS_TELEGRAM_BOT`/`_TOKEN` from `.env.example` and
       `docs/deployment.md` (incl. the stale `OURO_TELEGRAM_*` line); document admin-only
-      Telegram config + the breaking migration note.
+      Telegram config + the breaking migration note. (Also refreshed
+      `docs/multi-channel-instances.md`, which still described the env fallback.)
 - [ ] p1-5 Validation: `make test` + `pnpm test` + `shellcheck deploy/install.sh`.
 
 ## 4. Test and Acceptance Criteria
@@ -173,11 +174,17 @@ Pass/fail: TC-1..TC-6 pass; admin (DB) Telegram path behavior unchanged.
   reads from config; added a deprecation-warning loop for OUROPASS_TELEGRAM_BOT/_TOKEN (logged
   and ignored). config tests green; go vet clean. (Executed after p1-2/p1-3 so the tree
   stayed buildable, per the activation log header.)
+- 2026-06-30T21:26:00+08:00 p1-4: docs/env cleanup. .env.example telegram block rewritten to
+  admin-only (both vars removed). docs/deployment.md: dropped the env-table row + the stale
+  OURO_TELEGRAM_* non-interactive line; added an admin-only + BREAKING migration note.
+  docs/multi-channel-instances.md: replaced the "env fallback (D6/C1)" descriptions with the
+  S0017 admin-only model. Repo sweep: no stale telegram-env refs remain outside specs.
 
 ## 6. Validation Evidence (append-only)
 - TC-2 | stack: go | command: go test ./internal/worker/telegram/ | result: pass | note: no DB instance → no worker (TestSupervisor_NoInstancesNoWorkers); adding one runs exactly it; no env fallback
 - TC-3 | stack: go | command: go test ./internal/httpapi/ -run TestActivationCreate_UsesInstanceBot | result: pass | note: channel_id → t.me/my_real_bot; missing channel_id → 400 (no env-default fallback)
 - TC-3 | stack: go | command: go test ./internal/e2e/ | result: pass | note: Flow D now seeds a telegram instance + passes channel_id; deep link uses t.me/ouro_e2e_bot, /start creates the subscription
 - TC-1 | stack: go | command: go test ./internal/config/ | result: pass | note: config has no TelegramBot/TelegramToken; legacy OUROPASS_TELEGRAM_BOT/_TOKEN logged-and-ignored
+- TC-5 | stack: docs | command: grep OUROPASS_TELEGRAM/OURO_TELEGRAM/env-default in docs/.env/web | result: pass | note: only intentional "removed and ignored" + migration notes remain; .env.example/deployment.md/multi-channel-instances.md admin-only
 
 ## 7. Change Requests (append-only)
