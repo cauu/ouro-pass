@@ -19,8 +19,8 @@ deploys with a single `docker compose up -d`.
 - **Wallet auth, no custody** — CIP-30 `signData` (COSE) challenge/response. The
   service holds only its issuer signing key and bot tokens; never user/cold/owner keys.
 - **Eligibility & tiers from chain** — a rule engine evaluates tiers over live active
-  stake via **pluggable, read-only chain adapters**: `koios` / `blockfrost` /
-  `node_lsq` / `db_sync` (or `mock` for dev).
+  stake read through **Koios**, the single read-only chain origin (built-in public
+  per-network endpoints; an in-memory `MockSource` is injected for tests).
 - **Multi-channel delivery** — Telegram channel instances, push broadcasts, and a
   per-epoch reconciliation job that re-evaluates and downgrades/expires sessions.
 - **Admin console** — embedded SPA at `/admin`: grouped navigation, RBAC
@@ -43,13 +43,13 @@ admin SPA — all baked in via `go:embed`.
                                                      ▼
                                               postgres (:5432)
    persistent state (host bind-mounts):  ./data/postgres   ./data/caddy
-   read-only chain queries:  issuer ──▶ koios / blockfrost / cardano-node / db-sync
+   read-only chain queries:  issuer ──▶ koios (public per-network endpoints)
 ```
 
 ## Quick start (deploy)
 
 One command — it checks prerequisites, downloads the compose stack, generates
-secrets, asks a few questions (domain, owner wallet, chain source) and starts
+secrets, asks a few questions (domain, owner wallet) and starts
 everything:
 
 ```sh
@@ -105,8 +105,8 @@ ghcr.io/cauu/ouro-pass:0.1.0     # pin a version (recommended)
 ghcr.io/cauu/ouro-pass:latest
 ```
 
-Full guide — prerequisites, chain-source options, backups, upgrades, sovereign
-`cardano-node` path, troubleshooting — in **[docs/deployment.md](docs/deployment.md)**.
+Full guide — prerequisites, the Koios chain source, backups, upgrades,
+troubleshooting — in **[docs/deployment.md](docs/deployment.md)**.
 
 ### Updating
 

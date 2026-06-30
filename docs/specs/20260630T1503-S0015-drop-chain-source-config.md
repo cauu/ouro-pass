@@ -107,6 +107,12 @@ deploy-time env). Direct `node_lsq`/`db_sync`/`blockfrost` adapters are **delete
       from `install.sh`, `.env.example`, `docs/deployment.md`; document Koios-only + future
       self-host-in-UI.
 - [x] p2-1 Full validation: `make test` + `pnpm test` + `shellcheck deploy/install.sh`.
+- [x] p3-1 (review follow-up) README Koios-only cleanup: drop `blockfrost`/`node_lsq`/`db_sync`
+      from the eligibility/architecture sections and the "chain source" install question; align
+      with `.env.example`/`docs/deployment.md`. (multi-agent-review P2-1)
+- [ ] p3-2 (review follow-up) Cover the production `srcFor(nil override)` path: assert
+      `buildServices(cfg, st, nil)` yields `koios+cache` per network (mainnet/preprod/preview)
+      and empty→mainnet, closing the TC-2 test gap. (multi-agent-review P2-3)
 
 ## 4. Test and Acceptance Criteria
 
@@ -163,6 +169,17 @@ Pass/fail: TC-1..TC-5 pass; eligibility behavior unchanged (no membership semant
 - 2026-06-30T15:46:00+08:00 p2-1: full local validation — make test (all server packages),
   pnpm test (web: 2 files / 10 tests), shellcheck deploy/install.sh — all green. All plan items
   p1-1..p1-5 + p2-1 complete; awaiting user verification before closure (do not close).
+- 2026-06-30T15:52:00+08:00 multi-agent review (claude + cursor; codex skipped — usage limit)
+  on the full S0015 diff: APPROVE, no P0/P1. User triaged the P2 findings: fix README cleanup
+  (P2-1 → p3-1) and add the production srcFor test (P2-3 → p3-2); the self-hosted-override
+  migration note (P2-2) is declined (no existing deployments use it); P3 items deferred. Review
+  artifacts under code_review/S0015-drop-chain-source-config/.
+- 2026-06-30T15:55:00+08:00 p3-1: README.md eligibility bullet + architecture diagram + install
+  question rewritten to Koios-only (dropped blockfrost/node_lsq/db_sync/cardano-node references),
+  aligned with .env.example / deployment.md.
+- 2026-06-30T15:58:00+08:00 p3-2: added TestBuildServices_ProductionKoiosPerNetwork — exercises
+  buildServices(cfg, st, nil) and asserts deps.SrcFor yields koios+cache for mainnet/preprod/
+  preview and empty→mainnet (same instance), plus deps.Chain fallback; closes the TC-2 gap.
 
 ## 6. Validation Evidence (append-only)
 - TC-3 | stack: go | command: go test ./cmd/issuer/ | result: pass | note: buildServices wires injected MockSource (mock+cache); full+degraded paths green via seam
@@ -177,5 +194,6 @@ Pass/fail: TC-1..TC-5 pass; eligibility behavior unchanged (no membership semant
 - TC-5 | stack: go | command: make test | result: pass | note: all server packages green (cmd/issuer, config, chain, membership, e2e, httpapi, workers, …)
 - TC-5 | stack: node | command: pnpm test (web) | result: pass | note: vitest 2 files / 10 tests pass (wallet adapter, app guards)
 - TC-5 | stack: shell | command: shellcheck deploy/install.sh | result: pass | note: installer clean
+- TC-1 | stack: docs | command: grep blockfrost/node_lsq/db_sync/cardano-node README.md | result: pass | note: p3-1 — README eligibility/architecture/install refs now Koios-only (no removed-adapter mentions)
 
 ## 7. Change Requests (append-only)
