@@ -1,9 +1,9 @@
 # Bind page targets a specific channel instance (per-channel deep link)
 
 Spec-ID: S0016
-Status: draft
+Status: active
 Created Time: 2026-06-30T17:48:05+08:00
-Start Time:
+Start Time: 2026-06-30T19:37:14+08:00
 Completion Time:
 Previous Spec-ID: S0015
 Closure Reason:
@@ -139,6 +139,8 @@ Pass/fail: TC-1..TC-6 pass; no change to eligibility/activation semantics.
   public /bind deep link ignores admin-configured channels and returns the env-default bot.
   Operator chose explicit channel_id only (no auto-select). Awaiting promotion to active
   (blocked until S0015 is closed — only one active spec at a time).
+- 2026-06-30T19:37:14+08:00 S0015 closed (delivered); promoted S0016 to active (Start Time set;
+  file moved to docs/specs/). Beginning execution of p1-1.
 
 ## 6. Validation Evidence (append-only)
 
