@@ -68,6 +68,49 @@ func TestBuildServices_FullVsDegraded(t *testing.T) {
 	}
 }
 
+// TestBuildServices_ProductionKoiosPerNetwork covers S0015 TC-2 for the production
+// path (nil chainOverride): buildServices must wire a per-network Koios origin
+// wrapped by the active-membership cache, with no "kind" selection. Constructing a
+// KoiosSource makes no network call, so this is deterministic and offline.
+func TestBuildServices_ProductionKoiosPerNetwork(t *testing.T) {
+	st := testStore(t)
+	cfg := &config.Config{DBDriver: "sqlite", Issuer: "ouropass:p", Scope: "p", TLS: true}
+
+	deps, err := buildServices(cfg, st, nil) // nil → production Koios path
+	if err != nil {
+		t.Fatalf("buildServices: %v", err)
+	}
+	if deps.SrcFor == nil {
+		t.Fatal("SrcFor must be wired")
+	}
+
+	// Each network resolves to a Koios source behind the membership cache.
+	for _, network := range []string{"mainnet", "preprod", "preview"} {
+		s, err := deps.SrcFor(network)
+		if err != nil {
+			t.Fatalf("SrcFor(%q): %v", network, err)
+		}
+		if s.Name() != "koios+cache" {
+			t.Errorf("SrcFor(%q).Name() = %q, want koios+cache", network, s.Name())
+		}
+	}
+
+	// Empty network defaults to mainnet and is the same cached instance (S0014 p1-2).
+	def, err := deps.SrcFor("")
+	if err != nil {
+		t.Fatalf(`SrcFor(""): %v`, err)
+	}
+	main, _ := deps.SrcFor("mainnet")
+	if def != main {
+		t.Error(`SrcFor("") must resolve to the mainnet source instance`)
+	}
+
+	// The fallback deps.Chain (admin delegator roster) is the mainnet Koios source.
+	if deps.Chain == nil || deps.Chain.Name() != "koios+cache" {
+		t.Errorf("deps.Chain = %v, want koios+cache", deps.Chain)
+	}
+}
+
 func TestRunNonceGC_StopsOnCancel(t *testing.T) {
 	st := testStore(t)
 	wallet := walletauth.New(st, time.Minute)

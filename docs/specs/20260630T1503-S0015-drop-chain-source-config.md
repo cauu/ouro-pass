@@ -110,7 +110,7 @@ deploy-time env). Direct `node_lsq`/`db_sync`/`blockfrost` adapters are **delete
 - [x] p3-1 (review follow-up) README Koios-only cleanup: drop `blockfrost`/`node_lsq`/`db_sync`
       from the eligibility/architecture sections and the "chain source" install question; align
       with `.env.example`/`docs/deployment.md`. (multi-agent-review P2-1)
-- [ ] p3-2 (review follow-up) Cover the production `srcFor(nil override)` path: assert
+- [x] p3-2 (review follow-up) Cover the production `srcFor(nil override)` path: assert
       `buildServices(cfg, st, nil)` yields `koios+cache` per network (mainnet/preprod/preview)
       and empty→mainnet, closing the TC-2 test gap. (multi-agent-review P2-3)
 
@@ -195,5 +195,6 @@ Pass/fail: TC-1..TC-5 pass; eligibility behavior unchanged (no membership semant
 - TC-5 | stack: node | command: pnpm test (web) | result: pass | note: vitest 2 files / 10 tests pass (wallet adapter, app guards)
 - TC-5 | stack: shell | command: shellcheck deploy/install.sh | result: pass | note: installer clean
 - TC-1 | stack: docs | command: grep blockfrost/node_lsq/db_sync/cardano-node README.md | result: pass | note: p3-1 — README eligibility/architecture/install refs now Koios-only (no removed-adapter mentions)
+- TC-2 | stack: go | command: go test ./cmd/issuer/ -run TestBuildServices_ProductionKoiosPerNetwork | result: pass | note: p3-2 — buildServices(nil) yields koios+cache for mainnet/preprod/preview, ""→mainnet same instance, deps.Chain=koios+cache
 
 ## 7. Change Requests (append-only)
