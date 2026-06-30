@@ -106,7 +106,7 @@ a directory entry page that links to the existing per-channel bind page).
       `/bind?channel_id=<id>`); per-channel page shows the selected channel
       (`name`/`@bot`) + a back-to-directory link (`BindData` gains name/bot). Update
       `bind.html`, `ouropass-auth.js`, `bind` handler.
-- [ ] p1-3 Validation: `make test` + `pnpm test` + `shellcheck deploy/install.sh`
+- [x] p1-3 Validation: `make test` + `pnpm test` + `shellcheck deploy/install.sh`
       (+ handler test for the endpoint and an asset check for the directory branch).
 
 ## 4. Test and Acceptance Criteria
@@ -147,9 +147,16 @@ Pass/fail: TC-1..TC-4 pass; no change to eligibility/activation/deep-link semant
   otherwise runs the wallet flow and showSelected() renders "Subscribing to <name> (@bot) ·
   change channel". Tests: TestBind_ChannelID asserts data-channel-name passthrough;
   TestAuthAsset_ServesJS asserts the directory branch (/api/channels + /bind?channel_id=).
+- 2026-06-30T23:40:00+08:00 p1-3: full validation — go vet ./... clean, make test (all server
+  packages) green, pnpm test (web 10/10) + tsc clean, shellcheck install.sh+init.sh clean. All
+  plan items p1-1..p1-3 complete & verified; spec left active pending user verification (do not
+  close).
 
 ## 6. Validation Evidence (append-only)
 - TC-1 | stack: go | command: go test ./internal/httpapi/ -run TestPublicChannels | result: pass | note: /api/channels lists active telegram w/ username; disabled & username-less excluded; no bot_token_enc/token_hint in payload
 - TC-2/TC-3 | stack: go | command: go test ./internal/httpapi/ -run 'TestAuthAsset_ServesJS|TestBind_ChannelID' | result: pass | note: asset carries the directory branch (/api/channels + /bind?channel_id=); per-channel page renders data-channel-name passthrough (selected-channel display)
+- TC-4 | stack: go | command: go vet ./... && make test | result: pass | note: vet clean; full server suite green
+- TC-4 | stack: node | command: pnpm test (web) + npm run typecheck | result: pass | note: vitest 10/10; tsc clean
+- TC-4 | stack: shell | command: shellcheck deploy/install.sh deploy/init.sh | result: pass | note: installer scripts clean
 
 ## 7. Change Requests (append-only)
