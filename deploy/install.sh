@@ -244,6 +244,10 @@ else
   # per-network endpoints, so there is no chain-source prompt. Network is a
   # per-attestor property set in /admin (S0014 p1-2). Self-hosting koios is a
   # future admin-UI setting, not a deploy-time knob.
+  # Optional Koios API key (S0019 p1-6): blank = public tier (~5k/day); a free
+  # koios.rest key lifts it to ~50k/day. Blank default keeps --non-interactive
+  # unaffected. Boot-time infra credential → env is the home.
+  ask CHAIN_API_KEY "Koios API key (optional; blank = public tier — free key at https://koios.rest lifts rate limits)" "${OURO_CHAIN_API_KEY:-}"
   ask TAG "Image tag (e.g. 0.1.0, no leading v; or latest)" "${OUROPASS_TAG:-latest}"
   case "$TAG" in v[0-9]*) TAG="${TAG#v}" ;; esac   # image tags have no leading 'v'
   ask OWNER_ADDR "Owner stake address (stake1...) to admit as admin owner" "${OURO_OWNER_ADDR:-}"
@@ -263,6 +267,7 @@ else
   set_env ACME_EMAIL "$ACME_EMAIL"
   set_env OUROPASS_TAG "$TAG"
   set_env OUROPASS_OWNER_KEYS "$OWNER_KEYS"
+  set_env OUROPASS_CHAIN_API_KEY "$CHAIN_API_KEY"
 
   # Caddy errors on an empty `email` directive, so only enable it when provided.
   # External-proxy mode never runs Caddy, so skip the Caddyfile email block entirely.

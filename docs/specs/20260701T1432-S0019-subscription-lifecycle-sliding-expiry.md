@@ -180,7 +180,7 @@ tier claim in tokens) and which relies on tier being accurate.
 - [x] p1-5 Push-modal foolproofing (p3-1): required tier `<select>` from configured tiers +
       explicit "All members (no tier gate)" option in `PushPage`; (optional) backend guard
       dropping untargeted broadcasts to tier-less subscriptions. Web typecheck + test.
-- [ ] p1-6 Koios free-tier key config (option A): fix `.env.example` + `docs/deployment.md`
+- [x] p1-6 Koios free-tier key config (option A): fix `.env.example` + `docs/deployment.md`
       copy (tiers: public 5k/day·10 RPS → registered free 50k/day via a free koios.rest key;
       blank = public); add an optional blank-default installer prompt for
       `OUROPASS_CHAIN_API_KEY`. No core code change (already Bearer-plumbed). shellcheck clean.
@@ -269,5 +269,7 @@ Pass/fail: TC-1..TC-8 pass; no change to `DeriveState`/eligibility/Koios semanti
 - TC-5 | stack: go | command: go test ./internal/worker/telegram/ | result: pass | note: /status now shows Tier, Status, "Last verified", "Valid through (auto-renews …)" (= LastVerifiedAt+TTL), and an ⚠️ "Expiring on … Re-delegate…" line when GraceUntil is set. TestStatusAndUnsubscribe asserts the member format + the grace warning. sessionTTL comment corrected (informational, mirrors reconciliation.subscriptionTTL). Lifecycle + option-1 policy documented in docs/staking-attestation.md §4.
 
 - TC-6 | stack: ui | command: pnpm typecheck && pnpm test | result: pass | note: PushPage `Target tier` is now a required <Select> populated from getPool().tier_rules[].tier (deduped, same source as the tier-rules editor) with a disabled "Select…" placeholder + explicit "All members (no tier gate)" sentinel (tierAllMembers="__all__", mapped back to no tier gate in the request). A blank no longer silently broadcasts to everyone; broadcast-to-all requires choosing that option. Optional backend guard intentionally omitted (would change delivery semantics; foolproofing goal met at the UI). typecheck clean; full web suite green.
+
+- TC-8 | stack: shell | command: shellcheck deploy/install.sh | result: pass | note: .env.example + docs/deployment.md copy rewritten — public tier (~5k/day, 10 RPS) vs free registered koios.rest tier (~50k/day, Bearer), not "paid tiers" only, with the 429 guidance + signup link. install.sh gains an optional `ask CHAIN_API_KEY … "${OURO_CHAIN_API_KEY:-}"` (blank default → --non-interactive unaffected) + `set_env OUROPASS_CHAIN_API_KEY`. No core code change (already Bearer-plumbed at koios.go:218). shellcheck clean.
 
 ## 7. Change Requests (append-only)

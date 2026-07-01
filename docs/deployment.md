@@ -134,7 +134,7 @@ All knobs live in `.env` (see `.env.example` for the annotated list). Highlights
 | `ACME_EMAIL` | Optional Let's Encrypt contact for expiry notices. |
 | `OUROPASS_FIELD_KEY` | **Secret.** AES-256 master key for 🔒 fields (`openssl rand -hex 32`). |
 | `OUROPASS_SERVER_SALT` | **Secret.** HMAC salt for the pseudonymous `sub` (`openssl rand -hex 16`). |
-| `OUROPASS_CHAIN_API_KEY` | Optional Koios API key (paid tiers); blank = unauthenticated public access. |
+| `OUROPASS_CHAIN_API_KEY` | Optional Koios API key (sent as `Authorization: Bearer`). Blank = public tier (~5k req/day, 10 RPS); a **free** registered koios.rest account raises it to ~50k/day (recommended if you hit 429s). Paid tiers exist for larger pools. |
 
 > **Chain source is Koios-only (S0015):** the issuer always reads stake from the public
 > Koios API with built-in per-network endpoints. There is no chain-source setting — the
@@ -168,8 +168,11 @@ this is the single chain origin (S0015). Public per-network endpoints
 each attestor's network; there is nothing to configure. The eligibility path is a
 read-through cache over this origin, so Koios is queried only on cache misses.
 
-- `OUROPASS_CHAIN_API_KEY` is optional — set it for a paid Koios tier; blank uses
-  unauthenticated public access.
+- `OUROPASS_CHAIN_API_KEY` is optional and sent as `Authorization: Bearer`. Blank uses
+  the **public tier** (~5,000 requests/day, 10 RPS). A **free** registered koios.rest
+  account raises the quota to ~50,000/day — enough to comfortably cover per-epoch
+  reconciliation for a typical pool; set the key if you see rate-limit (429) errors.
+  Paid tiers exist for very large pools. Sign up at <https://koios.rest>.
 - **Sovereignty (self-hosted Koios):** running your own Koios instead of trusting the
   public endpoint is planned as a future **admin-UI** setting, not a deploy-time env
   (per the installer-scope boundary: operational/admin config does not belong in
