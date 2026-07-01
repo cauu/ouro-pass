@@ -45,11 +45,13 @@ tier claim in tokens) and which relies on tier being accurate.
   `state == none` (the user genuinely left). There is **no time-based / operational
   expiry**: a chain-query error is always fail-open (keep the session, no notify, no
   grace) — we never expire a user because of our own infra outage ("don't disturb").
-- **Grace + terminal expiry on membership loss:** the first reconcile that sees
-  `state == none` for an active subscription does **not** expire it — it enters a
-  **~1-epoch grace** and notifies the user once. If the member recovers
-  (`pending`/`active`) at the next reconcile, the session is restored (back to active,
-  no re-bind). If still `none` at the next reconcile (grace elapsed), `status = expired`.
+- **Grace + terminal expiry on membership loss (deadline timestamp, not a reconcile
+  count):** the first reconcile that sees `state == none` for an active subscription does
+  **not** expire it — it records a grace **deadline** (`now + GRACE`, a wall-clock
+  timestamp) and notifies the user once. Expiry is then `state == none && now >= deadline`
+  — a pure time comparison, independent of how often the reconciler runs (frequency only
+  affects detection latency, never the criterion). If the member recovers
+  (`pending`/`active`) before the deadline, the session is restored (no re-bind).
 - **Tier refresh:** switch the reconciler from `Membership` (state) to `Attest`
   (state+tier) and write the fresh `tier` back each epoch, so `pending→active` upgrades
   and stake-driven tier changes are reflected automatically.
@@ -69,10 +71,12 @@ tier claim in tokens) and which relies on tier being accurate.
   expiry / notify; a chain/`Attest` error keeps the session untouched and silent.
 - Notifications are best-effort: a send failure is logged, never blocks reconcile, and the
   warning is sent **once** on grace-entry (not repeated while still `none`).
-- Grace must survive **at least until the next reconcile** (so a re-delegated member's
-  `pending` is observed and restored) → grace ≈ **1 epoch**, and never less than the
-  reconcile cadence. Reconcile re-derives membership **before** the expiry check, so a
-  member recovered at the boundary is restored, not expired.
+- Grace is a **wall-clock duration `GRACE` ≈ 1 epoch** (e.g. `5d` ≈ 1 mainnet epoch),
+  stored as a deadline timestamp when membership is lost. It must comfortably exceed one
+  reconcile cadence so a re-delegated member's `pending` is observed before the deadline;
+  the leaving tail already provides ~2 epochs before grace even starts. Reconcile
+  re-derives membership **before** the expiry check, so a member recovered near the
+  deadline is restored, not expired.
 
 ### Non-goals
 
@@ -86,19 +90,19 @@ tier claim in tokens) and which relies on tier being accurate.
 - **`reconciliation.StateEvaluator`**: change the method from
   `Membership(ctx, sch) (State, error)` to `Attest(ctx, sch) (State, string, error)`
   (the `oauth.Server` already implements both). `Reconcile` uses the returned `tier`.
-- **`Reconcile` per active session** (`reconciliation.go`) — re-derive membership FIRST:
+- **`Reconcile` per active session** (`reconciliation.go`) — re-derive membership FIRST,
+  reusing the existing `ExpiresAt` column as the single deadline (no new field). The
+  invariant "a member always sets `ExpiresAt = now + TTL` (far), so `ExpiresAt <= now + GRACE`
+  uniquely means in-grace" (requires `GRACE < TTL`) distinguishes the two states and makes
+  notify-once / no-re-extend automatic:
   - `Attest` errors → fail-open (keep, count Failed, no grace, no notify) — unchanged.
-  - member (`active`/`pending`): `LastVerifiedAt = now`; `Tier = tier`; if it was in grace,
-    clear it (restored to a normal active session).
+  - member (`active`/`pending`): `LastVerifiedAt = now`; `Tier = tier`;
+    `ExpiresAt = now + TTL` (restores from grace if it was in grace).
   - `state == none`:
-    - not yet in grace → **enter grace** and **send the notification once**.
-    - already in grace (this is the 2nd consecutive `none`) → `status = expired`.
-- **Grace bookkeeping (≈1 epoch, network-adaptive)**: implement "consecutive `none`"
-  detection so grace is exactly one reconcile cycle without epoch-length math. Options to
-  settle at p1-2: (a) a `grace_since` timestamp on the session (keep `status=active` during
-  grace, expire on the next `none`), or (b) an explicit `expiring` status. `ExpiresAt` shown
-  to users while in grace = the projected next-epoch deadline. (Recommendation: `grace_since`
-  — smallest surface, keeps the status enum unchanged, still deliverable during grace.)
+    - `ExpiresAt > now + GRACE` (first loss) → `ExpiresAt = now + GRACE`; **notify once**.
+    - else (already in grace): `now >= ExpiresAt` → `status = expired`; else keep.
+  - Expiry criterion is the timestamp `now >= ExpiresAt`, not a reconcile count — reconcile
+    frequency changes only how quickly expiry is *noticed*, never *when it is due*.
 - **Notifier seam**: `reconciliation.New(...)` gains a `Notifier`, e.g.
   `func(ctx, sess domain.SubscriptionSession, msg string) error`. `main.go` wires it to
   resolve the session's channel instance token (`instanceToken`) + `telegram.NewBotAPITransport`
@@ -137,11 +141,13 @@ tier claim in tokens) and which relies on tier being accurate.
 - [ ] p1-1 Reconciler refreshes tier: switch `StateEvaluator` to `Attest` (state+tier);
       write `Tier` back on each member re-verify. Update reconcile tests (mock returns tier;
       assert `pending→active` upgrades the stored tier).
-- [ ] p1-2 Membership-driven grace + expiry: re-derive membership first; member →
-      refresh `LastVerifiedAt` (+ clear grace); first `none` → enter ~1-epoch grace
-      (`grace_since`); second consecutive `none` → `status=expired`; recovery within grace →
-      restore. Const `subscriptionTTL` (informational `ExpiresAt`). Tests: extend /
-      grace-entry / restore-within-grace / expire-after-grace / fail-open-on-error.
+- [ ] p1-2 Membership-driven grace + expiry (deadline timestamp): re-derive membership
+      first; member → `LastVerifiedAt = now`, `ExpiresAt = now + TTL`; first `none`
+      (`ExpiresAt > now + GRACE`) → `ExpiresAt = now + GRACE`; in-grace `none` with
+      `now >= ExpiresAt` → `status = expired`; recovery before the deadline → restore.
+      Consts `subscriptionTTL` + `subscriptionGrace` (`GRACE < TTL`). Reuse the existing
+      `ExpiresAt` column (no new field). Tests: slide / grace-entry / restore-before-deadline
+      / expire-after-deadline / fail-open-on-error.
 - [ ] p1-3 Expiry notification: `Notifier` seam on the reconciler; `main.go` wires the
       telegram transport (per-instance token routing); send the grace warning once on
       grace-entry; best-effort + fail-open. Test the seam is called once with the right
@@ -161,9 +167,10 @@ tier claim in tokens) and which relies on tier being accurate.
 - TC-2 Member never expires on time: repeated reconciles of a still-member session keep it
   active and slide `ExpiresAt` (= LastVerifiedAt + TTL); a chain/`Attest` error keeps it and
   does NOT enter grace or notify (fail-open).
-- TC-3 Grace on loss: first `state == none` enters grace (does not expire); recovery to
-  `pending`/`active` at the next reconcile restores it (no re-bind); a second consecutive
-  `none` → `status = expired`.
+- TC-3 Grace on loss (deadline-driven): first `state == none` sets `ExpiresAt = now + GRACE`
+  and does not expire; recovery to `pending`/`active` before the deadline restores it (no
+  re-bind); `state == none` with `now >= ExpiresAt` → `status = expired`. Expiry is decided
+  by the timestamp, not by how many reconcile passes occurred.
 - TC-4 Notification: entering grace triggers exactly one bot DM to the session's user via
   the correct instance transport; a send error is logged and does not fail the pass; no DM on
   the second consecutive `none`.
@@ -190,6 +197,14 @@ Pass/fail: TC-1..TC-7 pass; no change to `DeriveState`/eligibility/Koios semanti
   silently broadcasts to everyone — replace with a required tier select + explicit
   "All members" option. Remaining decision: TTL value for the informational `ExpiresAt`
   (default 30d) and the grace-marker choice (`grace_since` vs `expiring` status) at p1-2.
+- 2026-07-01T12:30:00+08:00 revised the expiry criterion per review: the "2nd consecutive
+  `none`" rule tied expiry to reconcile frequency (unintuitive, fragile). Replaced with a
+  **deadline timestamp**: on membership loss set `ExpiresAt = now + GRACE`; expire when
+  `state == none && now >= ExpiresAt`. Frequency-independent (only detection latency depends
+  on cadence). `GRACE` = wall-clock const ≈ 1 epoch (`< TTL`), stored in the existing
+  `ExpiresAt` column (no new field; the far-vs-near `ExpiresAt` distinguishes member vs
+  in-grace and makes notify-once automatic). Supersedes the `grace_since`/`expiring`
+  question. Remaining decision: TTL (default 30d) + GRACE (default ~5d ≈ 1 mainnet epoch).
 
 ## 6. Validation Evidence (append-only)
 
