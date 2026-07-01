@@ -1,9 +1,9 @@
 # Subscription lifecycle: membership-driven expiry + grace + notifications + tier refresh
 
 Spec-ID: S0019
-Status: draft
+Status: active
 Created Time: 2026-07-01T11:52:34+08:00
-Start Time:
+Start Time: 2026-07-01T14:32:06+08:00
 Completion Time:
 Previous Spec-ID: S0018
 Closure Reason:
@@ -257,5 +257,6 @@ Pass/fail: TC-1..TC-8 pass; no change to `DeriveState`/eligibility/Koios semanti
 - 2026-07-01T13:20:00+08:00 values locked per user: `subscriptionTTL = 30d`,
   `subscriptionGrace = 5d` (≈ 1 mainnet epoch, `< TTL`). No open decisions remain; ready to
   promote to active.
+- 2026-07-01T14:32:06+08:00 promoted draft → active (Previous Spec-ID S0018). Beginning p1-1.
 
 ## 7. Change Requests (append-only)
