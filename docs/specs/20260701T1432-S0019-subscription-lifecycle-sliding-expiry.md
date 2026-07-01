@@ -162,7 +162,7 @@ tier claim in tokens) and which relies on tier being accurate.
 - [x] p1-1 Reconciler refreshes tier: switch `StateEvaluator` to `Attest` (state+tier);
       write `Tier` back on each member re-verify. Update reconcile tests (mock returns tier;
       assert `pending→active` upgrades the stored tier).
-- [ ] p1-2 Membership-driven grace + expiry (deadline timestamp): add a nullable
+- [x] p1-2 Membership-driven grace + expiry (deadline timestamp): add a nullable
       `grace_until` column (additive migration; keep `expires_at` informational). Re-derive
       membership first; member → `LastVerifiedAt=now`, `ExpiresAt=now+TTL`, `GraceUntil=nil`;
       first `none` (`GraceUntil==nil`) → `GraceUntil=now+GRACE`; in-grace `none` with
@@ -262,5 +262,6 @@ Pass/fail: TC-1..TC-8 pass; no change to `DeriveState`/eligibility/Koios semanti
 ## 6. Validation Evidence (append-only)
 
 - TC-1 | stack: go | command: go test ./internal/worker/reconciliation/ ./internal/e2e/ | result: pass | note: StateEvaluator swapped Membership→Attest; TestReconcile_RefreshesTier asserts a pending(empty-tier)→active session gets tier=gold at reconcile with no re-bind; e2e reconcile still expires on membership loss.
+- TC-2/TC-3 | stack: go | command: go test ./... | result: pass | note: added nullable grace_until column (migration 0016 sqlite+postgres) + domain field + repo Upsert/scan. Reconcile re-derives membership first: member → slide ExpiresAt=now+30d, clear GraceUntil; first none → GraceUntil=now+5d (status stays active); none with now>=deadline → expired; recovery before deadline restores. TestReconcile_KeepAndGrace (slide + grace-entry, no immediate expiry), TestReconcile_GraceLifecycle (grace→restore→re-grace→expire-after-deadline), TestReconcile_FaultIsolation (chain error keeps session, no grace), e2e two-pass grace→expire. Full server suite green.
 
 ## 7. Change Requests (append-only)

@@ -31,5 +31,11 @@ type SubscriptionSession struct {
 	CreatedAt           time.Time
 	LastVerifiedAt      time.Time
 	ExpiresAt           time.Time
-	CancelledAt         *time.Time
+	// GraceUntil is the membership-loss expiry deadline (S0019 p1-2). It is nil
+	// whenever the session is not in grace (the sole "not in grace" signal); it is
+	// set to `now + GRACE` the first reconcile that observes `state == none`, and
+	// cleared back to nil the moment membership is re-observed. Distinct from the
+	// informational ExpiresAt (= LastVerifiedAt + TTL), which is never enforced.
+	GraceUntil  *time.Time
+	CancelledAt *time.Time
 }

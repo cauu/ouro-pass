@@ -76,15 +76,16 @@ func seed(t *testing.T, st *store.Store, id, sch, tier string) {
 	}
 }
 
-// TestReconcile_ExpireKeep: members (active/pending) are kept and refreshed; a
-// credential that is no longer a member (state none) is expired. Tier is NOT
-// reconciled here (it is first-party, recomputed at consumption).
-func TestReconcile_ExpireKeep(t *testing.T) {
+// TestReconcile_KeepAndGrace: members (active/pending) are kept, refreshed, and
+// their informational ExpiresAt slides; a credential that is no longer a member
+// (state none) enters GRACE on the first observation (not immediate expiry, S0019
+// p1-2) — GraceUntil is set and status stays active until the deadline.
+func TestReconcile_KeepAndGrace(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
 	seed(t, st, "active", "sch-active", "gold")   // active → kept, refreshed
 	seed(t, st, "pending", "sch-pending", "gold") // pending → kept, refreshed
-	seed(t, st, "gone", "sch-gone", "gold")       // none → expired
+	seed(t, st, "gone", "sch-gone", "gold")       // none → grace
 
 	elig := programmableState{states: map[string]membership.State{
 		"sch-active":  membership.StateActive,
@@ -98,19 +99,71 @@ func TestReconcile_ExpireKeep(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Checked != 3 || res.Expired != 1 || res.Unchanged != 2 {
-		t.Fatalf("result = %+v, want Checked3/Expired1/Unchanged2", res)
+	if res.Checked != 3 || res.Grace != 1 || res.Expired != 0 || res.Unchanged != 2 {
+		t.Fatalf("result = %+v, want Checked3/Grace1/Expired0/Unchanged2", res)
 	}
 
 	for _, id := range []string{"active", "pending"} {
 		s, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-"+id)
-		if s.Status != domain.SubActive || !s.LastVerifiedAt.After(s.CreatedAt) {
-			t.Errorf("%s session not kept+refreshed: %+v", id, s)
+		if s.Status != domain.SubActive || !s.LastVerifiedAt.After(s.CreatedAt) || s.GraceUntil != nil ||
+			!s.ExpiresAt.After(time.Now().Add(29*24*time.Hour)) {
+			t.Errorf("%s session not kept+refreshed+slid: %+v", id, s)
 		}
 	}
 	gone, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-gone")
-	if gone.Status != domain.SubExpired {
-		t.Errorf("gone session status = %s, want expired", gone.Status)
+	if gone.Status != domain.SubActive || gone.GraceUntil == nil {
+		t.Errorf("gone session should be in grace (active + GraceUntil set), got status=%s grace=%v", gone.Status, gone.GraceUntil)
+	}
+}
+
+// TestReconcile_GraceLifecycle (S0019 p1-2 / TC-3): first none → grace deadline set,
+// not expired; recovery before the deadline restores (GraceUntil cleared); none with
+// now >= deadline → expired. Expiry is decided by the timestamp, not the pass count.
+func TestReconcile_GraceLifecycle(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	seed(t, st, "s", "sch", "gold")
+
+	sf, nf := srcOnce(chain.NewMockSource(481))
+	none := programmableState{states: map[string]membership.State{}} // sch absent → none
+	back := programmableState{states: map[string]membership.State{"sch": membership.StateActive}}
+
+	// Pass 1: none → grace (deadline ~now+5d), still active.
+	rec := New(st, none, sf, nf, "pool1")
+	if res, _ := rec.Reconcile(ctx); res.Grace != 1 || res.Expired != 0 {
+		t.Fatalf("pass1 = %+v, want Grace1", res)
+	}
+	s, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-s")
+	if s.Status != domain.SubActive || s.GraceUntil == nil {
+		t.Fatalf("after grace entry: status=%s grace=%v", s.Status, s.GraceUntil)
+	}
+
+	// Pass 2: membership recovers before the deadline → restore (grace cleared).
+	recBack := New(st, back, sf, nf, "pool1")
+	if res, _ := recBack.Reconcile(ctx); res.Unchanged != 1 || res.Grace != 0 {
+		t.Fatalf("pass2 = %+v, want Unchanged1", res)
+	}
+	s, _ = st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-s")
+	if s.Status != domain.SubActive || s.GraceUntil != nil {
+		t.Fatalf("after restore: status=%s grace=%v, want active + nil grace", s.Status, s.GraceUntil)
+	}
+
+	// Re-enter grace, then force the deadline into the past and reconcile none → expired.
+	if _, err := rec.Reconcile(ctx); err != nil { // pass 3: none → grace again
+		t.Fatal(err)
+	}
+	s, _ = st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-s")
+	past := time.Now().Add(-time.Minute)
+	s.GraceUntil = &past
+	if err := st.Subscriptions().Upsert(ctx, *s); err != nil {
+		t.Fatal(err)
+	}
+	if res, _ := rec.Reconcile(ctx); res.Expired != 1 { // pass 4: none, deadline passed → expired
+		t.Fatalf("pass4 = %+v, want Expired1", res)
+	}
+	s, _ = st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-s")
+	if s.Status != domain.SubExpired {
+		t.Fatalf("after deadline: status=%s, want expired", s.Status)
 	}
 }
 
@@ -144,8 +197,8 @@ func TestReconcile_RefreshesTier(t *testing.T) {
 func TestReconcile_FaultIsolation(t *testing.T) {
 	ctx := context.Background()
 	st := newStore(t)
-	seed(t, st, "bad", "sch-bad", "gold")   // membership check errors
-	seed(t, st, "gone", "sch-gone", "gold") // none → expired
+	seed(t, st, "bad", "sch-bad", "gold")   // membership check errors → untouched, no grace
+	seed(t, st, "gone", "sch-gone", "gold") // none → grace
 	seed(t, st, "keep", "sch-keep", "gold") // active → kept
 
 	elig := faultyState{
@@ -159,17 +212,18 @@ func TestReconcile_FaultIsolation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("whole pass must not error on a single bad session: %v", err)
 	}
-	if res.Checked != 3 || res.Failed != 1 || res.Expired != 1 || res.Unchanged != 1 {
-		t.Fatalf("result = %+v, want Checked3/Failed1/Expired1/Unchanged1", res)
+	if res.Checked != 3 || res.Failed != 1 || res.Grace != 1 || res.Unchanged != 1 {
+		t.Fatalf("result = %+v, want Checked3/Failed1/Grace1/Unchanged1", res)
 	}
-	// The failing session is untouched (still active); the others applied.
+	// The failing session is untouched (still active, NOT in grace — fail-open never
+	// starts grace on a chain error); the others applied.
 	bad, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-bad")
-	if bad.Status != domain.SubActive {
-		t.Errorf("bad session should be left active, got %s", bad.Status)
+	if bad.Status != domain.SubActive || bad.GraceUntil != nil {
+		t.Errorf("bad session should be left active with no grace, got status=%s grace=%v", bad.Status, bad.GraceUntil)
 	}
 	gone, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-gone")
-	if gone.Status != domain.SubExpired {
-		t.Errorf("gone session not expired despite earlier failure: %s", gone.Status)
+	if gone.Status != domain.SubActive || gone.GraceUntil == nil {
+		t.Errorf("gone session should be in grace despite the other session's failure: status=%s grace=%v", gone.Status, gone.GraceUntil)
 	}
 }
 
@@ -192,14 +246,14 @@ func TestRun_TriggersOnEpochAdvance(t *testing.T) {
 	sf, nf := srcOnce(chain.NewMockSource(490))
 	rec := New(st, elig, sf, nf, "pool1")
 
-	// Run in this goroutine until the timeout; it should reconcile once on the
-	// first epoch read (490 > 0) and expire the session.
+	// Run in this goroutine until the timeout; it should reconcile once on the first
+	// epoch read (490 > 0), which puts the no-longer-member session into grace.
 	go rec.Run(ctx, time.Millisecond)
 	<-ctx.Done()
 
 	gone, _ := st.Subscriptions().GetByChannelUser(context.Background(), "pool1", "telegram", "u-gone")
-	if gone.Status != domain.SubExpired {
-		t.Fatalf("session not reconciled by Run: status=%s", gone.Status)
+	if gone.GraceUntil == nil {
+		t.Fatalf("session not reconciled by Run: status=%s grace=%v", gone.Status, gone.GraceUntil)
 	}
 }
 
@@ -224,7 +278,7 @@ func TestRun_TriggersOnSecondNetworkEpoch(t *testing.T) {
 	<-ctx.Done()
 
 	gone, _ := st.Subscriptions().GetByChannelUser(context.Background(), "pool1", "telegram", "u-gone")
-	if gone.Status != domain.SubExpired {
-		t.Fatalf("preprod epoch advance did not trigger reconcile: status=%s", gone.Status)
+	if gone.GraceUntil == nil {
+		t.Fatalf("preprod epoch advance did not trigger reconcile: status=%s grace=%v", gone.Status, gone.GraceUntil)
 	}
 }

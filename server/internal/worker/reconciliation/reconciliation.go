@@ -19,6 +19,16 @@ import (
 	"ouro-pass/server/internal/utils/chain"
 )
 
+const (
+	// subscriptionTTL is the informational validity window: a member's displayed
+	// ExpiresAt = LastVerifiedAt + TTL ("valid through, auto-renews"). Never enforced.
+	subscriptionTTL = 30 * 24 * time.Hour
+	// subscriptionGrace is the membership-loss grace: the first reconcile that sees
+	// state==none records GraceUntil = now + GRACE and expiry is now >= GraceUntil.
+	// ≈ 1 mainnet epoch, comfortably > one reconcile cadence, and < TTL.
+	subscriptionGrace = 5 * 24 * time.Hour
+)
+
 // StateEvaluator re-derives a credential's current pool-membership state and the
 // issuer's first-party tier for it (S0019 p1-1: was state-only `Membership`; now
 // `Attest` so the reconciler can refresh a member's tier each pass). `oauth.Server`
@@ -35,6 +45,11 @@ type (
 	Networks  func(ctx context.Context) ([]string, error)
 )
 
+// Notifier delivers a best-effort message to a subscription's channel user (S0019
+// p1-3: the grace-entry warning). It is invoked once, on grace entry; a send error
+// is logged and never blocks reconcile. nil → notifications skipped.
+type Notifier func(ctx context.Context, sess domain.SubscriptionSession, msg string) error
+
 // Reconciler maintains subscription sessions against current membership state.
 type Reconciler struct {
 	poolID   string
@@ -42,6 +57,7 @@ type Reconciler struct {
 	elig     StateEvaluator
 	srcFor   SourceFor
 	networks Networks
+	notifier Notifier
 	now      func() time.Time
 }
 
@@ -52,19 +68,44 @@ func New(st *store.Store, elig StateEvaluator, srcFor SourceFor, networks Networ
 	return &Reconciler{poolID: poolID, subs: st.Subscriptions(), elig: elig, srcFor: srcFor, networks: networks, now: time.Now}
 }
 
+// graceMessage is the one-shot warning sent when a subscription enters grace.
+const graceMessage = "Your subscription is expiring: we no longer see an active delegation for this account. Re-delegate to your pool to keep your membership."
+
+// notifyGrace best-effort delivers the grace warning once (on grace entry). A nil
+// notifier or a send error is logged and never affects reconcile (S0019 p1-3).
+func (r *Reconciler) notifyGrace(ctx context.Context, sess domain.SubscriptionSession) {
+	if r.notifier == nil {
+		return
+	}
+	if err := r.notifier(ctx, sess, graceMessage); err != nil {
+		slog.Warn("reconciliation: grace notification failed", "session", sess.SessionID, "err", err)
+	}
+}
+
 // Result summarizes a reconciliation pass.
 type Result struct {
 	Checked   int
-	Expired   int
+	Expired   int // terminally expired (state==none past the grace deadline)
+	Grace     int // entered grace this pass (first observed state==none)
 	Unchanged int
 	Failed    int // per-session errors that were isolated (logged, skipped)
 }
 
-// Reconcile re-derives every active session's membership once: state `none` →
-// expired; still a member (active/pending) → the verification timestamp is
-// refreshed. A per-session error is fault-isolated — logged, counted, and the
-// session left untouched (D8 soft fail-open: never expire a member on a transient
-// chain error) — so one bad credential never blocks revocation for the rest of
+// Reconcile re-derives every active session's membership once. Membership is
+// re-derived FIRST, then expiry is decided (S0019 p1-2):
+//
+//   - member (active/pending): refresh LastVerifiedAt + first-party Tier, slide the
+//     informational ExpiresAt = now + TTL, and clear any grace (GraceUntil = nil).
+//     This restores a session that had entered grace but recovered before the deadline.
+//   - state == none, not yet in grace (GraceUntil == nil): record the grace deadline
+//     GraceUntil = now + GRACE and notify the user once. The session stays active.
+//   - state == none, already in grace: expire terminally only once now >= *GraceUntil
+//     (a pure timestamp comparison — reconcile frequency changes only how quickly
+//     expiry is noticed, never when it is due); otherwise keep waiting.
+//
+// A per-session error is fault-isolated — logged, counted, and the session left
+// untouched (D8 soft fail-open: a transient chain error never expires a member and
+// never starts grace or notifies) — so one bad credential never blocks the rest of
 // the pool (p12-3). Only a whole-pass failure (listing sessions) returns an error.
 func (r *Reconciler) Reconcile(ctx context.Context) (Result, error) {
 	sessions, err := r.subs.ListActive(ctx, r.poolID)
@@ -81,25 +122,50 @@ func (r *Reconciler) Reconcile(ctx context.Context) (Result, error) {
 			res.Failed++
 			continue
 		}
-		if state == membership.StateNone {
-			if err := r.subs.SetStatus(ctx, sess.SessionID, domain.SubExpired); err != nil {
-				slog.Warn("reconciliation: expire failed, skipping session", "session", sess.SessionID, "err", err)
+		now := r.now()
+
+		if state != membership.StateNone {
+			// Still a member (active or pending): refresh verification + tier (p1-1),
+			// slide the informational ExpiresAt, and clear grace (restore, p1-2).
+			sess.LastVerifiedAt = now
+			sess.Tier = tier
+			sess.ExpiresAt = now.Add(subscriptionTTL)
+			sess.GraceUntil = nil
+			if err := r.subs.Upsert(ctx, sess); err != nil {
+				slog.Warn("reconciliation: touch failed, skipping session", "session", sess.SessionID, "err", err)
 				res.Failed++
 				continue
 			}
-			res.Expired++
+			res.Unchanged++
 			continue
 		}
-		// Still a member (active or pending): refresh the verification timestamp and
-		// the first-party tier (S0019 p1-1 — reflects pending→active upgrades).
-		sess.LastVerifiedAt = r.now()
-		sess.Tier = tier
-		if err := r.subs.Upsert(ctx, sess); err != nil {
-			slog.Warn("reconciliation: touch failed, skipping session", "session", sess.SessionID, "err", err)
+
+		// state == none: membership lost.
+		if sess.GraceUntil == nil {
+			// First observed loss → open the grace window and notify once.
+			deadline := now.Add(subscriptionGrace)
+			sess.GraceUntil = &deadline
+			if err := r.subs.Upsert(ctx, sess); err != nil {
+				slog.Warn("reconciliation: grace-entry failed, skipping session", "session", sess.SessionID, "err", err)
+				res.Failed++
+				continue
+			}
+			r.notifyGrace(ctx, sess)
+			res.Grace++
+			continue
+		}
+		if now.Before(*sess.GraceUntil) {
+			// In grace, deadline not yet reached: keep waiting for recovery.
+			res.Unchanged++
+			continue
+		}
+		// In grace, deadline passed → terminal expiry.
+		if err := r.subs.SetStatus(ctx, sess.SessionID, domain.SubExpired); err != nil {
+			slog.Warn("reconciliation: expire failed, skipping session", "session", sess.SessionID, "err", err)
 			res.Failed++
 			continue
 		}
-		res.Unchanged++
+		res.Expired++
 	}
 	return res, nil
 }
@@ -151,7 +217,7 @@ func (r *Reconciler) Run(ctx context.Context, pollInterval time.Duration) {
 					lastEpoch[net] = e
 				}
 				slog.Info("reconciliation complete", "epochs", current,
-					"checked", res.Checked, "expired", res.Expired,
+					"checked", res.Checked, "expired", res.Expired, "grace", res.Grace,
 					"unchanged", res.Unchanged, "failed", res.Failed)
 			}
 		}

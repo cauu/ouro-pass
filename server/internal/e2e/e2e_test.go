@@ -501,8 +501,9 @@ func TestE2E_IssuancePlaneRateLimited(t *testing.T) {
 }
 
 // TestE2E_ReconciliationExpiresIneligible is the reconciliation flow (p14-6,
-// closes TC-24's 6th flow): an active member who loses eligibility is expired by
-// the reconciler running against the same store the router uses.
+// closes TC-24's 6th flow): an active member who loses eligibility is first put
+// into grace, then terminally expired once the grace deadline passes (S0019 p1-2),
+// by the reconciler running against the same store the router uses.
 func TestE2E_ReconciliationExpiresIneligible(t *testing.T) {
 	e := newEnv(t)
 	w := newWallet(t)
@@ -522,7 +523,25 @@ func TestE2E_ReconciliationExpiresIneligible(t *testing.T) {
 		func(string) (chain.Source, error) { return e.chain, nil },
 		func(context.Context) ([]string, error) { return []string{"mainnet"}, nil },
 		testPool)
+	// First pass: membership lost → grace, not yet expired.
 	res, err := rec.Reconcile(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Grace != 1 || res.Expired != 0 {
+		t.Fatalf("reconcile result = %+v, want Grace=1/Expired=0", res)
+	}
+	sess, _ := e.st.Subscriptions().GetByChannelUser(ctx, testPool, "telegram", "tg-recon")
+	if sess.Status != domain.SubActive || sess.GraceUntil == nil {
+		t.Fatalf("after grace entry: status=%s grace=%v, want active + grace deadline", sess.Status, sess.GraceUntil)
+	}
+	// Force the grace deadline into the past; second pass terminally expires it.
+	past := time.Now().Add(-time.Minute)
+	sess.GraceUntil = &past
+	if err := e.st.Subscriptions().Upsert(ctx, *sess); err != nil {
+		t.Fatal(err)
+	}
+	res, err = rec.Reconcile(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
