@@ -184,7 +184,7 @@ tier claim in tokens) and which relies on tier being accurate.
       copy (tiers: public 5k/day·10 RPS → registered free 50k/day via a free koios.rest key;
       blank = public); add an optional blank-default installer prompt for
       `OUROPASS_CHAIN_API_KEY`. No core code change (already Bearer-plumbed). shellcheck clean.
-- [ ] p2-1 Validation: `make test` + `pnpm test` + `shellcheck deploy/install.sh`.
+- [x] p2-1 Validation: `make test` + `pnpm test` + `shellcheck deploy/install.sh`.
 
 ## 4. Test and Acceptance Criteria
 
@@ -258,6 +258,9 @@ Pass/fail: TC-1..TC-8 pass; no change to `DeriveState`/eligibility/Koios semanti
   `subscriptionGrace = 5d` (≈ 1 mainnet epoch, `< TTL`). No open decisions remain; ready to
   promote to active.
 - 2026-07-01T14:32:06+08:00 promoted draft → active (Previous Spec-ID S0018). Beginning p1-1.
+- 2026-07-01T14:50:00+08:00 all plan items p1-1..p1-6 + p2-1 delivered and committed; TC-1..TC-8
+  evidence appended. Full validation (make test + pnpm test/typecheck + shellcheck) green. Spec
+  held OPEN pending user verification (per user: "等我验收后再close").
 
 ## 6. Validation Evidence (append-only)
 
@@ -271,5 +274,9 @@ Pass/fail: TC-1..TC-8 pass; no change to `DeriveState`/eligibility/Koios semanti
 - TC-6 | stack: ui | command: pnpm typecheck && pnpm test | result: pass | note: PushPage `Target tier` is now a required <Select> populated from getPool().tier_rules[].tier (deduped, same source as the tier-rules editor) with a disabled "Select…" placeholder + explicit "All members (no tier gate)" sentinel (tierAllMembers="__all__", mapped back to no tier gate in the request). A blank no longer silently broadcasts to everyone; broadcast-to-all requires choosing that option. Optional backend guard intentionally omitted (would change delivery semantics; foolproofing goal met at the UI). typecheck clean; full web suite green.
 
 - TC-8 | stack: shell | command: shellcheck deploy/install.sh | result: pass | note: .env.example + docs/deployment.md copy rewritten — public tier (~5k/day, 10 RPS) vs free registered koios.rest tier (~50k/day, Bearer), not "paid tiers" only, with the 429 guidance + signup link. install.sh gains an optional `ask CHAIN_API_KEY … "${OURO_CHAIN_API_KEY:-}"` (blank default → --non-interactive unaffected) + `set_env OUROPASS_CHAIN_API_KEY`. No core code change (already Bearer-plumbed at koios.go:218). shellcheck clean.
+
+- TC-7 | stack: go | command: make -C server test | result: pass | note: full server suite green (count=1), incl. reconciliation, telegram, e2e, store (migration 0016 applies).
+- TC-7 | stack: ui | command: pnpm test && pnpm typecheck | result: pass | note: web suite (10 tests) green; tsc -b clean.
+- TC-7 | stack: shell | command: shellcheck deploy/install.sh | result: pass | note: clean. Also `go vet ./...` clean; gofmt clean on all S0019-touched files (2 pre-existing unformatted files outside this spec left untouched per append-only/scope discipline).
 
 ## 7. Change Requests (append-only)
