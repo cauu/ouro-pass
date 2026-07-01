@@ -90,18 +90,20 @@ tier claim in tokens) and which relies on tier being accurate.
 - **`reconciliation.StateEvaluator`**: change the method from
   `Membership(ctx, sch) (State, error)` to `Attest(ctx, sch) (State, string, error)`
   (the `oauth.Server` already implements both). `Reconcile` uses the returned `tier`.
-- **`Reconcile` per active session** (`reconciliation.go`) — re-derive membership FIRST,
-  reusing the existing `ExpiresAt` column as the single deadline (no new field). The
-  invariant "a member always sets `ExpiresAt = now + TTL` (far), so `ExpiresAt <= now + GRACE`
-  uniquely means in-grace" (requires `GRACE < TTL`) distinguishes the two states and makes
-  notify-once / no-re-extend automatic:
+- **Two separate fields, two separate meanings** (do NOT overload one field): keep
+  `expires_at` as the purely **informational** "valid through / auto-renews" date
+  (= `LastVerifiedAt + TTL`), never used for enforcement; add a **nullable `grace_until`**
+  (`*time.Time`) that is the real expiry **deadline**, set ONLY while in grace. `grace_until
+  == NULL` unambiguously means "not in grace" — no far/near inference, robust to reconcile
+  outages (a stale informational `expires_at` is never mistaken for a grace deadline).
+- **`Reconcile` per active session** (`reconciliation.go`) — re-derive membership FIRST:
   - `Attest` errors → fail-open (keep, count Failed, no grace, no notify) — unchanged.
   - member (`active`/`pending`): `LastVerifiedAt = now`; `Tier = tier`;
-    `ExpiresAt = now + TTL` (restores from grace if it was in grace).
+    `ExpiresAt = now + TTL`; `GraceUntil = nil` (clears grace / restores).
   - `state == none`:
-    - `ExpiresAt > now + GRACE` (first loss) → `ExpiresAt = now + GRACE`; **notify once**.
-    - else (already in grace): `now >= ExpiresAt` → `status = expired`; else keep.
-  - Expiry criterion is the timestamp `now >= ExpiresAt`, not a reconcile count — reconcile
+    - `GraceUntil == nil` (first loss) → `GraceUntil = now + GRACE`; **notify once**.
+    - `GraceUntil != nil`: `now >= *GraceUntil` → `status = expired`; else keep.
+  - Expiry criterion is the timestamp `now >= *GraceUntil`, not a reconcile count — reconcile
     frequency changes only how quickly expiry is *noticed*, never *when it is due*.
 - **Notifier seam**: `reconciliation.New(...)` gains a `Notifier`, e.g.
   `func(ctx, sess domain.SubscriptionSession, msg string) error`. `main.go` wires it to
@@ -141,13 +143,14 @@ tier claim in tokens) and which relies on tier being accurate.
 - [ ] p1-1 Reconciler refreshes tier: switch `StateEvaluator` to `Attest` (state+tier);
       write `Tier` back on each member re-verify. Update reconcile tests (mock returns tier;
       assert `pending→active` upgrades the stored tier).
-- [ ] p1-2 Membership-driven grace + expiry (deadline timestamp): re-derive membership
-      first; member → `LastVerifiedAt = now`, `ExpiresAt = now + TTL`; first `none`
-      (`ExpiresAt > now + GRACE`) → `ExpiresAt = now + GRACE`; in-grace `none` with
-      `now >= ExpiresAt` → `status = expired`; recovery before the deadline → restore.
-      Consts `subscriptionTTL` + `subscriptionGrace` (`GRACE < TTL`). Reuse the existing
-      `ExpiresAt` column (no new field). Tests: slide / grace-entry / restore-before-deadline
-      / expire-after-deadline / fail-open-on-error.
+- [ ] p1-2 Membership-driven grace + expiry (deadline timestamp): add a nullable
+      `grace_until` column (additive migration; keep `expires_at` informational). Re-derive
+      membership first; member → `LastVerifiedAt=now`, `ExpiresAt=now+TTL`, `GraceUntil=nil`;
+      first `none` (`GraceUntil==nil`) → `GraceUntil=now+GRACE`; in-grace `none` with
+      `now >= *GraceUntil` → `status=expired`; recovery before the deadline → restore
+      (`GraceUntil=nil`). Consts `subscriptionTTL` + `subscriptionGrace`. Tests: slide /
+      grace-entry / restore-before-deadline / expire-after-deadline / fail-open-on-error /
+      outage-then-none-still-gets-grace.
 - [ ] p1-3 Expiry notification: `Notifier` seam on the reconciler; `main.go` wires the
       telegram transport (per-instance token routing); send the grace warning once on
       grace-entry; best-effort + fail-open. Test the seam is called once with the right
@@ -167,10 +170,12 @@ tier claim in tokens) and which relies on tier being accurate.
 - TC-2 Member never expires on time: repeated reconciles of a still-member session keep it
   active and slide `ExpiresAt` (= LastVerifiedAt + TTL); a chain/`Attest` error keeps it and
   does NOT enter grace or notify (fail-open).
-- TC-3 Grace on loss (deadline-driven): first `state == none` sets `ExpiresAt = now + GRACE`
-  and does not expire; recovery to `pending`/`active` before the deadline restores it (no
-  re-bind); `state == none` with `now >= ExpiresAt` → `status = expired`. Expiry is decided
-  by the timestamp, not by how many reconcile passes occurred.
+- TC-3 Grace on loss (deadline-driven): first `state == none` sets `GraceUntil = now + GRACE`
+  (leaving `expires_at` informational) and does not expire; recovery to `pending`/`active`
+  before the deadline restores it (`GraceUntil` cleared, no re-bind); `state == none` with
+  `now >= *GraceUntil` → `status = expired`. Expiry is decided by the `GraceUntil` timestamp,
+  not by how many reconcile passes occurred; `GraceUntil == nil` is the sole "not in grace"
+  signal (no far/near inference), including after a reconcile outage.
 - TC-4 Notification: entering grace triggers exactly one bot DM to the session's user via
   the correct instance transport; a send error is logged and does not fail the pass; no DM on
   the second consecutive `none`.
@@ -205,6 +210,14 @@ Pass/fail: TC-1..TC-7 pass; no change to `DeriveState`/eligibility/Koios semanti
   `ExpiresAt` column (no new field; the far-vs-near `ExpiresAt` distinguishes member vs
   in-grace and makes notify-once automatic). Supersedes the `grace_since`/`expiring`
   question. Remaining decision: TTL (default 30d) + GRACE (default ~5d ≈ 1 mainnet epoch).
+- 2026-07-01T12:45:00+08:00 reverted the single-field reuse per review: overloading
+  `expires_at` for both the informational "auto-renews" date and the hard grace deadline is
+  fragile — a reconcile outage can age a member's `expires_at` into the "near" band and get it
+  misjudged as an expired grace (instant expiry, no notice). Split into TWO fields: keep
+  `expires_at` purely informational; add a nullable `grace_until` set only on loss. Enforcement
+  = `grace_until != nil && now >= *grace_until && state==none`; `grace_until == nil` is the sole
+  "not in grace" signal (unambiguous, outage-safe — a post-outage `none` still gets a proper
+  grace + notify). Costs one additive nullable column.
 
 ## 6. Validation Evidence (append-only)
 
