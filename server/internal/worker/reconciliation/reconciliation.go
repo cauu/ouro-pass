@@ -1,10 +1,11 @@
 // Package reconciliation re-derives pool-membership at each epoch boundary
 // (S0004 §2.3, C7): the three-state membership is recomputed from the live
 // snapshot and subscription sessions are expired once the credential is no longer
-// a member (state `none`). Tier is first-party and recomputed at consumption
-// (token issue / channel activation), not reconciled here. It runs as a
-// long-lived worker that triggers when the chain epoch advances; Reconcile is
-// directly callable and unit-tested.
+// a member (state `none`). The first-party tier is recomputed each pass too
+// (S0019 p1-1): the reconciler evaluates `Attest` (state + tier) and writes the
+// fresh tier back, so a `pending→active` upgrade or a stake-driven tier change is
+// reflected without a re-bind. It runs as a long-lived worker that triggers when
+// the chain epoch advances; Reconcile is directly callable and unit-tested.
 package reconciliation
 
 import (
@@ -18,9 +19,12 @@ import (
 	"ouro-pass/server/internal/utils/chain"
 )
 
-// StateEvaluator re-derives a credential's current pool-membership state.
+// StateEvaluator re-derives a credential's current pool-membership state and the
+// issuer's first-party tier for it (S0019 p1-1: was state-only `Membership`; now
+// `Attest` so the reconciler can refresh a member's tier each pass). `oauth.Server`
+// implements it.
 type StateEvaluator interface {
-	Membership(ctx context.Context, stakeCredentialHash string) (membership.State, error)
+	Attest(ctx context.Context, stakeCredentialHash string) (membership.State, string, error)
 }
 
 // SourceFor resolves a read-only chain source for a network. Networks resolves the set of
@@ -70,7 +74,7 @@ func (r *Reconciler) Reconcile(ctx context.Context) (Result, error) {
 	var res Result
 	for _, sess := range sessions {
 		res.Checked++
-		state, err := r.elig.Membership(ctx, sess.StakeCredentialHash)
+		state, tier, err := r.elig.Attest(ctx, sess.StakeCredentialHash)
 		if err != nil {
 			slog.Warn("reconciliation: membership check failed, keeping session",
 				"session", sess.SessionID, "err", err)
@@ -86,8 +90,10 @@ func (r *Reconciler) Reconcile(ctx context.Context) (Result, error) {
 			res.Expired++
 			continue
 		}
-		// Still a member (active or pending): refresh the verification timestamp.
+		// Still a member (active or pending): refresh the verification timestamp and
+		// the first-party tier (S0019 p1-1 — reflects pending→active upgrades).
 		sess.LastVerifiedAt = r.now()
+		sess.Tier = tier
 		if err := r.subs.Upsert(ctx, sess); err != nil {
 			slog.Warn("reconciliation: touch failed, skipping session", "session", sess.SessionID, "err", err)
 			res.Failed++

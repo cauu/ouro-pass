@@ -159,7 +159,7 @@ tier claim in tokens) and which relies on tier being accurate.
 
 ## 3. Execution Plan
 
-- [ ] p1-1 Reconciler refreshes tier: switch `StateEvaluator` to `Attest` (state+tier);
+- [x] p1-1 Reconciler refreshes tier: switch `StateEvaluator` to `Attest` (state+tier);
       write `Tier` back on each member re-verify. Update reconcile tests (mock returns tier;
       assert `pending→active` upgrades the stored tier).
 - [ ] p1-2 Membership-driven grace + expiry (deadline timestamp): add a nullable
@@ -258,5 +258,9 @@ Pass/fail: TC-1..TC-8 pass; no change to `DeriveState`/eligibility/Koios semanti
   `subscriptionGrace = 5d` (≈ 1 mainnet epoch, `< TTL`). No open decisions remain; ready to
   promote to active.
 - 2026-07-01T14:32:06+08:00 promoted draft → active (Previous Spec-ID S0018). Beginning p1-1.
+
+## 6. Validation Evidence (append-only)
+
+- TC-1 | stack: go | command: go test ./internal/worker/reconciliation/ ./internal/e2e/ | result: pass | note: StateEvaluator swapped Membership→Attest; TestReconcile_RefreshesTier asserts a pending(empty-tier)→active session gets tier=gold at reconcile with no re-bind; e2e reconcile still expires on membership loss.
 
 ## 7. Change Requests (append-only)

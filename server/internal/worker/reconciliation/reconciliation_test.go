@@ -19,17 +19,19 @@ func srcOnce(src chain.Source) (SourceFor, Networks) {
 		func(context.Context) ([]string, error) { return []string{"mainnet"}, nil }
 }
 
-// programmableState returns a per-credential membership state set by the test.
-// An absent credential defaults to `none` (no longer a member → expire).
+// programmableState returns a per-credential membership state (and optional tier)
+// set by the test. An absent credential defaults to `none` (no longer a member →
+// expire). tiers is optional; an absent tier is "" (the pre-p1-1 behavior).
 type programmableState struct {
 	states map[string]membership.State
+	tiers  map[string]string
 }
 
-func (p programmableState) Membership(_ context.Context, sch string) (membership.State, error) {
+func (p programmableState) Attest(_ context.Context, sch string) (membership.State, string, error) {
 	if s, ok := p.states[sch]; ok {
-		return s, nil
+		return s, p.tiers[sch], nil
 	}
-	return membership.StateNone, nil
+	return membership.StateNone, "", nil
 }
 
 // faultyState errors for credentials in failFor; otherwise defers to states.
@@ -38,14 +40,14 @@ type faultyState struct {
 	failFor map[string]bool
 }
 
-func (f faultyState) Membership(_ context.Context, sch string) (membership.State, error) {
+func (f faultyState) Attest(_ context.Context, sch string) (membership.State, string, error) {
 	if f.failFor[sch] {
-		return membership.StateNone, context.DeadlineExceeded // simulate a transient chain error
+		return membership.StateNone, "", context.DeadlineExceeded // simulate a transient chain error
 	}
 	if s, ok := f.states[sch]; ok {
-		return s, nil
+		return s, "", nil
 	}
-	return membership.StateNone, nil
+	return membership.StateNone, "", nil
 }
 
 func newStore(t *testing.T) *store.Store {
@@ -109,6 +111,30 @@ func TestReconcile_ExpireKeep(t *testing.T) {
 	gone, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-gone")
 	if gone.Status != domain.SubExpired {
 		t.Errorf("gone session status = %s, want expired", gone.Status)
+	}
+}
+
+// TestReconcile_RefreshesTier (S0019 p1-1 / TC-1): a session created while pending
+// with an empty tier has its stored tier set once the credential becomes active at
+// the next reconcile — no re-bind. Uses Attest (state + tier), not state-only.
+func TestReconcile_RefreshesTier(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	seed(t, st, "up", "sch-up", "") // created pending, empty tier
+
+	elig := programmableState{
+		states: map[string]membership.State{"sch-up": membership.StateActive},
+		tiers:  map[string]string{"sch-up": "gold"}, // now active → gold
+	}
+	sf, nf := srcOnce(chain.NewMockSource(481))
+	rec := New(st, elig, sf, nf, "pool1")
+
+	if _, err := rec.Reconcile(ctx); err != nil {
+		t.Fatal(err)
+	}
+	s, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-up")
+	if s.Status != domain.SubActive || s.Tier != "gold" {
+		t.Fatalf("tier not refreshed: status=%s tier=%q, want active/gold", s.Status, s.Tier)
 	}
 }
 
