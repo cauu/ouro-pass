@@ -122,6 +122,14 @@ func TestStatusAndUnsubscribe(t *testing.T) {
 	}
 }
 
+// TestSessionTTLSharedWithDomain (S0019 p3-5 / TC-13): the activation-display TTL
+// binds to the single domain source of truth (same const the reconciler slides).
+func TestSessionTTLSharedWithDomain(t *testing.T) {
+	if sessionTTL != domain.SubscriptionTTL {
+		t.Fatalf("sessionTTL %v != domain.SubscriptionTTL %v", sessionTTL, domain.SubscriptionTTL)
+	}
+}
+
 func TestParseCommand_StripsBotSuffix(t *testing.T) {
 	cmd, arg := parseCommand("/start@PaoBot xyz")
 	if cmd != "/start" || arg != "xyz" {

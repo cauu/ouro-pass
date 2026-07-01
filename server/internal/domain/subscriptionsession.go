@@ -2,6 +2,19 @@ package domain
 
 import "time"
 
+const (
+	// SubscriptionTTL is the informational validity window (S0019): a member's
+	// displayed ExpiresAt = LastVerifiedAt + TTL ("valid through, auto-renews"). It
+	// is NEVER enforced — real expiry is membership-driven (grace + deadline). Shared
+	// by the reconciler (slides it each pass) and the telegram activation display so
+	// the two cannot drift (p3-5).
+	SubscriptionTTL = 30 * 24 * time.Hour
+	// SubscriptionGrace is the membership-loss grace: the first reconcile that sees
+	// state==none records GraceUntil = now + GRACE and expiry is now >= GraceUntil.
+	// ≈ 1 mainnet epoch, comfortably > one reconcile cadence, and < TTL.
+	SubscriptionGrace = 5 * 24 * time.Hour
+)
+
 // SubscriptionStatus is the SubscriptionSession lifecycle.
 type SubscriptionStatus string
 

@@ -304,6 +304,16 @@ func TestReconcile_OutageThenNoneGetsGrace(t *testing.T) {
 	}
 }
 
+// TestLifecycleConstsShared (S0019 p3-5 / TC-13): the reconcile-slide consts are
+// bound to the single domain source of truth, so they cannot drift from the
+// telegram activation-display TTL (which binds to the same domain const).
+func TestLifecycleConstsShared(t *testing.T) {
+	if subscriptionTTL != domain.SubscriptionTTL || subscriptionGrace != domain.SubscriptionGrace {
+		t.Fatalf("reconcile consts drifted from domain: TTL=%v/%v grace=%v/%v",
+			subscriptionTTL, domain.SubscriptionTTL, subscriptionGrace, domain.SubscriptionGrace)
+	}
+}
+
 func TestReconcile_EmptyIsNoop(t *testing.T) {
 	st := newStore(t)
 	sf, nf := srcOnce(chain.NewMockSource(1))

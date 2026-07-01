@@ -19,14 +19,12 @@ import (
 	"ouro-pass/server/internal/utils/chain"
 )
 
+// subscriptionTTL / subscriptionGrace are the shared lifecycle policy consts (a
+// single source of truth in `domain`, so the reconcile slide and the activation
+// display cannot drift — S0019 p3-5).
 const (
-	// subscriptionTTL is the informational validity window: a member's displayed
-	// ExpiresAt = LastVerifiedAt + TTL ("valid through, auto-renews"). Never enforced.
-	subscriptionTTL = 30 * 24 * time.Hour
-	// subscriptionGrace is the membership-loss grace: the first reconcile that sees
-	// state==none records GraceUntil = now + GRACE and expiry is now >= GraceUntil.
-	// ≈ 1 mainnet epoch, comfortably > one reconcile cadence, and < TTL.
-	subscriptionGrace = 5 * 24 * time.Hour
+	subscriptionTTL   = domain.SubscriptionTTL
+	subscriptionGrace = domain.SubscriptionGrace
 )
 
 // StateEvaluator re-derives a credential's current pool-membership state and the

@@ -22,8 +22,9 @@ import (
 // sessionTTL is the informational validity window shown at activation: the
 // displayed ExpiresAt = LastVerifiedAt + TTL ("valid through, auto-renews"). It is
 // never enforced — real expiry is membership-driven (reconciliation grace + deadline,
-// S0019). Mirrors reconciliation.subscriptionTTL; the reconciler re-slides it each pass.
-const sessionTTL = 30 * 24 * time.Hour
+// S0019). Sourced from the shared domain const so the activation display and the
+// reconcile slide cannot drift (p3-5); the reconciler re-slides it each pass.
+const sessionTTL = domain.SubscriptionTTL
 
 // Update is the subset of a Telegram update the bot acts on.
 type Update struct {
