@@ -62,6 +62,13 @@ tier claim in tokens) and which relies on tier being accurate.
 - **Policy + foolproofing (option 1, p3-1):** value must be gated on tier; make the admin
   push modal enforce that (a required tier select instead of a free-text box whose blank
   default silently broadcasts to everyone).
+- **Koios free-tier key config (option A):** the existing `OUROPASS_CHAIN_API_KEY` (already
+  sent as `Authorization: Bearer`) is the one lever that avoids rate limits — a free
+  registered koios.rest key lifts the quota from the public tier (5,000/day, 10 RPS) to the
+  registered free tier (50,000/day). Make it discoverable and correctly described: fix the
+  misleading ".env.example"/deployment copy (it currently says "paid tiers" only) and add an
+  optional installer prompt. Env stays the home (a single boot-time infra credential, per
+  the config-secrets convention + [[installer-scope-boundary]]).
 
 ### Constraints
 
@@ -84,6 +91,12 @@ tier claim in tokens) and which relies on tier being accurate.
 - Admin-configurable TTL/grace (consts this spec; admin config is future).
 - Non-telegram channel notifications (telegram only now; the notifier is channel-typed to
   extend later).
+- Moving the Koios key into the DB / an admin "Chain settings" page (option B) — that is a
+  future consolidation alongside the deferred self-hosted-endpoint admin setting (S0015);
+  this spec keeps the key in env (option A).
+- Reconcile request batching / pacing / local-epoch trigger — with the registered free-tier
+  key (50k/day) the reconcile load is comfortable for typical pools; a hard throttle /
+  batching is a future optimization for very large pools, not this spec.
 
 ## 2. Outline Design
 
@@ -119,6 +132,12 @@ tier claim in tokens) and which relies on tier being accurate.
   choice, not the silent blank default. Optional backend guard: drop untargeted broadcasts to
   tier-less subscriptions. (Aside, out of scope: Channel / topic / entitlement are also
   free-text and could later become selects; not a freeload gate.)
+- **Koios key config (p1-6, option A)**: no core code change (`OUROPASS_CHAIN_API_KEY` is
+  already read into `cfg.ChainAPIKey` and sent as `Authorization: Bearer` — `koios.go:218`).
+  Fix `.env.example` + `docs/deployment.md` copy to explain the tiers (public 5k/day·10 RPS
+  → registered free 50k/day via a free koios.rest key; blank = public). Add an OPTIONAL
+  installer prompt in `deploy/install.sh` (`ask CHAIN_API_KEY … ""`, blank default so
+  `--non-interactive` is unaffected) that `set_env OUROPASS_CHAIN_API_KEY`.
 - **Docs**: record the lifecycle (membership-driven expiry, 1-epoch grace, notify, tier
   refresh) and the option-1 policy (value on tier; `pending`/dust = base membership only).
 
@@ -160,6 +179,10 @@ tier claim in tokens) and which relies on tier being accurate.
 - [ ] p1-5 Push-modal foolproofing (p3-1): required tier `<select>` from configured tiers +
       explicit "All members (no tier gate)" option in `PushPage`; (optional) backend guard
       dropping untargeted broadcasts to tier-less subscriptions. Web typecheck + test.
+- [ ] p1-6 Koios free-tier key config (option A): fix `.env.example` + `docs/deployment.md`
+      copy (tiers: public 5k/day·10 RPS → registered free 50k/day via a free koios.rest key;
+      blank = public); add an optional blank-default installer prompt for
+      `OUROPASS_CHAIN_API_KEY`. No core code change (already Bearer-plumbed). shellcheck clean.
 - [ ] p2-1 Validation: `make test` + `pnpm test` + `shellcheck deploy/install.sh`.
 
 ## 4. Test and Acceptance Criteria
@@ -184,8 +207,12 @@ tier claim in tokens) and which relies on tier being accurate.
 - TC-6 Push modal: `Target tier` is a required select from the configured tiers with an
   explicit "All members" option; a broadcast-to-all is only sent when that option is chosen.
 - TC-7 Regression: `make test` + `pnpm test` green; `shellcheck deploy/install.sh` clean.
+- TC-8 Koios key config: `.env.example` + `docs/deployment.md` describe the registered free
+  tier (50k/day via a free koios.rest key) vs the public tier (5k/day, 10 RPS), not "paid
+  tiers" only; the installer optionally prompts and writes `OUROPASS_CHAIN_API_KEY`; blank
+  still works (public tier). shellcheck clean; a set key is sent as `Authorization: Bearer`.
 
-Pass/fail: TC-1..TC-7 pass; no change to `DeriveState`/eligibility/Koios semantics.
+Pass/fail: TC-1..TC-8 pass; no change to `DeriveState`/eligibility/Koios semantics.
 
 ## 5. Execution Log (append-only)
 
@@ -218,7 +245,13 @@ Pass/fail: TC-1..TC-7 pass; no change to `DeriveState`/eligibility/Koios semanti
   = `grace_until != nil && now >= *grace_until && state==none`; `grace_until == nil` is the sole
   "not in grace" signal (unambiguous, outage-safe — a post-outage `none` still gets a proper
   grace + notify). Costs one additive nullable column.
-
-## 6. Validation Evidence (append-only)
+- 2026-07-01T13:05:00+08:00 added p1-6 (Koios free-tier key config, option A) after the
+  rate-limit research: public tier is 5,000/day @ 10 RPS, the registered free tier is
+  50,000/day via a free koios.rest key, which comfortably covers reconcile for typical pools.
+  The key already exists (`OUROPASS_CHAIN_API_KEY`, Bearer-plumbed) but the copy misleadingly
+  says "paid tiers" and there's no installer prompt → p1-6 fixes the copy + adds an optional
+  blank-default prompt; env stays the home. Option B (admin "Chain settings" page, DB-stored
+  key + the deferred self-hosted endpoint) and reconcile batching/pacing/local-epoch trigger
+  are explicit non-goals (future). Remaining decision unchanged: TTL (30d) + GRACE (~5d).
 
 ## 7. Change Requests (append-only)
