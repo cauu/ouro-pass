@@ -211,6 +211,15 @@ tier claim in tokens) and which relies on tier being accurate.
       (`listChannels()`, same source as the Channels page). The push now targets a specific
       configured bot via `channel_id` (channel_type derived from the chosen instance) instead of
       a hand-typed type string. Disabled instances are excluded. Web typecheck + RTL tests. (TC-15)
+- [x] p3-9 Harden reconcile tests — pin "expiry is deadline-driven, not pass-count" (test-review
+      P1): a multi-agent audit of the lifecycle TESTS found the headline invariant was not actually
+      pinned — a count-based-expiry regression passed the whole suite (the existing expiry test
+      forced `GraceUntil` into the past, so timestamp and count impls both expired). Add
+      `TestReconcile_ExpiryIsDeadlineDrivenNotPassCount` driving an INJECTED clock: stays in grace
+      across multiple `none` passes while the deadline is future (asserts not-expired, deadline
+      unchanged), pins `GraceUntil == now+GRACE` and the `now >= *GraceUntil` (==) boundary via
+      natural elapse; and strengthen `NotifiesOnceOnGrace` pass-2 to assert `Expired==0` + active.
+      Verified with a mutation (count-based expiry) — the new tests FAIL, the old ones didn't. (TC-17)
 - [x] p3-8 Drop the dead Target topic / Required entitlement inputs (user follow-up): nothing
       populates a subscription's `Topics`/`Entitlements` (activation sets them nil; no admin/bot/
       API/UI path; §7.1 unbuilt), so `matches()` filtering on them always yields ZERO recipients —
@@ -264,8 +273,11 @@ tier claim in tokens) and which relies on tier being accurate.
 - TC-16 No dead topic/entitlement inputs: the New-push form no longer renders Target topic /
   Required entitlement inputs (they only ever narrowed delivery to zero); the created job's
   target carries at most a tier.
+- TC-17 Expiry is deadline-driven, not pass-count: with an injected clock, a session in grace
+  survives multiple `none` reconciles while `now < GraceUntil` (not expired, deadline unchanged)
+  and expires exactly when `now >= GraceUntil`; a count-based-expiry mutation fails the suite.
 
-Pass/fail: TC-1..TC-16 pass; no change to `DeriveState`/eligibility/Koios semantics.
+Pass/fail: TC-1..TC-17 pass; no change to `DeriveState`/eligibility/Koios semantics.
 
 ## 5. Execution Log (append-only)
 
@@ -349,8 +361,17 @@ Pass/fail: TC-1..TC-16 pass; no change to `DeriveState`/eligibility/Koios semant
 
 - TC-16 | stack: ui | command: pnpm test src/features/push/PushPage.test.tsx && pnpm typecheck | result: pass | note: removed the Target topic + Required entitlement inputs from the New-push form (PushForm drops topic/entitlement; target builds only tier). RTL asserts input[name=topic]/[name=entitlement] are absent. Rationale: no code path populates a subscription's Topics/Entitlements, so filtering on them always matched zero recipients (silent footgun). Backend matches() untouched; detail drawer still shows historical values. Web suite green; tsc clean; embed rebuilt.
 
+- TC-17 | stack: go | command: go test -count=1 ./internal/worker/reconciliation/ | result: pass | note: added TestReconcile_ExpiryIsDeadlineDrivenNotPassCount (injected clock: in-grace passes with future deadline → Expired0/active/deadline unchanged; at deadline == → expired) + NotifiesOnce pass2 now asserts Expired0/active. Mutation-verified: patching the impl to expire on the 2nd `none` (ignoring the deadline) FAILS both new checks while GraceLifecycle/KeepAndGrace stayed green (exactly the false-confidence gap the audit flagged). go vet clean.
+
 ## 7. Change Requests (append-only)
 
+- 2026-07-01T16:54:00+08:00 multi-agent audit of the reconcile lifecycle TESTS (claude+cursor,
+  same P1; codex rate-limited): the "expiry is deadline-driven, not reconcile-pass-count" invariant
+  was not actually pinned — a count-based regression passed the whole suite. Added p3-9 (TC-17):
+  injected-clock discriminator test + strengthened NotifiesOnce, mutation-verified to have teeth.
+  Remaining audit P2/P3 (tier-change test, re-notify on re-entry, ListActive exclusion, past-
+  expires_at active, tautological const test, stale comments) noted in code_review summary, not
+  taken this round per user scope ("补 P1 + 注入时钟").
 - 2026-07-01T16:39:00+08:00 user asked what Target topic / Required entitlement do → found they
   filter push against a subscription's Topics/Entitlements, which NOTHING ever populates (§7.1
   unbuilt), so any value silently narrows delivery to zero. User chose to remove the inputs.

@@ -167,6 +167,63 @@ func TestReconcile_GraceLifecycle(t *testing.T) {
 	}
 }
 
+// TestReconcile_ExpiryIsDeadlineDrivenNotPassCount (S0019 p3-9 / TC-17) is the
+// discriminator the rest of the suite lacked: it drives an INJECTED clock so a
+// session can stay in grace across many `none` passes with the deadline still in
+// the future, and asserts it does NOT expire — then expires it only once the clock
+// reaches the deadline. A count-based regression ("expire on the Nth consecutive
+// none") fails at the first future-deadline pass; the timestamp implementation
+// passes. Also pins the initial `GraceUntil = now + GRACE` computation and the
+// `now >= *GraceUntil` boundary (== case), without the test-side past-deadline hack.
+func TestReconcile_ExpiryIsDeadlineDrivenNotPassCount(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	seed(t, st, "s", "sch", "gold")
+	sf, nf := srcOnce(chain.NewMockSource(481))
+	none := programmableState{states: map[string]membership.State{}} // always none
+	rec := New(st, none, sf, nf, "pool1")
+
+	// Injected clock (same-package test can set the unexported seam directly).
+	cur := time.Now()
+	rec.now = func() time.Time { return cur }
+
+	// Pass 1: first none → grace. Deadline must be exactly cur + GRACE.
+	if res, _ := rec.Reconcile(ctx); res.Grace != 1 || res.Expired != 0 {
+		t.Fatalf("pass1 = %+v, want Grace1/Expired0", res)
+	}
+	s, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-s")
+	if s.GraceUntil == nil || !s.GraceUntil.Equal(cur.Add(subscriptionGrace)) {
+		t.Fatalf("GraceUntil = %v, want now+GRACE = %v", s.GraceUntil, cur.Add(subscriptionGrace))
+	}
+	deadline := *s.GraceUntil
+
+	// Passes 2..4: still none, clock advanced but ALWAYS strictly before the deadline.
+	// A frequency/count-based expiry would fire here; the timestamp impl must keep the
+	// session active and must NOT move the deadline.
+	for _, adv := range []time.Duration{subscriptionGrace / 4, subscriptionGrace / 2, subscriptionGrace - time.Minute} {
+		cur = deadline.Add(adv - subscriptionGrace) // == original start + adv, strictly < deadline
+		res, _ := rec.Reconcile(ctx)
+		if res.Expired != 0 || res.Grace != 0 {
+			t.Fatalf("in-grace pass (adv=%v) = %+v, want no expiry, no new grace", adv, res)
+		}
+		s, _ = st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-s")
+		if s.Status != domain.SubActive || s.GraceUntil == nil || !s.GraceUntil.Equal(deadline) {
+			t.Fatalf("in-grace pass (adv=%v): status=%s grace=%v, want active + deadline unchanged (%v)",
+				adv, s.Status, s.GraceUntil, deadline)
+		}
+	}
+
+	// Reaching the deadline exactly (now == *GraceUntil) → now >= deadline → expired.
+	cur = deadline
+	if res, _ := rec.Reconcile(ctx); res.Expired != 1 {
+		t.Fatalf("at deadline = %+v, want Expired1", res)
+	}
+	s, _ = st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-s")
+	if s.Status != domain.SubExpired {
+		t.Fatalf("at deadline: status=%s, want expired", s.Status)
+	}
+}
+
 // TestReconcile_RefreshesTier (S0019 p1-1 / TC-1): a session created while pending
 // with an empty tier has its stored tier set once the credential becomes active at
 // the next reconcile — no re-bind. Uses Attest (state + tier), not state-only.
@@ -255,9 +312,14 @@ func TestReconcile_NotifiesOnceOnGrace(t *testing.T) {
 	if len(calls) != 1 || calls[0].SessionID != "s" || msgs[0] != graceMessage {
 		t.Fatalf("notifier calls = %+v msgs=%v, want one call for session s with graceMessage", calls, msgs)
 	}
-	// Pass 2: still none, already in grace → no second notification.
-	if res, err := rec.Reconcile(ctx); err != nil || res.Grace != 0 {
-		t.Fatalf("pass2 = %+v err=%v, want Grace0 (already in grace)", res, err)
+	// Pass 2: still none, already in grace → no second notification, AND the session
+	// must NOT expire on this second `none` (expiry is deadline-driven, not "2nd none";
+	// without this assertion a count-based-expiry regression would slip through here).
+	if res, err := rec.Reconcile(ctx); err != nil || res.Grace != 0 || res.Expired != 0 {
+		t.Fatalf("pass2 = %+v err=%v, want Grace0/Expired0 (still in grace, deadline in the future)", res, err)
+	}
+	if s, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-s"); s.Status != domain.SubActive {
+		t.Fatalf("pass2 status = %s, want still active (deadline not reached)", s.Status)
 	}
 	if len(calls) != 1 {
 		t.Fatalf("notifier called %d times, want exactly 1 (no repeat while still none)", len(calls))
