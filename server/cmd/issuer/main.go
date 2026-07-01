@@ -194,7 +194,25 @@ func run() error {
 			}
 			return attestor.DistinctNetworks(cfgs), nil
 		}
-		recon := reconciliation.New(st, deps.OAuth, deps.SrcFor, networksFor, cfg.Scope)
+		// Grace-entry notifier (S0019 p1-3): DM the affected user via the same
+		// per-instance token routing the push worker uses. Telegram-only for now;
+		// other channel types are skipped (best-effort, fail-open in the reconciler).
+		graceNotifier := func(ctx context.Context, sess domain.SubscriptionSession, msg string) error {
+			if sess.ChannelType != "telegram" {
+				return nil
+			}
+			inst, err := st.Channels().Get(ctx, sess.ChannelID)
+			if err != nil {
+				return err
+			}
+			tok, err := instanceToken(deps.Cipher, *inst)
+			if err != nil {
+				return err
+			}
+			return telegram.NewBotAPITransport(func() string { return tok }).SendMessage(ctx, sess.ChannelUserID, msg)
+		}
+		recon := reconciliation.New(st, deps.OAuth, deps.SrcFor, networksFor, cfg.Scope).
+			WithNotifier(graceNotifier)
 		startWorker("reconciliation", func() { recon.Run(sigCtx, epochPollInterval) })
 	}
 

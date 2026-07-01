@@ -171,7 +171,7 @@ tier claim in tokens) and which relies on tier being accurate.
       Tests: slide /
       grace-entry / restore-before-deadline / expire-after-deadline / fail-open-on-error /
       outage-then-none-still-gets-grace.
-- [ ] p1-3 Expiry notification: `Notifier` seam on the reconciler; `main.go` wires the
+- [x] p1-3 Expiry notification: `Notifier` seam on the reconciler; `main.go` wires the
       telegram transport (per-instance token routing); send the grace warning once on
       grace-entry; best-effort + fail-open. Test the seam is called once with the right
       session/message and that send errors don't fail reconcile, and no DM on the 2nd `none`.
@@ -263,5 +263,7 @@ Pass/fail: TC-1..TC-8 pass; no change to `DeriveState`/eligibility/Koios semanti
 
 - TC-1 | stack: go | command: go test ./internal/worker/reconciliation/ ./internal/e2e/ | result: pass | note: StateEvaluator swapped Membership→Attest; TestReconcile_RefreshesTier asserts a pending(empty-tier)→active session gets tier=gold at reconcile with no re-bind; e2e reconcile still expires on membership loss.
 - TC-2/TC-3 | stack: go | command: go test ./... | result: pass | note: added nullable grace_until column (migration 0016 sqlite+postgres) + domain field + repo Upsert/scan. Reconcile re-derives membership first: member → slide ExpiresAt=now+30d, clear GraceUntil; first none → GraceUntil=now+5d (status stays active); none with now>=deadline → expired; recovery before deadline restores. TestReconcile_KeepAndGrace (slide + grace-entry, no immediate expiry), TestReconcile_GraceLifecycle (grace→restore→re-grace→expire-after-deadline), TestReconcile_FaultIsolation (chain error keeps session, no grace), e2e two-pass grace→expire. Full server suite green.
+
+- TC-4 | stack: go | command: go test ./internal/worker/reconciliation/ ./cmd/issuer/ | result: pass | note: Notifier seam (WithNotifier) on the reconciler; grace-entry fires it once with the session + graceMessage. TestReconcile_NotifiesOnceOnGrace asserts one call on entry, that a notifier error doesn't fail the pass, and no second DM while still none. main.go wires a telegram-only notifier reusing the push per-instance token routing (st.Channels().Get → instanceToken → NewBotAPITransport.SendMessage to channel_user_id).
 
 ## 7. Change Requests (append-only)

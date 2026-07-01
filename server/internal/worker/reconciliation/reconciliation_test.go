@@ -227,6 +227,41 @@ func TestReconcile_FaultIsolation(t *testing.T) {
 	}
 }
 
+// TestReconcile_NotifiesOnceOnGrace (S0019 p1-3 / TC-4): entering grace fires the
+// notifier exactly once with the session + grace message; a notifier error does not
+// fail the pass; a second consecutive none (still in grace) does NOT notify again.
+func TestReconcile_NotifiesOnceOnGrace(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	seed(t, st, "s", "sch", "gold")
+
+	var calls []domain.SubscriptionSession
+	var msgs []string
+	notifier := func(_ context.Context, sess domain.SubscriptionSession, msg string) error {
+		calls = append(calls, sess)
+		msgs = append(msgs, msg)
+		return context.DeadlineExceeded // send error must not fail reconcile
+	}
+	sf, nf := srcOnce(chain.NewMockSource(481))
+	none := programmableState{states: map[string]membership.State{}} // sch → none
+	rec := New(st, none, sf, nf, "pool1").WithNotifier(notifier)
+
+	// Pass 1: grace entry → notify once.
+	if res, err := rec.Reconcile(ctx); err != nil || res.Grace != 1 {
+		t.Fatalf("pass1 = %+v err=%v, want Grace1 and no error despite notifier failure", res, err)
+	}
+	if len(calls) != 1 || calls[0].SessionID != "s" || msgs[0] != graceMessage {
+		t.Fatalf("notifier calls = %+v msgs=%v, want one call for session s with graceMessage", calls, msgs)
+	}
+	// Pass 2: still none, already in grace → no second notification.
+	if res, err := rec.Reconcile(ctx); err != nil || res.Grace != 0 {
+		t.Fatalf("pass2 = %+v err=%v, want Grace0 (already in grace)", res, err)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("notifier called %d times, want exactly 1 (no repeat while still none)", len(calls))
+	}
+}
+
 func TestReconcile_EmptyIsNoop(t *testing.T) {
 	st := newStore(t)
 	sf, nf := srcOnce(chain.NewMockSource(1))

@@ -68,6 +68,13 @@ func New(st *store.Store, elig StateEvaluator, srcFor SourceFor, networks Networ
 	return &Reconciler{poolID: poolID, subs: st.Subscriptions(), elig: elig, srcFor: srcFor, networks: networks, now: time.Now}
 }
 
+// WithNotifier attaches the grace-entry notifier (S0019 p1-3) and returns the
+// reconciler for chaining. nil (the default) → notifications are skipped.
+func (r *Reconciler) WithNotifier(n Notifier) *Reconciler {
+	r.notifier = n
+	return r
+}
+
 // graceMessage is the one-shot warning sent when a subscription enters grace.
 const graceMessage = "Your subscription is expiring: we no longer see an active delegation for this account. Re-delegate to your pool to keep your membership."
 
