@@ -37,8 +37,6 @@ interface PushForm {
   content: string;
   channel_id: string; // a specific configured instance; channel_type is derived from it
   tier: string;
-  topic: string;
-  entitlement: string;
 }
 
 // tierAllMembers is the explicit "no tier gate" choice in the push target select.
@@ -55,7 +53,7 @@ function CreatePushDialog({ onCreated }: { onCreated: () => void }) {
     reset,
     formState: { errors },
   } = useForm<PushForm>({
-    defaultValues: { title: "", content: "", channel_id: "", tier: "", topic: "", entitlement: "" },
+    defaultValues: { title: "", content: "", channel_id: "", tier: "" },
   });
 
   // Configured tiers drive the target select (same source as the tier-rules editor).
@@ -76,10 +74,11 @@ function CreatePushDialog({ onCreated }: { onCreated: () => void }) {
         content: v.content,
         channel_type: inst?.channel_type ?? "telegram",
         channel_id: v.channel_id,
+        // topic / entitlement targeting is deferred: nothing populates a subscription's
+        // Topics/Entitlements yet (§7.1 unbuilt), so exposing them only ever narrows a
+        // push to zero recipients silently. Re-add the inputs when those features land.
         target: {
           ...(tier ? { tier } : {}),
-          ...(v.topic ? { topic: v.topic } : {}),
-          ...(v.entitlement ? { entitlement: v.entitlement } : {}),
         },
       };
       return createPushJob(body);
@@ -106,7 +105,7 @@ function CreatePushDialog({ onCreated }: { onCreated: () => void }) {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>New push</DialogTitle>
-          <DialogDescription>Choose a target tier (or explicitly all members); optionally narrow by topic / entitlement.</DialogDescription>
+          <DialogDescription>Pick the channel and target tier (or explicitly all members).</DialogDescription>
         </DialogHeader>
         <form className="grid gap-3" onSubmit={handleSubmit((v) => create.mutate(v))}>
           <Field label="Title" required error={errors.title && "Title is required"}>
@@ -140,12 +139,6 @@ function CreatePushDialog({ onCreated }: { onCreated: () => void }) {
                   </option>
                 ))}
               </Select>
-            </Field>
-            <Field label="Target topic">
-              <Input {...register("topic")} />
-            </Field>
-            <Field label="Required entitlement">
-              <Input {...register("entitlement")} />
             </Field>
           </div>
           <DialogFooter>

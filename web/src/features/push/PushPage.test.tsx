@@ -87,6 +87,14 @@ describe("PushPage tier + channel gate (TC-11 / TC-15)", () => {
     expect(createPushJob).not.toHaveBeenCalled();
   });
 
+  it("no longer exposes topic / entitlement inputs (TC-16)", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await openDialog(user);
+    expect(document.querySelector('input[name="topic"]')).toBeNull();
+    expect(document.querySelector('input[name="entitlement"]')).toBeNull();
+  });
+
   it("only offers active instances (disabled ones are excluded, TC-15)", async () => {
     const user = userEvent.setup();
     renderPage();

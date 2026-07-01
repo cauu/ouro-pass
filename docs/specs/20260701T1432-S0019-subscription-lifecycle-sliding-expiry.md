@@ -211,6 +211,12 @@ tier claim in tokens) and which relies on tier being accurate.
       (`listChannels()`, same source as the Channels page). The push now targets a specific
       configured bot via `channel_id` (channel_type derived from the chosen instance) instead of
       a hand-typed type string. Disabled instances are excluded. Web typecheck + RTL tests. (TC-15)
+- [x] p3-8 Drop the dead Target topic / Required entitlement inputs (user follow-up): nothing
+      populates a subscription's `Topics`/`Entitlements` (activation sets them nil; no admin/bot/
+      API/UI path; §7.1 unbuilt), so `matches()` filtering on them always yields ZERO recipients —
+      a silent footgun like the p1-5 tier default. Remove both inputs from the New-push form (target
+      now carries only tier); the detail drawer still displays them for historical jobs; backend
+      filter untouched. Re-add when topic-subscription / entitlement-grant lands. (TC-16)
 
 ## 4. Test and Acceptance Criteria
 
@@ -255,8 +261,11 @@ tier claim in tokens) and which relies on tier being accurate.
 - TC-15 Push Channel select: the push modal Channel is a required select of active channel
   instances; submit is blocked with no channel; a disabled instance is not offered; the created
   job carries the chosen `channel_id` + derived `channel_type`.
+- TC-16 No dead topic/entitlement inputs: the New-push form no longer renders Target topic /
+  Required entitlement inputs (they only ever narrowed delivery to zero); the created job's
+  target carries at most a tier.
 
-Pass/fail: TC-1..TC-15 pass; no change to `DeriveState`/eligibility/Koios semantics.
+Pass/fail: TC-1..TC-16 pass; no change to `DeriveState`/eligibility/Koios semantics.
 
 ## 5. Execution Log (append-only)
 
@@ -338,8 +347,14 @@ Pass/fail: TC-1..TC-15 pass; no change to `DeriveState`/eligibility/Koios semant
 
 - TC-15 | stack: ui | command: pnpm test src/features/push/PushPage.test.tsx && pnpm typecheck | result: pass | note: Channel is now a required <Select> of active instances from listChannels(); PushForm carries channel_id, channel_type derived from the chosen instance. RTL: blocked with no channel ("Pick a channel"), disabled "Old" instance excluded from options, created job has channel_id="tg1"+channel_type="telegram". Full web suite 15 tests green; tsc clean. Embed rebuilt (bundle contains "Pick a channel").
 
+- TC-16 | stack: ui | command: pnpm test src/features/push/PushPage.test.tsx && pnpm typecheck | result: pass | note: removed the Target topic + Required entitlement inputs from the New-push form (PushForm drops topic/entitlement; target builds only tier). RTL asserts input[name=topic]/[name=entitlement] are absent. Rationale: no code path populates a subscription's Topics/Entitlements, so filtering on them always matched zero recipients (silent footgun). Backend matches() untouched; detail drawer still shows historical values. Web suite green; tsc clean; embed rebuilt.
+
 ## 7. Change Requests (append-only)
 
+- 2026-07-01T16:39:00+08:00 user asked what Target topic / Required entitlement do → found they
+  filter push against a subscription's Topics/Entitlements, which NOTHING ever populates (§7.1
+  unbuilt), so any value silently narrows delivery to zero. User chose to remove the inputs.
+  Appended p3-8 (TC-16). Backend filter + schema kept for when the feature lands.
 - 2026-07-01T16:28:00+08:00 user follow-up during acceptance: make the push-modal Channel a
   dropdown too (in-place, no new spec). Appended p3-7 (TC-15): Channel → required select of
   active channel instances (channel_id), channel_type derived. Also documented that the admin
