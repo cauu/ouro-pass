@@ -1,12 +1,12 @@
 # Subscription lifecycle: membership-driven expiry + grace + notifications + tier refresh
 
 Spec-ID: S0019
-Status: active
+Status: completed
 Created Time: 2026-07-01T11:52:34+08:00
 Start Time: 2026-07-01T14:32:06+08:00
-Completion Time:
+Completion Time: 2026-07-01T17:07:53+08:00
 Previous Spec-ID: S0018
-Closure Reason:
+Closure Reason: delivered
 
 ## 1. Requirement Details
 
@@ -365,6 +365,12 @@ Pass/fail: TC-1..TC-17 pass; no change to `DeriveState`/eligibility/Koios semant
 
 ## 7. Change Requests (append-only)
 
+- 2026-07-01T17:07:53+08:00 CLOSED (delivered). Second full multi-agent review (round 2, covering
+  p3-1..p3-9; `code_review/S0019-round2/`) returned APPROVE from claude + cursor, no P0/P1 — all
+  findings were accepted deferrals or P3 notes (sync notification, p3-1 availability tradeoff,
+  activation asymmetry, legacy empty-ChannelID DM, push single-instance narrowing; one cursor
+  false-positive on the client channel_type fallback cleared — server-side 400 guard). Plan items
+  p1-1..p1-6, p2-1, p3-1..p3-9 all [x]; TC-1..TC-17 evidenced; full regression green. User closed.
 - 2026-07-01T16:54:00+08:00 multi-agent audit of the reconcile lifecycle TESTS (claude+cursor,
   same P1; codex rate-limited): the "expiry is deadline-driven, not reconcile-pass-count" invariant
   was not actually pinned — a count-based regression passed the whole suite. Added p3-9 (TC-17):
