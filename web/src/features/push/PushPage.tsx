@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { createPushJob, listPushJobs } from "@/api/admin";
+import { createPushJob, getPool, listPushJobs } from "@/api/admin";
 import { ApiError } from "@/api/client";
 import { PageHeader, QueryState } from "@/app/page";
 import { fmtTime } from "@/lib/format";
@@ -26,6 +26,7 @@ import {
 } from "@/ui/drawer";
 import { Field } from "@/ui/field";
 import { Input } from "@/ui/input";
+import { Select } from "@/ui/select";
 import { StatusBadge } from "@/ui/status-badge";
 import { Table, TBody, TD, TH, THead, TR } from "@/ui/table";
 import { Textarea } from "@/ui/textarea";
@@ -40,6 +41,11 @@ interface PushForm {
   entitlement: string;
 }
 
+// tierAllMembers is the explicit "no tier gate" choice in the push target select.
+// A blank tier used to silently broadcast to everyone — now targeting-all is a
+// conscious selection, not the default (S0019 p1-5).
+const tierAllMembers = "__all__";
+
 function CreatePushDialog({ onCreated }: { onCreated: () => void }) {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
@@ -52,14 +58,19 @@ function CreatePushDialog({ onCreated }: { onCreated: () => void }) {
     defaultValues: { title: "", content: "", channel_type: "telegram", tier: "", topic: "", entitlement: "" },
   });
 
+  // Configured tiers drive the target select (same source as the tier-rules editor).
+  const pool = useQuery({ queryKey: ["pool"], queryFn: getPool });
+  const tiers = [...new Set((pool.data?.tier_rules ?? []).map((r) => r.tier).filter(Boolean))];
+
   const create = useMutation({
     mutationFn: (v: PushForm) => {
+      const tier = v.tier === tierAllMembers ? "" : v.tier;
       const body: PushCreate = {
         title: v.title,
         content: v.content,
         channel_type: v.channel_type,
         target: {
-          ...(v.tier ? { tier: v.tier } : {}),
+          ...(tier ? { tier } : {}),
           ...(v.topic ? { topic: v.topic } : {}),
           ...(v.entitlement ? { entitlement: v.entitlement } : {}),
         },
@@ -88,7 +99,7 @@ function CreatePushDialog({ onCreated }: { onCreated: () => void }) {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>New push</DialogTitle>
-          <DialogDescription>Target an audience by tier / topic / entitlement (blank = all).</DialogDescription>
+          <DialogDescription>Choose a target tier (or explicitly all members); optionally narrow by topic / entitlement.</DialogDescription>
         </DialogHeader>
         <form className="grid gap-3" onSubmit={handleSubmit((v) => create.mutate(v))}>
           <Field label="Title" required error={errors.title && "Title is required"}>
@@ -101,8 +112,18 @@ function CreatePushDialog({ onCreated }: { onCreated: () => void }) {
             <Field label="Channel" required>
               <Input {...register("channel_type")} />
             </Field>
-            <Field label="Target tier">
-              <Input {...register("tier")} placeholder="gold" />
+            <Field label="Target tier" required error={errors.tier && "Pick a tier or “All members”"}>
+              <Select {...register("tier", { required: true })} defaultValue="">
+                <option value="" disabled>
+                  Select…
+                </option>
+                <option value={tierAllMembers}>All members (no tier gate)</option>
+                {tiers.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </Select>
             </Field>
             <Field label="Target topic">
               <Input {...register("topic")} />

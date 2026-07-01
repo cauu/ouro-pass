@@ -177,7 +177,7 @@ tier claim in tokens) and which relies on tier being accurate.
       session/message and that send errors don't fail reconcile, and no DM on the 2nd `none`.
 - [x] p1-4 `/status` + docs: show real `ExpiresAt` + `LastVerifiedAt` + grace wording;
       document the lifecycle and the option-1 policy.
-- [ ] p1-5 Push-modal foolproofing (p3-1): required tier `<select>` from configured tiers +
+- [x] p1-5 Push-modal foolproofing (p3-1): required tier `<select>` from configured tiers +
       explicit "All members (no tier gate)" option in `PushPage`; (optional) backend guard
       dropping untargeted broadcasts to tier-less subscriptions. Web typecheck + test.
 - [ ] p1-6 Koios free-tier key config (option A): fix `.env.example` + `docs/deployment.md`
@@ -267,5 +267,7 @@ Pass/fail: TC-1..TC-8 pass; no change to `DeriveState`/eligibility/Koios semanti
 - TC-4 | stack: go | command: go test ./internal/worker/reconciliation/ ./cmd/issuer/ | result: pass | note: Notifier seam (WithNotifier) on the reconciler; grace-entry fires it once with the session + graceMessage. TestReconcile_NotifiesOnceOnGrace asserts one call on entry, that a notifier error doesn't fail the pass, and no second DM while still none. main.go wires a telegram-only notifier reusing the push per-instance token routing (st.Channels().Get → instanceToken → NewBotAPITransport.SendMessage to channel_user_id).
 
 - TC-5 | stack: go | command: go test ./internal/worker/telegram/ | result: pass | note: /status now shows Tier, Status, "Last verified", "Valid through (auto-renews …)" (= LastVerifiedAt+TTL), and an ⚠️ "Expiring on … Re-delegate…" line when GraceUntil is set. TestStatusAndUnsubscribe asserts the member format + the grace warning. sessionTTL comment corrected (informational, mirrors reconciliation.subscriptionTTL). Lifecycle + option-1 policy documented in docs/staking-attestation.md §4.
+
+- TC-6 | stack: ui | command: pnpm typecheck && pnpm test | result: pass | note: PushPage `Target tier` is now a required <Select> populated from getPool().tier_rules[].tier (deduped, same source as the tier-rules editor) with a disabled "Select…" placeholder + explicit "All members (no tier gate)" sentinel (tierAllMembers="__all__", mapped back to no tier gate in the request). A blank no longer silently broadcasts to everyone; broadcast-to-all requires choosing that option. Optional backend guard intentionally omitted (would change delivery semantics; foolproofing goal met at the UI). typecheck clean; full web suite green.
 
 ## 7. Change Requests (append-only)
