@@ -316,8 +316,13 @@ Pass/fail: TC-1..TC-13 pass; no change to `DeriveState`/eligibility/Koios semant
 
 - TC-13 | stack: go | command: go test ./internal/worker/reconciliation/ ./internal/worker/telegram/ ./internal/domain/ | result: pass | note: single source of truth `domain.SubscriptionTTL`/`SubscriptionGrace`; reconciliation `subscriptionTTL/Grace` and telegram `sessionTTL` now bind to it (compile-time). TestLifecycleConstsShared + TestSessionTTLSharedWithDomain assert equality so drift is caught.
 
+- TC-7(re-run) | stack: go+ui+shell | command: make -C server test && pnpm test && pnpm typecheck && shellcheck deploy/install.sh | result: pass | note: full regression after p3-1..p3-5 — server suite all green, web 13 tests green, tsc clean, shellcheck clean.
+
 ## 7. Change Requests (append-only)
 
 - 2026-07-01T15:10:00+08:00 multi-agent review (claude+cursor APPROVE, no P0/P1; codex hit
   usage limit). User approved fixing review P2-1/2/3/5 + P3-6 → appended as p3-1..p3-5 (TC-9..TC-13).
   P2-4 (sync notification) and the design-tradeoff items left as-is.
+- 2026-07-01T15:16:00+08:00 p3-1..p3-5 delivered + committed; TC-9..TC-13 evidence appended;
+  full regression green. TC-6 upgraded from partially-met to fully met (p3-3 automated gate test).
+  Spec still held OPEN pending user verification.
