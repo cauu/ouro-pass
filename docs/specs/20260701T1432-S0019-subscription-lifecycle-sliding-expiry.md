@@ -193,7 +193,7 @@ tier claim in tokens) and which relies on tier being accurate.
       swallowing it to `""`. Issue/activation fail-closed; the reconciler fail-opens and
       keeps the stored tier (D8). A genuine no-match still yields `("", nil)` so legit tier
       downgrades still write `""`. Test: reconcile-with-error preserves the stored tier. (TC-9)
-- [ ] p3-2 `grace_until` NULL round-trip store test (review P2-2): direct repo test that
+- [x] p3-2 `grace_until` NULL round-trip store test (review P2-2): direct repo test that
       Upsert→Get preserves NULL vs a set deadline and that clearing writes NULL. (TC-10)
 - [ ] p3-3 Push-modal gate automated test (review P2-3, closes TC-6 gap): RTL test that an
       unselected tier blocks submit and that choosing "All members" omits `target.tier`. (TC-11)
@@ -307,6 +307,8 @@ Pass/fail: TC-1..TC-13 pass; no change to `DeriveState`/eligibility/Koios semant
 - TC-7 | stack: shell | command: shellcheck deploy/install.sh | result: pass | note: clean. Also `go vet ./...` clean; gofmt clean on all S0019-touched files (2 pre-existing unformatted files outside this spec left untouched per append-only/scope discipline).
 
 - TC-9 | stack: go | command: go test ./internal/core/oauth/ ./internal/worker/reconciliation/ ./internal/e2e/ | result: pass | note: firstPartyTier→(string,error); attest propagates tier_rules read error (oauth.go). Reconciler already fail-opens on Attest error; TestReconcile_FaultIsolation now also asserts the errored member's stored tier stays "gold" (not wiped). Happy-path oauth/token/activation suites unchanged (GetTierRules succeeds → no error).
+
+- TC-10 | stack: go | command: go test ./internal/store/ -run GraceUntilRoundTrip | result: pass | note: TestSubscriptionRepo_GraceUntilRoundTrip — nil insert → NULL/nil; set deadline → preserved (ms-equal); clearing Upsert → NULL again.
 
 ## 7. Change Requests (append-only)
 
