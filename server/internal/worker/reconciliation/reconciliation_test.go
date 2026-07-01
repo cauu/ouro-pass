@@ -216,10 +216,12 @@ func TestReconcile_FaultIsolation(t *testing.T) {
 		t.Fatalf("result = %+v, want Checked3/Failed1/Grace1/Unchanged1", res)
 	}
 	// The failing session is untouched (still active, NOT in grace — fail-open never
-	// starts grace on a chain error); the others applied.
+	// starts grace on a chain error) AND its stored tier is preserved, never wiped
+	// (S0019 p3-1: an Attest error — incl. a tier_rules read failure — must not clear
+	// the tier); the others applied.
 	bad, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-bad")
-	if bad.Status != domain.SubActive || bad.GraceUntil != nil {
-		t.Errorf("bad session should be left active with no grace, got status=%s grace=%v", bad.Status, bad.GraceUntil)
+	if bad.Status != domain.SubActive || bad.GraceUntil != nil || bad.Tier != "gold" {
+		t.Errorf("bad session should be left active with no grace and tier preserved, got status=%s grace=%v tier=%q", bad.Status, bad.GraceUntil, bad.Tier)
 	}
 	gone, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-gone")
 	if gone.Status != domain.SubActive || gone.GraceUntil == nil {

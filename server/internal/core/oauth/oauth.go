@@ -215,7 +215,9 @@ func (s *Server) attest(ctx context.Context, sch string) (*attestation, error) {
 		credentials: claimsOf(res.Attestations),
 	}
 	if a.state != membership.StateNone {
-		a.tier = s.firstPartyTier(ctx, a.facts)
+		if a.tier, err = s.firstPartyTier(ctx, a.facts); err != nil {
+			return nil, err
+		}
 	}
 	return a, nil
 }
@@ -232,14 +234,17 @@ func (s *Server) Attest(ctx context.Context, sch string) (membership.State, stri
 }
 
 // firstPartyTier maps the aggregate facts to the issuer's thin first-party tier
-// via the issuer-global tier_rules boolean DSL (S0006 §2.4). Errors / no match
-// degrade to no tier (the optional opinion is simply absent).
-func (s *Server) firstPartyTier(ctx context.Context, facts map[string]string) string {
+// via the issuer-global tier_rules boolean DSL (S0006 §2.4). A rules-read error is
+// PROPAGATED (not swallowed to ""), so callers apply the D8 policy correctly:
+// issue/activation fail-closed, the reconciler fail-opens (keeps the stored tier)
+// — a transient tier_rules read failure must never be mistaken for "no tier" and
+// wipe a member's tier (S0019 p3-1). A genuine no-match still returns ("", nil).
+func (s *Server) firstPartyTier(ctx context.Context, facts map[string]string) (string, error) {
 	rules, err := s.cfg.Store.Issuer().GetTierRules(ctx)
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return tier.Eval(rules, facts)
+	return tier.Eval(rules, facts), nil
 }
 
 func contains(xs []string, v string) bool { return slices.Contains(xs, v) }

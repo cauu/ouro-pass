@@ -186,6 +186,22 @@ tier claim in tokens) and which relies on tier being accurate.
       `OUROPASS_CHAIN_API_KEY`. No core code change (already Bearer-plumbed). shellcheck clean.
 - [x] p2-1 Validation: `make test` + `pnpm test` + `shellcheck deploy/install.sh`.
 
+### Post-review fixes (multi-agent review, appended before closure — S0019 review summary)
+
+- [x] p3-1 Tier-wipe fail-open fix (review P2-1): `firstPartyTier` now returns
+      `(string, error)` and `attest` propagates a tier_rules **read error** instead of
+      swallowing it to `""`. Issue/activation fail-closed; the reconciler fail-opens and
+      keeps the stored tier (D8). A genuine no-match still yields `("", nil)` so legit tier
+      downgrades still write `""`. Test: reconcile-with-error preserves the stored tier. (TC-9)
+- [ ] p3-2 `grace_until` NULL round-trip store test (review P2-2): direct repo test that
+      Upsert→Get preserves NULL vs a set deadline and that clearing writes NULL. (TC-10)
+- [ ] p3-3 Push-modal gate automated test (review P2-3, closes TC-6 gap): RTL test that an
+      unselected tier blocks submit and that choosing "All members" omits `target.tier`. (TC-11)
+- [ ] p3-4 `outage-then-none-still-gets-grace` reconcile test (review P2-5): pass1 `Attest`
+      error (kept, no grace) → pass2 `none` still opens grace + notifies once. (TC-12)
+- [ ] p3-5 Consolidate the duplicate 30d TTL const (review P3-6): a single shared const so
+      the activation-display TTL and the reconcile-slide TTL cannot drift. (TC-13)
+
 ## 4. Test and Acceptance Criteria
 
 - TC-1 Tier refresh: a subscription created while `pending` (empty tier) has its stored
@@ -213,7 +229,18 @@ tier claim in tokens) and which relies on tier being accurate.
   tiers" only; the installer optionally prompts and writes `OUROPASS_CHAIN_API_KEY`; blank
   still works (public tier). shellcheck clean; a set key is sent as `Authorization: Bearer`.
 
-Pass/fail: TC-1..TC-8 pass; no change to `DeriveState`/eligibility/Koios semantics.
+- TC-9 Tier not wiped on tier_rules read error: a member reconcile whose `Attest` fails
+  (incl. a tier_rules read failure) keeps the session active, out of grace, with its stored
+  `tier` preserved (not cleared to "").
+- TC-10 `grace_until` NULL round-trip: repo Upsert→Get preserves NULL vs a set deadline; a
+  clearing Upsert writes NULL back.
+- TC-11 Push modal gate (automated): submitting with no tier selected fails validation; the
+  "All members" choice sends no `target.tier`.
+- TC-12 Outage-then-none still gets grace: a pass where `Attest` errors (kept, no grace)
+  followed by a `none` pass still opens grace + notifies once.
+- TC-13 Single TTL const: activation display and reconcile slide share one constant.
+
+Pass/fail: TC-1..TC-13 pass; no change to `DeriveState`/eligibility/Koios semantics.
 
 ## 5. Execution Log (append-only)
 
@@ -279,4 +306,10 @@ Pass/fail: TC-1..TC-8 pass; no change to `DeriveState`/eligibility/Koios semanti
 - TC-7 | stack: ui | command: pnpm test && pnpm typecheck | result: pass | note: web suite (10 tests) green; tsc -b clean.
 - TC-7 | stack: shell | command: shellcheck deploy/install.sh | result: pass | note: clean. Also `go vet ./...` clean; gofmt clean on all S0019-touched files (2 pre-existing unformatted files outside this spec left untouched per append-only/scope discipline).
 
+- TC-9 | stack: go | command: go test ./internal/core/oauth/ ./internal/worker/reconciliation/ ./internal/e2e/ | result: pass | note: firstPartyTier→(string,error); attest propagates tier_rules read error (oauth.go). Reconciler already fail-opens on Attest error; TestReconcile_FaultIsolation now also asserts the errored member's stored tier stays "gold" (not wiped). Happy-path oauth/token/activation suites unchanged (GetTierRules succeeds → no error).
+
 ## 7. Change Requests (append-only)
+
+- 2026-07-01T15:10:00+08:00 multi-agent review (claude+cursor APPROVE, no P0/P1; codex hit
+  usage limit). User approved fixing review P2-1/2/3/5 + P3-6 → appended as p3-1..p3-5 (TC-9..TC-13).
+  P2-4 (sync notification) and the design-tradeoff items left as-is.
