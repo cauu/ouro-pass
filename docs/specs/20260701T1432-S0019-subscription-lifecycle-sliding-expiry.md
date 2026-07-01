@@ -201,6 +201,11 @@ tier claim in tokens) and which relies on tier being accurate.
       error (kept, no grace) → pass2 `none` still opens grace + notifies once. (TC-12)
 - [x] p3-5 Consolidate the duplicate 30d TTL const (review P3-6): a single shared const so
       the activation-display TTL and the reconcile-slide TTL cannot drift. (TC-13)
+- [x] p3-6 Verification harness (acceptance aid): extend `cmd/devflow` with a narrated
+      "3. Subscription lifecycle" section that runs the REAL reconciler against the mock chain
+      and calls `Reconcile()` directly, so the epoch/time-driven behavior (tier refresh, grace
+      + one-shot DM, notify-once, restore, terminal expiry) is watchable in seconds — with the
+      live `/status` text at grace. Solves "hard to accept" without waiting days. (TC-14)
 
 ## 4. Test and Acceptance Criteria
 
@@ -239,8 +244,11 @@ tier claim in tokens) and which relies on tier being accurate.
 - TC-12 Outage-then-none still gets grace: a pass where `Attest` errors (kept, no grace)
   followed by a `none` pass still opens grace + notifies once.
 - TC-13 Single TTL const: activation display and reconcile slide share one constant.
+- TC-14 Verification harness: `go run ./cmd/devflow` narrates section 3 driving the real
+  reconciler through tier-refresh → grace+DM → notify-once → restore → expiry in seconds,
+  with the live `/status` text, so the lifecycle is acceptance-verifiable without waiting.
 
-Pass/fail: TC-1..TC-13 pass; no change to `DeriveState`/eligibility/Koios semantics.
+Pass/fail: TC-1..TC-14 pass; no change to `DeriveState`/eligibility/Koios semantics.
 
 ## 5. Execution Log (append-only)
 
@@ -318,8 +326,13 @@ Pass/fail: TC-1..TC-13 pass; no change to `DeriveState`/eligibility/Koios semant
 
 - TC-7(re-run) | stack: go+ui+shell | command: make -C server test && pnpm test && pnpm typecheck && shellcheck deploy/install.sh | result: pass | note: full regression after p3-1..p3-5 — server suite all green, web 13 tests green, tsc clean, shellcheck clean.
 
+- TC-14 | stack: go | command: go run ./cmd/devflow | result: pass | note: section "3. Subscription lifecycle" runs the real reconciler + real /status against the mock chain; observed live: 3a pending(tier="")→active(tier=gold); 3b first none → grace=1, 1 DM, /status shows "⚠️ Expiring on …"; 3c second none → grace=0, DM count unchanged (1); 3d re-delegate → grace cleared, gold restored; 3e none→grace then grace_until forced past → expired=1, status=expired. Every transition visible in seconds.
+
 ## 7. Change Requests (append-only)
 
+- 2026-07-01T15:30:00+08:00 user asked how to accept a time/epoch-driven spec; chose to extend
+  the devflow harness. Added p3-6 (TC-14): `cmd/devflow` section 3 narrates the full lifecycle
+  via the real reconciler in seconds. Acceptance aid, dev-only (not product code).
 - 2026-07-01T15:10:00+08:00 multi-agent review (claude+cursor APPROVE, no P0/P1; codex hit
   usage limit). User approved fixing review P2-1/2/3/5 + P3-6 → appended as p3-1..p3-5 (TC-9..TC-13).
   P2-4 (sync notification) and the design-tradeoff items left as-is.

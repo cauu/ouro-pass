@@ -50,6 +50,7 @@ import (
 	"ouro-pass/server/internal/utils/chain"
 	"ouro-pass/server/internal/utils/crypto"
 	"ouro-pass/server/internal/worker/push"
+	"ouro-pass/server/internal/worker/reconciliation"
 	"ouro-pass/server/internal/worker/telegram"
 )
 
@@ -181,6 +182,10 @@ func run(dsn, network string) error {
 	if err := h.subscriptionFlow(ctx, st, oas, w); err != nil {
 		return err
 	}
+	// ---- SUBSCRIPTION LIFECYCLE (S0019: reconciler drives tier/grace/expiry) ----
+	if err := lifecycleFlow(ctx, st, oas, mock, w); err != nil {
+		return err
+	}
 
 	section("Done")
 	fmt.Println("Both flows completed.")
@@ -279,6 +284,123 @@ func (h *harness) subscriptionFlow(ctx context.Context, st *store.Store, oas *oa
 	}
 	fmt.Printf("  → push job (channel_id=%s, tier=gold) → sent=%d recipients=%v\n", channelID, res.Sent, rec.chats)
 	return nil
+}
+
+// lifecycleFlow narrates the S0019 subscription lifecycle the reconciler drives —
+// the part that is otherwise impossible to watch because it is epoch/time-driven
+// (grace = 5 days, expiry at a wall-clock deadline). It runs the REAL reconciler
+// against the mock chain, flipping the wallet's on-chain state and calling
+// Reconcile() directly so every transition is visible in seconds instead of days:
+// tier refresh (pending→active), grace entry + one-shot DM, notify-once, restore
+// before the deadline, and terminal expiry after it.
+func lifecycleFlow(ctx context.Context, st *store.Store, oas *oauth.Server, mock *chain.MockSource, w wallet) error {
+	section("3. Subscription lifecycle (reconciler: tier refresh → grace → notify → restore → expiry)")
+
+	srcFor := func(string) (chain.Source, error) { return mock, nil }
+	netFor := func(context.Context) ([]string, error) { return []string{"preview"}, nil }
+	notes := &lifecycleNotifier{}
+	recon := reconciliation.New(st, oas, srcFor, netFor, scope).WithNotifier(notes.notify)
+	proc := telegram.NewInstanceProcessor(st, oas, scope, channelID)
+
+	// on-chain state fixtures for our wallet (mock overwrites by stake credential).
+	active := func(epoch uint64) *chain.Snapshot {
+		return &chain.Snapshot{StakeCredentialHash: w.sch, Epoch: epoch, DelegatedPoolID: pool,
+			ActiveStakePoolID: pool, ActiveStakeLovelace: "5000000", EpochsDelegated: 6, AccountStatus: "registered"}
+	}
+	pending := func(epoch uint64) *chain.Snapshot { // registered + delegated to us, no active stake yet
+		return &chain.Snapshot{StakeCredentialHash: w.sch, Epoch: epoch, DelegatedPoolID: pool, AccountStatus: "registered"}
+	}
+	gone := func(epoch uint64) *chain.Snapshot { // delegation moved elsewhere → none for our pool
+		return &chain.Snapshot{StakeCredentialHash: w.sch, Epoch: epoch, DelegatedPoolID: "poolother",
+			ActiveStakePoolID: "poolother", ActiveStakeLovelace: "5000000", AccountStatus: "registered"}
+	}
+
+	show := func(label string) {
+		sess, err := st.Subscriptions().GetByInstanceUser(ctx, channelID, "tg-1001")
+		if err != nil {
+			fmt.Printf("  %s → (no session: %v)\n", label, err)
+			return
+		}
+		grace := "—"
+		if sess.GraceUntil != nil {
+			grace = sess.GraceUntil.Format("2006-01-02 15:04")
+		}
+		fmt.Printf("  %-42s tier=%-6q status=%-8s grace_until=%s\n", label, sess.Tier, sess.Status, grace)
+	}
+	reconcile := func(label string) {
+		res, err := recon.Reconcile(ctx)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Printf("  → reconcile [%-16s] checked=%d grace=%d expired=%d unchanged=%d failed=%d\n",
+			label, res.Checked, res.Grace, res.Expired, res.Unchanged, res.Failed)
+	}
+	status := func() {
+		fmt.Printf("     /status → %s\n", strings.ReplaceAll(
+			proc.Handle(ctx, telegram.Update{UserID: "tg-1001", Text: "/status"}), "\n", "\n               "))
+	}
+
+	show("start (active gold member)")
+
+	fmt.Println("\n  3a. Tier refresh — pending→active auto-upgrades tier, no re-bind (TC-1):")
+	mock.Put(pending(481))
+	reconcile("now pending")
+	show("pending → base membership")
+	mock.Put(active(482))
+	reconcile("now active")
+	show("active → tier back to gold")
+
+	fmt.Println("\n  3b. Membership lost → grace window + one-shot DM (TC-3/TC-4):")
+	mock.Put(gone(483))
+	reconcile("first none")
+	show("grace opened, still active")
+	fmt.Printf("     ✉ grace DM(s): %d → %q\n", len(notes.msgs), lastMsg(notes))
+	status()
+
+	fmt.Println("\n  3c. Still none → NO repeat DM (notify-once, TC-4):")
+	reconcile("second none")
+	fmt.Printf("     ✉ grace DM(s) total: %d (unchanged)\n", len(notes.msgs))
+
+	fmt.Println("\n  3d. Re-delegate before the deadline → restore, no re-bind (TC-3):")
+	mock.Put(active(484))
+	reconcile("member again")
+	show("grace cleared, gold restored")
+
+	fmt.Println("\n  3e. Lost again + deadline elapsed → terminal expiry (TC-3):")
+	mock.Put(gone(485))
+	reconcile("none → grace")
+	show("grace re-opened")
+	sess, err := st.Subscriptions().GetByInstanceUser(ctx, channelID, "tg-1001")
+	if err != nil {
+		return err
+	}
+	past := time.Now().Add(-time.Minute)
+	sess.GraceUntil = &past
+	if err := st.Subscriptions().Upsert(ctx, *sess); err != nil {
+		return err
+	}
+	fmt.Println("     (advanced grace_until into the past to simulate the 5-day grace elapsing)")
+	reconcile("none, past deadline")
+	show("terminally expired")
+
+	fmt.Println("\n  (fail-open on a chain/Attest error keeps the session + tier and is covered by")
+	fmt.Println("   unit tests — the mock chain never errors, so it isn't exercised here.)")
+	return nil
+}
+
+// lifecycleNotifier records the grace DMs the reconciler would send.
+type lifecycleNotifier struct{ msgs []string }
+
+func (n *lifecycleNotifier) notify(_ context.Context, _ domain.SubscriptionSession, msg string) error {
+	n.msgs = append(n.msgs, msg)
+	return nil
+}
+
+func lastMsg(n *lifecycleNotifier) string {
+	if len(n.msgs) == 0 {
+		return ""
+	}
+	return trunc(n.msgs[len(n.msgs)-1], 72)
 }
 
 // ---- HTTP harness ---------------------------------------------------------
