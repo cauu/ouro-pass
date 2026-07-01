@@ -78,12 +78,12 @@ tier claim in tokens) and which relies on tier being accurate.
   expiry / notify; a chain/`Attest` error keeps the session untouched and silent.
 - Notifications are best-effort: a send failure is logged, never blocks reconcile, and the
   warning is sent **once** on grace-entry (not repeated while still `none`).
-- Grace is a **wall-clock duration `GRACE` ≈ 1 epoch** (e.g. `5d` ≈ 1 mainnet epoch),
-  stored as a deadline timestamp when membership is lost. It must comfortably exceed one
-  reconcile cadence so a re-delegated member's `pending` is observed before the deadline;
-  the leaving tail already provides ~2 epochs before grace even starts. Reconcile
-  re-derives membership **before** the expiry check, so a member recovered near the
-  deadline is restored, not expired.
+- `TTL = 30 days` (informational `ExpiresAt`) and `GRACE = 5 days` (≈ 1 mainnet epoch;
+  `GRACE < TTL`). Grace is a wall-clock duration stored as a deadline timestamp when
+  membership is lost; 5d comfortably exceeds one reconcile cadence so a re-delegated
+  member's `pending` is observed before the deadline (and the leaving tail already provides
+  ~2 epochs before grace even starts). Reconcile re-derives membership **before** the expiry
+  check, so a member recovered near the deadline is restored, not expired.
 
 ### Non-goals
 
@@ -167,7 +167,8 @@ tier claim in tokens) and which relies on tier being accurate.
       membership first; member → `LastVerifiedAt=now`, `ExpiresAt=now+TTL`, `GraceUntil=nil`;
       first `none` (`GraceUntil==nil`) → `GraceUntil=now+GRACE`; in-grace `none` with
       `now >= *GraceUntil` → `status=expired`; recovery before the deadline → restore
-      (`GraceUntil=nil`). Consts `subscriptionTTL` + `subscriptionGrace`. Tests: slide /
+      (`GraceUntil=nil`). Consts `subscriptionTTL = 30 * 24h` + `subscriptionGrace = 5 * 24h`.
+      Tests: slide /
       grace-entry / restore-before-deadline / expire-after-deadline / fail-open-on-error /
       outage-then-none-still-gets-grace.
 - [ ] p1-3 Expiry notification: `Notifier` seam on the reconciler; `main.go` wires the
@@ -253,5 +254,8 @@ Pass/fail: TC-1..TC-8 pass; no change to `DeriveState`/eligibility/Koios semanti
   blank-default prompt; env stays the home. Option B (admin "Chain settings" page, DB-stored
   key + the deferred self-hosted endpoint) and reconcile batching/pacing/local-epoch trigger
   are explicit non-goals (future). Remaining decision unchanged: TTL (30d) + GRACE (~5d).
+- 2026-07-01T13:20:00+08:00 values locked per user: `subscriptionTTL = 30d`,
+  `subscriptionGrace = 5d` (≈ 1 mainnet epoch, `< TTL`). No open decisions remain; ready to
+  promote to active.
 
 ## 7. Change Requests (append-only)
