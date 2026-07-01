@@ -195,7 +195,7 @@ tier claim in tokens) and which relies on tier being accurate.
       downgrades still write `""`. Test: reconcile-with-error preserves the stored tier. (TC-9)
 - [x] p3-2 `grace_until` NULL round-trip store test (review P2-2): direct repo test that
       Upsert→Get preserves NULL vs a set deadline and that clearing writes NULL. (TC-10)
-- [ ] p3-3 Push-modal gate automated test (review P2-3, closes TC-6 gap): RTL test that an
+- [x] p3-3 Push-modal gate automated test (review P2-3, closes TC-6 gap): RTL test that an
       unselected tier blocks submit and that choosing "All members" omits `target.tier`. (TC-11)
 - [ ] p3-4 `outage-then-none-still-gets-grace` reconcile test (review P2-5): pass1 `Attest`
       error (kept, no grace) → pass2 `none` still opens grace + notifies once. (TC-12)
@@ -309,6 +309,8 @@ Pass/fail: TC-1..TC-13 pass; no change to `DeriveState`/eligibility/Koios semant
 - TC-9 | stack: go | command: go test ./internal/core/oauth/ ./internal/worker/reconciliation/ ./internal/e2e/ | result: pass | note: firstPartyTier→(string,error); attest propagates tier_rules read error (oauth.go). Reconciler already fail-opens on Attest error; TestReconcile_FaultIsolation now also asserts the errored member's stored tier stays "gold" (not wiped). Happy-path oauth/token/activation suites unchanged (GetTierRules succeeds → no error).
 
 - TC-10 | stack: go | command: go test ./internal/store/ -run GraceUntilRoundTrip | result: pass | note: TestSubscriptionRepo_GraceUntilRoundTrip — nil insert → NULL/nil; set deadline → preserved (ms-equal); clearing Upsert → NULL again.
+
+- TC-11 | stack: ui | command: pnpm test src/features/push/PushPage.test.tsx | result: pass | note: RTL — (1) submit with no tier selected is blocked ("Pick a tier…" shown, createPushJob not called); (2) "All members" (__all__) → target={} (no tier); (3) "gold" → target={tier:"gold"}. This closes the TC-6 automated-coverage gap (TC-6 now fully, not partially, met). Full web suite 13 tests green; typecheck clean.
 
 ## 7. Change Requests (append-only)
 
