@@ -78,9 +78,27 @@ Wraps `chain.Source`, implements `chain.Source` (the eligibility path is unchang
   reconciler → soft fail-open.
 - A bail (active → pending/none) deletes the cache row.
 
-The reconciler (`internal/worker/reconciliation`) re-derives state at each epoch
-boundary: `none` → expire the subscription; member → refresh. Tier is **not**
-reconciled (it is recomputed at consumption).
+The reconciler (`internal/worker/reconciliation`) re-derives state **and the
+first-party tier** (`Attest`) at each epoch boundary and drives the subscription
+lifecycle (S0019):
+
+- **member (`active`/`pending`)** → refresh `LastVerifiedAt` + `Tier` (so a
+  `pending → active` upgrade or stake-driven tier change is reflected without a
+  re-bind), slide the informational `ExpiresAt = now + TTL` (30 days), and clear any
+  grace. `ExpiresAt` is a friendly "valid through, auto-renews" date — **never
+  enforced**.
+- **membership lost (`state == none`)** → the first pass records a grace **deadline**
+  `GraceUntil = now + GRACE` (5 days ≈ 1 mainnet epoch) and DMs the user once; the
+  session stays active. Terminal expiry is `now >= GraceUntil` (a pure timestamp — the
+  reconcile frequency only affects detection latency). Recovery to member before the
+  deadline restores the session (grace cleared). `GraceUntil == nil` is the sole
+  "not in grace" signal.
+- **chain/`Attest` error** → soft fail-open (D8): keep the session untouched, no
+  grace, no notify — we never expire a member because of our own infra outage.
+
+Policy: value is gated on **tier**, not on mere membership. `pending`/dust delegators
+get base membership only — a tier needs real active stake (unfakeable), so push
+targeting and tier token claims stay Sybil-resistant.
 
 ## 5. Token claims (`internal/utils/jose`, S0004 §2.5)
 

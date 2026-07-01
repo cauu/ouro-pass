@@ -19,8 +19,10 @@ import (
 	"ouro-pass/server/internal/utils/crypto"
 )
 
-// sessionTTL is how long a subscription stays valid before reconciliation must
-// re-verify it.
+// sessionTTL is the informational validity window shown at activation: the
+// displayed ExpiresAt = LastVerifiedAt + TTL ("valid through, auto-renews"). It is
+// never enforced — real expiry is membership-driven (reconciliation grace + deadline,
+// S0019). Mirrors reconciliation.subscriptionTTL; the reconciler re-slides it each pass.
 const sessionTTL = 30 * 24 * time.Hour
 
 // Update is the subset of a Telegram update the bot acts on.
@@ -147,7 +149,17 @@ func (p *Processor) status(ctx context.Context, up Update) string {
 	if err != nil {
 		return "You are not subscribed. Use /start <code> to activate."
 	}
-	return fmt.Sprintf("Tier: %s\nStatus: %s\nExpires: %s", sess.Tier, sess.Status, sess.ExpiresAt.Format("2006-01-02"))
+	// ExpiresAt is the informational "valid through, auto-renews" date (it slides
+	// each epoch while you stay a member); LastVerifiedAt is the last on-chain
+	// re-verification. A session in grace (GraceUntil set) is expiring — tell the
+	// user how to keep it (S0019 p1-4).
+	msg := fmt.Sprintf("Tier: %s\nStatus: %s\nLast verified: %s\nValid through: %s (auto-renews while you stay delegated)",
+		sess.Tier, sess.Status, sess.LastVerifiedAt.Format("2006-01-02"), sess.ExpiresAt.Format("2006-01-02"))
+	if sess.GraceUntil != nil {
+		msg += fmt.Sprintf("\n⚠️ Expiring on %s — we no longer see an active delegation. Re-delegate to your pool to keep your membership.",
+			sess.GraceUntil.Format("2006-01-02"))
+	}
+	return msg
 }
 
 func (p *Processor) unsubscribe(ctx context.Context, up Update) string {

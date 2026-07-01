@@ -96,13 +96,27 @@ func TestStatusAndUnsubscribe(t *testing.T) {
 	seedCode(t, st, "c", "sch")
 	proc.Handle(ctx, Update{UserID: "u", Text: "/start c"})
 
-	if r := proc.Handle(ctx, Update{UserID: "u", Text: "/status"}); !strings.Contains(r, "silver") {
+	// TC-5: status shows tier, the informational "Valid through" date, and the last
+	// verification — not a bare "Expires".
+	if r := proc.Handle(ctx, Update{UserID: "u", Text: "/status"}); !strings.Contains(r, "silver") ||
+		!strings.Contains(r, "Valid through") || !strings.Contains(r, "Last verified") {
 		t.Errorf("status: %q", r)
+	}
+	// A session in grace surfaces the expiring warning + re-delegate guidance.
+	sess, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1abc", "telegram", "u")
+	grace := time.Now().Add(120 * time.Hour)
+	sess.GraceUntil = &grace
+	if err := st.Subscriptions().Upsert(ctx, *sess); err != nil {
+		t.Fatal(err)
+	}
+	if r := proc.Handle(ctx, Update{UserID: "u", Text: "/status"}); !strings.Contains(r, "Expiring") ||
+		!strings.Contains(r, "Re-delegate") {
+		t.Errorf("grace status: %q", r)
 	}
 	if r := proc.Handle(ctx, Update{UserID: "u", Text: "/unsubscribe"}); !strings.Contains(r, "unsubscribed") {
 		t.Errorf("unsubscribe: %q", r)
 	}
-	sess, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1abc", "telegram", "u")
+	sess, _ = st.Subscriptions().GetByChannelUser(ctx, "pool1abc", "telegram", "u")
 	if sess.Status != domain.SubCancelled {
 		t.Errorf("status after unsub = %s", sess.Status)
 	}
