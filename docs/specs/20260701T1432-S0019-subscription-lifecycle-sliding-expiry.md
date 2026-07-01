@@ -197,7 +197,7 @@ tier claim in tokens) and which relies on tier being accurate.
       Upsert→Get preserves NULL vs a set deadline and that clearing writes NULL. (TC-10)
 - [x] p3-3 Push-modal gate automated test (review P2-3, closes TC-6 gap): RTL test that an
       unselected tier blocks submit and that choosing "All members" omits `target.tier`. (TC-11)
-- [ ] p3-4 `outage-then-none-still-gets-grace` reconcile test (review P2-5): pass1 `Attest`
+- [x] p3-4 `outage-then-none-still-gets-grace` reconcile test (review P2-5): pass1 `Attest`
       error (kept, no grace) → pass2 `none` still opens grace + notifies once. (TC-12)
 - [ ] p3-5 Consolidate the duplicate 30d TTL const (review P3-6): a single shared const so
       the activation-display TTL and the reconcile-slide TTL cannot drift. (TC-13)
@@ -311,6 +311,8 @@ Pass/fail: TC-1..TC-13 pass; no change to `DeriveState`/eligibility/Koios semant
 - TC-10 | stack: go | command: go test ./internal/store/ -run GraceUntilRoundTrip | result: pass | note: TestSubscriptionRepo_GraceUntilRoundTrip — nil insert → NULL/nil; set deadline → preserved (ms-equal); clearing Upsert → NULL again.
 
 - TC-11 | stack: ui | command: pnpm test src/features/push/PushPage.test.tsx | result: pass | note: RTL — (1) submit with no tier selected is blocked ("Pick a tier…" shown, createPushJob not called); (2) "All members" (__all__) → target={} (no tier); (3) "gold" → target={tier:"gold"}. This closes the TC-6 automated-coverage gap (TC-6 now fully, not partially, met). Full web suite 13 tests green; typecheck clean.
+
+- TC-12 | stack: go | command: go test ./internal/worker/reconciliation/ -run OutageThenNone | result: pass | note: TestReconcile_OutageThenNoneGetsGrace — pass1 Attest error → Failed1/Grace0, session kept, tier preserved, no notify; pass2 none → Grace1, GraceUntil set, notified exactly once. Proves grace keys on GraceUntil==nil, not pass count.
 
 ## 7. Change Requests (append-only)
 

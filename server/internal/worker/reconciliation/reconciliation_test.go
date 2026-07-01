@@ -264,6 +264,46 @@ func TestReconcile_NotifiesOnceOnGrace(t *testing.T) {
 	}
 }
 
+// TestReconcile_OutageThenNoneGetsGrace (S0019 p3-4 / TC-12): a pass where Attest
+// errors leaves the session untouched (no grace); a LATER pass that sees `none`
+// still opens a proper grace window and notifies once. Proves grace is keyed on
+// GraceUntil==nil, not on pass count — a post-outage first `none` is not skipped.
+func TestReconcile_OutageThenNoneGetsGrace(t *testing.T) {
+	ctx := context.Background()
+	st := newStore(t)
+	seed(t, st, "s", "sch", "gold")
+	sf, nf := srcOnce(chain.NewMockSource(481))
+
+	var notifies int
+	notifier := func(context.Context, domain.SubscriptionSession, string) error {
+		notifies++
+		return nil
+	}
+
+	// Pass 1: Attest errors → fault-isolated, no grace, tier preserved.
+	faulty := faultyState{states: map[string]membership.State{}, failFor: map[string]bool{"sch": true}}
+	if res, _ := New(st, faulty, sf, nf, "pool1").WithNotifier(notifier).Reconcile(ctx); res.Failed != 1 || res.Grace != 0 {
+		t.Fatalf("pass1 = %+v, want Failed1/Grace0", res)
+	}
+	s, _ := st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-s")
+	if s.GraceUntil != nil || s.Tier != "gold" {
+		t.Fatalf("after outage: grace=%v tier=%q, want nil/gold", s.GraceUntil, s.Tier)
+	}
+	if notifies != 0 {
+		t.Fatalf("outage must not notify, got %d", notifies)
+	}
+
+	// Pass 2: now genuinely none → grace opens + notifies once (not skipped).
+	none := programmableState{states: map[string]membership.State{}}
+	if res, _ := New(st, none, sf, nf, "pool1").WithNotifier(notifier).Reconcile(ctx); res.Grace != 1 {
+		t.Fatalf("pass2 = %+v, want Grace1", res)
+	}
+	s, _ = st.Subscriptions().GetByChannelUser(ctx, "pool1", "telegram", "u-s")
+	if s.GraceUntil == nil || notifies != 1 {
+		t.Fatalf("post-outage none: grace=%v notifies=%d, want set/1", s.GraceUntil, notifies)
+	}
+}
+
 func TestReconcile_EmptyIsNoop(t *testing.T) {
 	st := newStore(t)
 	sf, nf := srcOnce(chain.NewMockSource(1))
