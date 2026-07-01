@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
-import { createPushJob, getPool, listPushJobs } from "@/api/admin";
+import { createPushJob, getPool, listChannels, listPushJobs } from "@/api/admin";
 import { ApiError } from "@/api/client";
 import { PageHeader, QueryState } from "@/app/page";
 import { fmtTime } from "@/lib/format";
@@ -35,7 +35,7 @@ import { useToast } from "@/ui/toast";
 interface PushForm {
   title: string;
   content: string;
-  channel_type: string;
+  channel_id: string; // a specific configured instance; channel_type is derived from it
   tier: string;
   topic: string;
   entitlement: string;
@@ -55,20 +55,27 @@ function CreatePushDialog({ onCreated }: { onCreated: () => void }) {
     reset,
     formState: { errors },
   } = useForm<PushForm>({
-    defaultValues: { title: "", content: "", channel_type: "telegram", tier: "", topic: "", entitlement: "" },
+    defaultValues: { title: "", content: "", channel_id: "", tier: "", topic: "", entitlement: "" },
   });
 
   // Configured tiers drive the target select (same source as the tier-rules editor).
   const pool = useQuery({ queryKey: ["pool"], queryFn: getPool });
   const tiers = [...new Set((pool.data?.tier_rules ?? []).map((r) => r.tier).filter(Boolean))];
 
+  // Active channel instances drive the channel select (same source as the Channels
+  // page) — the push targets one configured bot, not a hand-typed channel type.
+  const channelsQ = useQuery({ queryKey: ["channels"], queryFn: listChannels });
+  const instances = (channelsQ.data?.channels ?? []).filter((c) => c.status === "active");
+
   const create = useMutation({
     mutationFn: (v: PushForm) => {
       const tier = v.tier === tierAllMembers ? "" : v.tier;
+      const inst = instances.find((c) => c.channel_id === v.channel_id);
       const body: PushCreate = {
         title: v.title,
         content: v.content,
-        channel_type: v.channel_type,
+        channel_type: inst?.channel_type ?? "telegram",
+        channel_id: v.channel_id,
         target: {
           ...(tier ? { tier } : {}),
           ...(v.topic ? { topic: v.topic } : {}),
@@ -109,8 +116,17 @@ function CreatePushDialog({ onCreated }: { onCreated: () => void }) {
             <Textarea rows={3} {...register("content", { required: true })} className="font-sans" />
           </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Channel" required>
-              <Input {...register("channel_type")} />
+            <Field label="Channel" required error={errors.channel_id && "Pick a channel"}>
+              <Select {...register("channel_id", { required: true })} defaultValue="">
+                <option value="" disabled>
+                  Select…
+                </option>
+                {instances.map((c) => (
+                  <option key={c.channel_id} value={c.channel_id}>
+                    {c.name} — {c.channel_type}
+                  </option>
+                ))}
+              </Select>
             </Field>
             <Field label="Target tier" required error={errors.tier && "Pick a tier or “All members”"}>
               <Select {...register("tier", { required: true })} defaultValue="">

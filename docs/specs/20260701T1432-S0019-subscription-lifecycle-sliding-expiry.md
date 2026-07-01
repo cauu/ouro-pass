@@ -206,6 +206,11 @@ tier claim in tokens) and which relies on tier being accurate.
       and calls `Reconcile()` directly, so the epoch/time-driven behavior (tier refresh, grace
       + one-shot DM, notify-once, restore, terminal expiry) is watchable in seconds — with the
       live `/status` text at grace. Solves "hard to accept" without waiting days. (TC-14)
+- [x] p3-7 Push-modal Channel select (user follow-up during acceptance): replace the free-text
+      `channel_type` Input with a required `<Select>` of the pool's ACTIVE channel instances
+      (`listChannels()`, same source as the Channels page). The push now targets a specific
+      configured bot via `channel_id` (channel_type derived from the chosen instance) instead of
+      a hand-typed type string. Disabled instances are excluded. Web typecheck + RTL tests. (TC-15)
 
 ## 4. Test and Acceptance Criteria
 
@@ -247,8 +252,11 @@ tier claim in tokens) and which relies on tier being accurate.
 - TC-14 Verification harness: `go run ./cmd/devflow` narrates section 3 driving the real
   reconciler through tier-refresh → grace+DM → notify-once → restore → expiry in seconds,
   with the live `/status` text, so the lifecycle is acceptance-verifiable without waiting.
+- TC-15 Push Channel select: the push modal Channel is a required select of active channel
+  instances; submit is blocked with no channel; a disabled instance is not offered; the created
+  job carries the chosen `channel_id` + derived `channel_type`.
 
-Pass/fail: TC-1..TC-14 pass; no change to `DeriveState`/eligibility/Koios semantics.
+Pass/fail: TC-1..TC-15 pass; no change to `DeriveState`/eligibility/Koios semantics.
 
 ## 5. Execution Log (append-only)
 
@@ -328,8 +336,15 @@ Pass/fail: TC-1..TC-14 pass; no change to `DeriveState`/eligibility/Koios semant
 
 - TC-14 | stack: go | command: go run ./cmd/devflow | result: pass | note: section "3. Subscription lifecycle" runs the real reconciler + real /status against the mock chain; observed live: 3a pending(tier="")→active(tier=gold); 3b first none → grace=1, 1 DM, /status shows "⚠️ Expiring on …"; 3c second none → grace=0, DM count unchanged (1); 3d re-delegate → grace cleared, gold restored; 3e none→grace then grace_until forced past → expired=1, status=expired. Every transition visible in seconds.
 
+- TC-15 | stack: ui | command: pnpm test src/features/push/PushPage.test.tsx && pnpm typecheck | result: pass | note: Channel is now a required <Select> of active instances from listChannels(); PushForm carries channel_id, channel_type derived from the chosen instance. RTL: blocked with no channel ("Pick a channel"), disabled "Old" instance excluded from options, created job has channel_id="tg1"+channel_type="telegram". Full web suite 15 tests green; tsc clean. Embed rebuilt (bundle contains "Pick a channel").
+
 ## 7. Change Requests (append-only)
 
+- 2026-07-01T16:28:00+08:00 user follow-up during acceptance: make the push-modal Channel a
+  dropdown too (in-place, no new spec). Appended p3-7 (TC-15): Channel → required select of
+  active channel instances (channel_id), channel_type derived. Also documented that the admin
+  SPA is compile-time embedded, so a frontend change needs `make -C server web` + a dev restart
+  to appear (the running binary embeds a stale bundle otherwise).
 - 2026-07-01T15:30:00+08:00 user asked how to accept a time/epoch-driven spec; chose to extend
   the devflow harness. Added p3-6 (TC-14): `cmd/devflow` section 3 narrates the full lifecycle
   via the real reconciler in seconds. Acceptance aid, dev-only (not product code).
